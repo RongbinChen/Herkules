@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int      @id @default(autoincrement())
+  email             String   @unique
+  password          String
+  name              String
+  isAdmin           Boolean  @default(false)
+  calendarFeedToken String?  @unique
+  events            Event[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+enum ActivityCategory {
+  WORK_SESSION
+  MEETING
+  SALES_MEETING
+  FIELD_WORK
+  BREAK
+  TRAINING
+  LEAVE
+}
+
+enum ActivityStatus {
+  PLANNED
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+enum ActivityPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Event {
+  id          Int              @id @default(autoincrement())
+  title       String
+  description String?
+  start       DateTime
+  end         DateTime
+  allDay      Boolean          @default(false)
+  color       String           @default("#2563eb")
+  location    String?
+  category    ActivityCategory @default(WORK_SESSION)
+  status      ActivityStatus   @default(PLANNED)
+  priority    ActivityPriority @default(MEDIUM)
+  userId      Int
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+enum BidStatus {
+  PUBLISHED
+  CLOSED
+  CANCELLED
+  UNKNOWN
+}
+
+enum BidType {
+  NEW
+  PAST
+}
+
+model BidProject {
+  id            Int       @id @default(autoincrement())
+  projectName   String
+  projectCode   String?   @unique
+  region        String?
+  industry      String?
+  biddingType   BidType   @default(NEW)
+  publishDate   DateTime?
+  deadline      DateTime?
+  budget        String?
+  status        BidStatus @default(PUBLISHED)
+  sourceUrl     String
+  rawContent    String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}

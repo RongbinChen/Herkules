@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  background: #e2e8f0;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  color: #0f172a;
+}
+
+.fc {
+  font-size: 13px;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th,
+.fc-theme-standard .fc-scrollgrid {
+  border-color: #d9e2ec;
+}
+
+.fc .fc-toolbar {
+  margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.fc .fc-button {
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.fc .fc-button-primary {
+  background-color: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.fc .fc-button-primary:hover {
+  background-color: #cbd5e1;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.fc .fc-button-primary.fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background-color: #0f172a;
+  border-color: #0f172a;
+  color: white;
+}
+
+.fc .fc-daygrid-day.fc-day-today,
+.fc .fc-timegrid-col.fc-day-today {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.fc .fc-timegrid-slot,
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-col-header-cell-cushion {
+  color: #475569;
+}
+
+.fc .fc-timegrid-axis,
+.fc .fc-col-header-cell {
+  background: #f8fafc;
+}
+
+.fc .fc-timegrid-now-indicator-line {
+  border-color: #f97316;
+}
+
+.fc .fc-event {
+  border: 0;
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+
+.fc-activity-card {
+  padding: 0.55rem 0.7rem;
+}
+
+.fc-activity-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.fc-activity-card__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-activity-card__status {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.fc-activity-card__meta {
+  margin-top: 0.3rem;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  font-size: 0.68rem;
+  opacity: 0.92;
+}
+
+.fc .fc-list-event:hover td {
+  background: #e2e8f0;
+}

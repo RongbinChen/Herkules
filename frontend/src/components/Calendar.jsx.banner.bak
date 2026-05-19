@@ -1,0 +1,571 @@
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import FullCalendar from '@fullcalendar/react'
+import dayGridPlugin from '@fullcalendar/daygrid'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import interactionPlugin from '@fullcalendar/interaction'
+import listPlugin from '@fullcalendar/list'
+import { format, isSameDay, parseISO } from 'date-fns'
+import { useAuth } from '../context/AuthContext'
+import { eventsAPI, usersAPI } from '../api/api'
+import EventModal from './EventModal'
+import UserManagementModal from './UserManagementModal'
+
+const CATEGORY_LABELS = {
+  WORK_SESSION: 'Work Session',
+  MEETING: 'Meeting',
+  FIELD_WORK: 'Field Work',
+  BREAK: 'Break',
+  TRAINING: 'Training',
+  LEAVE: 'Leave',
+}
+
+const STATUS_LABELS = {
+  PLANNED: 'Planned',
+  IN_PROGRESS: 'In Progress',
+  DONE: 'Done',
+  BLOCKED: 'Blocked',
+}
+
+const PRIORITY_LABELS = {
+  LOW: 'Low',
+  MEDIUM: 'Medium',
+  HIGH: 'High',
+  CRITICAL: 'Critical',
+}
+
+function classNames(...values) {
+  return values.filter(Boolean).join(' ')
+}
+
+function MiniMonth({ events, anchorDate, onJump }) {
+  const [month, setMonth] = useState(new Date(anchorDate))
+
+  useEffect(() => {
+    setMonth(new Date(anchorDate))
+  }, [anchorDate])
+
+  const start = new Date(month.getFullYear(), month.getMonth(), 1)
+  const end = new Date(month.getFullYear(), month.getMonth() + 1, 0)
+  const leading = start.getDay()
+  const days = Array.from({ length: leading + end.getDate() }, (_, index) => {
+    if (index < leading) return null
+    return new Date(month.getFullYear(), month.getMonth(), index - leading + 1)
+  })
+
+  const marked = new Set(events.map((event) => new Date(event.start).toDateString()))
+
+  return (
+    <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+      <div className="mb-4 flex items-center justify-between">
+        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600">
+          Prev
+        </button>
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Navigator</p>
+          <h3 className="text-base font-semibold text-slate-900">{format(month, 'MMMM yyyy')}</h3>
+        </div>
+        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600">
+          Next
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((label) => <div key={label}>{label}</div>)}
+      </div>
+      <div className="mt-3 grid grid-cols-7 gap-2">
+        {days.map((day, index) => {
+          if (!day) {
+            return <div key={`empty-${index}`} className="h-10" />
+          }
+
+          const isToday = isSameDay(day, new Date())
+          const isMarked = marked.has(day.toDateString())
+
+          return (
+            <button
+              key={day.toISOString()}
+              onClick={() => onJump(day)}
+              className={classNames(
+                'relative h-10 rounded-2xl text-sm font-medium transition',
+                isToday ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+              )}
+            >
+              {day.getDate()}
+              {isMarked && (
+                <span className={classNames('absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full', isToday ? 'bg-sky-300' : 'bg-sky-600')} />
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function TeamPanel({ summary, selectedUserId, onSelectUser, isAdmin }) {
+  if (!isAdmin) return null
+
+  return (
+    <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+      <div className="mb-4 flex items-end justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Team Pulse</p>
+          <h3 className="text-lg font-semibold text-slate-900">Employee activity</h3>
+        </div>
+        <button
+          onClick={() => onSelectUser(null)}
+          className={classNames(
+            'rounded-full px-3 py-1 text-sm font-medium transition',
+            selectedUserId === null ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+          )}
+        >
+          All
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {summary.map((member) => (
+          <button
+            key={member.id}
+            onClick={() => onSelectUser(member.id)}
+            className={classNames(
+              'w-full rounded-3xl border px-4 py-3 text-left transition',
+              selectedUserId === member.id ? 'border-slate-900 bg-slate-950 text-white' : 'border-slate-200 bg-slate-50 hover:border-slate-300',
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold">{member.name}</p>
+                <p className={classNames('text-sm', selectedUserId === member.id ? 'text-slate-300' : 'text-slate-500')}>{member.focusLabel}</p>
+              </div>
+              <span className={classNames('rounded-full px-2 py-1 text-xs font-semibold', selectedUserId === member.id ? 'bg-white/10 text-white' : 'bg-white text-slate-700')}>
+                {STATUS_LABELS[member.activeStatus] || member.activeStatus}
+              </span>
+            </div>
+            <div className={classNames('mt-3 flex gap-2 text-xs', selectedUserId === member.id ? 'text-slate-300' : 'text-slate-500')}>
+              <span>{member.totalThisWeek} records</span>
+              <span>{member.blockedCount} blocked</span>
+              <span>{member.doneCount} done</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function OverviewCards({ events, isAdmin }) {
+  const metrics = useMemo(() => {
+    const blocked = events.filter((event) => event.status === 'BLOCKED').length
+    const active = events.filter((event) => event.status === 'IN_PROGRESS').length
+    const meetings = events.filter((event) => event.category === 'MEETING').length
+    const critical = events.filter((event) => event.priority === 'CRITICAL').length
+    return [
+      { label: 'Active Now', value: active, accent: 'from-sky-500 to-cyan-400' },
+      { label: 'Blocked Items', value: blocked, accent: 'from-red-500 to-orange-400' },
+      { label: 'Meetings', value: meetings, accent: 'from-violet-500 to-fuchsia-400' },
+      { label: isAdmin ? 'Critical Priority' : 'High Pressure', value: critical, accent: 'from-slate-900 to-slate-600' },
+    ]
+  }, [events, isAdmin])
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {metrics.map((metric) => (
+        <div key={metric.label} className="rounded-[28px] border border-white/60 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+          <div className={`h-1.5 w-20 rounded-full bg-gradient-to-r ${metric.accent}`} />
+          <p className="mt-5 text-sm font-medium text-slate-500">{metric.label}</p>
+          <p className="mt-2 text-4xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function Calendar() {
+  const { logout, user, updateUser } = useAuth()
+  const calendarRef = useRef(null)
+  const isAdmin = user?.isAdmin === true
+  const [allEvents, setAllEvents] = useState([])
+  const [users, setUsers] = useState([])
+  const [summary, setSummary] = useState([])
+  const [selectedUserId, setSelectedUserId] = useState(null)
+  const [selectedCategory, setSelectedCategory] = useState('ALL')
+  const [selectedStatus, setSelectedStatus] = useState('ALL')
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentView, setCurrentView] = useState('timeGridWeek')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [userManagerOpen, setUserManagerOpen] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const deferredCategory = useDeferredValue(selectedCategory)
+  const deferredStatus = useDeferredValue(selectedStatus)
+
+  async function loadEvents() {
+    const response = await eventsAPI.getAll()
+    setAllEvents(response.data.map((item) => ({
+      ...item,
+      userId: item.user?.id ?? item.userId,
+      userName: item.user?.name,
+      backgroundColor: item.color,
+      borderColor: item.color,
+    })))
+  }
+
+  async function loadUsers() {
+    if (!isAdmin) {
+      setUsers(user ? [user] : [])
+      return
+    }
+    const response = await usersAPI.getAll()
+    setUsers(response.data)
+  }
+
+  async function loadSummary() {
+    if (!isAdmin) return
+    const response = await usersAPI.getActivitySummary()
+    setSummary(response.data)
+  }
+
+  useEffect(() => {
+    loadEvents().catch((error) => console.error('Failed to fetch events', error))
+    loadUsers().catch((error) => console.error('Failed to fetch users', error))
+    loadSummary().catch((error) => console.error('Failed to fetch summary', error))
+  }, [isAdmin])
+
+  const visibleEvents = useMemo(() => {
+    return allEvents.filter((event) => {
+      if (selectedUserId !== null && event.userId !== selectedUserId) return false
+      if (deferredCategory !== 'ALL' && event.category !== deferredCategory) return false
+      if (deferredStatus !== 'ALL' && event.status !== deferredStatus) return false
+      return true
+    })
+  }, [allEvents, selectedUserId, deferredCategory, deferredStatus])
+
+  const todayActivities = useMemo(
+    () => visibleEvents.filter((event) => isSameDay(parseISO(event.start), currentDate)).slice(0, 5),
+    [visibleEvents, currentDate],
+  )
+
+  function openNewActivity(dateInfo) {
+    const startDate = dateInfo.date ? dateInfo.date : dateInfo
+    const endDate = new Date(startDate)
+    if (dateInfo.allDay) {
+      endDate.setDate(endDate.getDate() + 1)
+    } else {
+      endDate.setHours(endDate.getHours() + 1)
+    }
+
+    setSelectedEvent({
+      title: '',
+      description: '',
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      allDay: Boolean(dateInfo.allDay),
+      color: '#2563eb',
+      category: 'WORK_SESSION',
+      status: 'PLANNED',
+      priority: 'MEDIUM',
+      userId: selectedUserId || user?.id,
+    })
+    setModalOpen(true)
+  }
+
+  function openExistingActivity(clickInfo) {
+    const event = clickInfo.event
+    setSelectedEvent({
+      id: Number(event.id),
+      title: event.title,
+      description: event.extendedProps.description || '',
+      location: event.extendedProps.location || '',
+      start: event.startStr,
+      end: event.endStr || event.startStr,
+      allDay: event.allDay,
+      color: event.backgroundColor,
+      category: event.extendedProps.category,
+      status: event.extendedProps.status,
+      priority: event.extendedProps.priority,
+      userId: event.extendedProps.userId,
+    })
+    setModalOpen(true)
+  }
+
+  async function handleSaveActivity(payload) {
+    try {
+      if (payload.id) {
+        await eventsAPI.update(payload.id, payload)
+      } else {
+        await eventsAPI.create(payload)
+      }
+      await Promise.all([loadEvents(), loadSummary()])
+      setModalOpen(false)
+      setSelectedEvent(null)
+    } catch (error) {
+      console.error('Failed to save activity', error)
+      alert('Failed to save activity')
+    }
+  }
+
+  async function handleCalendarMutation(changeInfo) {
+    const event = changeInfo.event
+    try {
+      await eventsAPI.update(event.id, {
+        title: event.title,
+        description: event.extendedProps.description || '',
+        location: event.extendedProps.location || '',
+        start: event.start?.toISOString(),
+        end: (event.end || event.start)?.toISOString(),
+        allDay: event.allDay,
+        color: event.backgroundColor,
+        category: event.extendedProps.category,
+        status: event.extendedProps.status,
+        priority: event.extendedProps.priority,
+        userId: event.extendedProps.userId,
+      })
+      await Promise.all([loadEvents(), loadSummary()])
+    } catch (error) {
+      console.error('Failed to update activity timing', error)
+      changeInfo.revert()
+    }
+  }
+
+  async function handleDeleteActivity() {
+    if (!selectedEvent?.id) return
+    if (!window.confirm('Delete this activity record?')) return
+
+    try {
+      await eventsAPI.delete(selectedEvent.id)
+      await Promise.all([loadEvents(), loadSummary()])
+      setModalOpen(false)
+      setSelectedEvent(null)
+    } catch (error) {
+      console.error('Failed to delete activity', error)
+      alert('Failed to delete activity')
+    }
+  }
+
+  function jumpToDate(date) {
+    const api = calendarRef.current?.getApi()
+    if (!api) return
+    setCurrentDate(date)
+    api.gotoDate(date)
+    api.changeView('timeGridDay')
+    setCurrentView('timeGridDay')
+  }
+
+  async function handleCreateUser(payload) {
+    await usersAPI.create(payload)
+    await Promise.all([loadUsers(), loadSummary()])
+  }
+
+  async function handleUpdateUser(userId, payload) {
+    const response = await usersAPI.update(userId, payload)
+    await Promise.all([loadUsers(), loadSummary(), loadEvents()])
+
+    if (user?.id === userId) {
+      updateUser({
+        ...user,
+        name: response.data.name,
+        email: response.data.email,
+        isAdmin: response.data.isAdmin,
+      })
+    }
+  }
+
+  async function handleDeleteUser(targetUser) {
+    await usersAPI.delete(targetUser.id)
+    await Promise.all([loadUsers(), loadSummary(), loadEvents()])
+
+    if (selectedUserId === targetUser.id) {
+      setSelectedUserId(null)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(251,146,60,0.18),_transparent_26%),linear-gradient(180deg,_#f8fafc,_#e2e8f0)] px-5 py-5 text-slate-900">
+      <div className="mx-auto flex max-w-[1800px] flex-col gap-5">
+        <header className="overflow-hidden rounded-[34px] border border-white/60 bg-slate-950 px-8 py-7 text-white shadow-[0_30px_80px_rgba(15,23,42,0.25)]">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.38em] text-sky-300">Activity Tracker</p>
+              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Team calendar with employee activity intelligence</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
+                Outlook-style scheduling on the center canvas, live team pulse on the left, and structured activity records for meetings,
+                field work, training, leave, and execution blocks.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {isAdmin && (
+                <button
+                  onClick={() => setUserManagerOpen(true)}
+                  className="rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Manage staff
+                </button>
+              )}
+              <button
+                onClick={() => openNewActivity(new Date())}
+                className="rounded-full bg-sky-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-300"
+              >
+                New activity
+              </button>
+              <button
+                onClick={logout}
+                className="rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <OverviewCards events={visibleEvents} isAdmin={isAdmin} />
+
+        <div className="grid gap-5 xl:grid-cols-[340px,minmax(0,1fr)]">
+          <aside className="space-y-5">
+            <MiniMonth events={visibleEvents} anchorDate={currentDate} onJump={jumpToDate} />
+            <TeamPanel summary={summary} selectedUserId={selectedUserId} onSelectUser={setSelectedUserId} isAdmin={isAdmin} />
+
+            <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Filters</p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Category</label>
+                  <select
+                    value={selectedCategory}
+                    onChange={(event) => setSelectedCategory(event.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                  >
+                    <option value="ALL">All categories</option>
+                    {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Status</label>
+                  <select
+                    value={selectedStatus}
+                    onChange={(event) => setSelectedStatus(event.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                  >
+                    <option value="ALL">All statuses</option>
+                    {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Today</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{format(currentDate, 'EEEE, MMM d')}</h3>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{todayActivities.length} items</span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {todayActivities.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-500">
+                    No activity records for the selected day.
+                  </div>
+                )}
+                {todayActivities.map((event) => (
+                  <button
+                    key={event.id}
+                    onClick={() => {
+                      setSelectedEvent(event)
+                      setModalOpen(true)
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-900">{event.title}</p>
+                      <span className="rounded-full px-2 py-1 text-xs font-semibold text-white" style={{ backgroundColor: event.color }}>
+                        {PRIORITY_LABELS[event.priority]}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">{event.userName || user?.name} · {CATEGORY_LABELS[event.category]}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </aside>
+
+          <main className="rounded-[32px] border border-white/60 bg-white/80 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+            <FullCalendar
+              ref={calendarRef}
+              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+              initialView={currentView}
+              headerToolbar={{
+                left: 'prev,next today',
+                center: 'title',
+                right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek',
+              }}
+              buttonText={{
+                today: 'Today',
+                timeGridDay: 'Day',
+                timeGridWeek: 'Week',
+                dayGridMonth: 'Month',
+                listWeek: 'Agenda',
+              }}
+              views={{ listWeek: { buttonText: 'Agenda' } }}
+              nowIndicator
+              events={visibleEvents}
+              editable
+              selectable
+              dayMaxEvents={4}
+              slotMinTime="06:00:00"
+              slotMaxTime="22:00:00"
+              allDaySlot
+              height="calc(100vh - 260px)"
+              dateClick={openNewActivity}
+              select={(selection) => openNewActivity(selection)}
+              eventClick={openExistingActivity}
+              eventDrop={handleCalendarMutation}
+              eventResize={handleCalendarMutation}
+              datesSet={(info) => {
+                const anchorDate = info.view.calendar.getDate()
+                setCurrentDate(anchorDate)
+                setCurrentView(info.view.type)
+              }}
+              eventContent={(info) => (
+                <div className="fc-activity-card">
+                  <div className="fc-activity-card__header">
+                    <span className="fc-activity-card__title">{info.event.title}</span>
+                    <span className="fc-activity-card__status">{STATUS_LABELS[info.event.extendedProps.status]}</span>
+                  </div>
+                  <div className="fc-activity-card__meta">
+                    <span>{CATEGORY_LABELS[info.event.extendedProps.category]}</span>
+                    <span>{info.event.extendedProps.userName}</span>
+                  </div>
+                </div>
+              )}
+            />
+          </main>
+        </div>
+      </div>
+
+      <EventModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setSelectedEvent(null)
+        }}
+        onSave={handleSaveActivity}
+        onDelete={handleDeleteActivity}
+        event={selectedEvent}
+        users={users}
+        isAdmin={isAdmin}
+        currentUser={user}
+      />
+
+      <UserManagementModal
+        isOpen={userManagerOpen}
+        onClose={() => setUserManagerOpen(false)}
+        users={users}
+        currentUser={user}
+        onCreateUser={handleCreateUser}
+        onUpdateUser={handleUpdateUser}
+        onDeleteUser={handleDeleteUser}
+      />
+    </div>
+  )
+}

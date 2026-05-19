@@ -1,0 +1,1205 @@
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import FullCalendar from '@fullcalendar/react'
+import dayGridPlugin from '@fullcalendar/daygrid'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import interactionPlugin from '@fullcalendar/interaction'
+import listPlugin from '@fullcalendar/list'
+import { format, isSameDay, parseISO } from 'date-fns'
+import { useAuth } from '../context/AuthContext'
+import { eventsAPI, usersAPI } from '../api/api'
+import EventModal from './EventModal'
+import ProfileModal from './ProfileModal'
+import UserManagementModal from './UserManagementModal'
+
+const USER_CALENDAR_COLORS = [
+  '#0f6cbd',
+  '#c23934',
+  '#107c41',
+  '#8661c5',
+  '#ca5010',
+  '#038387',
+  '#c2185b',
+  '#795548',
+  '#7b1fa2',
+  '#00838f',
+  '#5d4037',
+  '#2e7d32',
+]
+
+const CATEGORY_LABELS = {
+  WORK_SESSION: 'Pre-Sales Follow-Up',
+  MEETING: 'Technical Discussion',
+  FIELD_WORK: 'Customer Visit',
+  BREAK: 'Contract Negotiation',
+  TRAINING: 'Project Execution',
+  LEAVE: 'Internal Coordination',
+}
+
+const STATUS_LABELS = {
+  PLANNED: 'Planned',
+  IN_PROGRESS: 'In Progress',
+  DONE: 'Done',
+  BLOCKED: 'Blocked',
+}
+
+const PRIORITY_LABELS = {
+  LOW: 'Low',
+  MEDIUM: 'Medium',
+  HIGH: 'High',
+  CRITICAL: 'Critical',
+}
+
+function classNames(...values) {
+  return values.filter(Boolean).join(' ')
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = hex.replace('#', '')
+  const value = normalized.length === 3
+    ? normalized.split('').map((char) => char + char).join('')
+    : normalized
+
+  const r = Number.parseInt(value.slice(0, 2), 16)
+  const g = Number.parseInt(value.slice(2, 4), 16)
+  const b = Number.parseInt(value.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function getUserCalendarColor(userId, users = []) {
+  if (!userId) return USER_CALENDAR_COLORS[0]
+  const index = users.findIndex((user) => user.id === userId)
+  if (index === -1) return USER_CALENDAR_COLORS[userId % USER_CALENDAR_COLORS.length]
+  return USER_CALENDAR_COLORS[index % USER_CALENDAR_COLORS.length]
+}
+
+function formatEventTooltip(event) {
+  const userName = event.extendedProps.userName || 'Unassigned'
+  const title = event.title || 'Untitled activity'
+  const notes = event.extendedProps.description?.trim() || 'No notes'
+
+  return `User: ${userName}\nActivity: ${title}\nNotes: ${notes}`
+}
+
+function MiniMonth({ events, anchorDate, onJump }) {
+  const [month, setMonth] = useState(new Date(anchorDate))
+
+  useEffect(() => {
+    setMonth(new Date(anchorDate))
+  }, [anchorDate])
+
+  const start = new Date(month.getFullYear(), month.getMonth(), 1)
+  const end = new Date(month.getFullYear(), month.getMonth() + 1, 0)
+  const leading = start.getDay()
+  const days = Array.from({ length: leading + end.getDate() }, (_, index) => {
+    if (index < leading) return null
+    return new Date(month.getFullYear(), month.getMonth(), index - leading + 1)
+  })
+
+  const marked = new Set(events.map((event) => new Date(event.start).toDateString()))
+
+  return (
+    <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+      <div className="mb-4 flex items-center justify-between">
+        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600">
+          Prev
+        </button>
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Navigator</p>
+          <h3 className="text-base font-semibold text-slate-900">{format(month, 'MMMM yyyy')}</h3>
+        </div>
+        <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600">
+          Next
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((label) => <div key={label}>{label}</div>)}
+      </div>
+      <div className="mt-3 grid grid-cols-7 gap-2">
+        {days.map((day, index) => {
+          if (!day) {
+            return <div key={`empty-${index}`} className="h-10" />
+          }
+
+          const isToday = isSameDay(day, new Date())
+          const isMarked = marked.has(day.toDateString())
+
+          return (
+            <button
+              key={day.toISOString()}
+              onClick={() => onJump(day)}
+              className={classNames(
+                'relative h-10 rounded-2xl text-sm font-medium transition',
+                isToday ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+              )}
+            >
+              {day.getDate()}
+              {isMarked && (
+                <span className={classNames('absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full', isToday ? 'bg-sky-300' : 'bg-sky-600')} />
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllUsers, isAdmin }) {
+  if (!isAdmin) return null
+
+  const isAllSelected = selectedUserIds === null
+  const isNoneSelected = Array.isArray(selectedUserIds) && selectedUserIds.length === 0
+
+  return (
+    <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+      <div className="mb-4 flex items-end justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Team Pulse</p>
+          <h3 className="text-lg font-semibold text-slate-900">Employee activity</h3>
+        </div>
+        <button
+          onClick={onSelectAllUsers}
+          className={classNames(
+            'rounded-full px-3 py-1 text-sm font-medium transition',
+            isAllSelected ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+          )}
+        >
+          {isAllSelected ? 'Clear' : 'All'}
+        </button>
+      </div>
+
+      {isNoneSelected && (
+        <div className="mb-3 rounded-2xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500">
+          No employees selected.
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {summary.map((member) => {
+          const isSelected = isAllSelected || selectedUserIds.includes(member.id)
+          const userColor = getUserCalendarColor(member.id, users)
+
+          return (
+          <label
+            key={member.id}
+            className={classNames(
+              'flex cursor-pointer gap-3 rounded-3xl border px-4 py-3 text-left transition',
+              isSelected ? 'text-slate-950' : 'border-slate-200 bg-slate-50 hover:border-slate-300',
+            )}
+            style={isSelected ? { borderColor: userColor, backgroundColor: hexToRgba(userColor, 0.18) } : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleUser(member.id)}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: userColor }} />
+                    <p className="truncate font-semibold">{member.name}</p>
+                  </div>
+                  <p className={classNames('truncate text-sm', isSelected ? 'text-slate-700' : 'text-slate-500')}>{member.focusLabel}</p>
+                </div>
+                <span
+                  className={classNames('rounded-full px-2 py-1 text-xs font-semibold', isSelected ? 'text-slate-950' : 'bg-white text-slate-700')}
+                  style={isSelected ? { backgroundColor: hexToRgba(userColor, 0.28) } : undefined}
+                >
+                  {STATUS_LABELS[member.activeStatus] || member.activeStatus}
+                </span>
+              </div>
+              <div className={classNames('mt-3 flex gap-2 text-xs', isSelected ? 'text-slate-700' : 'text-slate-500')}>
+                <span>{member.totalThisWeek} records</span>
+                <span>{member.blockedCount} blocked</span>
+                <span>{member.doneCount} done</span>
+              </div>
+            </div>
+          </label>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function FiltersPanel({ selectedCategory, setSelectedCategory, selectedStatus, setSelectedStatus }) {
+  return (
+    <section className="rounded-[24px] border border-white/50 bg-white/80 p-4 shadow-[0_10px_40px_rgba(15,23,42,0.06)] backdrop-blur sm:rounded-[28px] sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Filters</p>
+          <p className="mt-1 text-sm text-slate-500">Refine the calendar view by activity category and status.</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:min-w-[460px]">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Category</label>
+            <select
+              value={selectedCategory}
+              onChange={(event) => setSelectedCategory(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+            >
+              <option value="ALL">All categories</option>
+              {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Status</label>
+            <select
+              value={selectedStatus}
+              onChange={(event) => setSelectedStatus(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+            >
+              <option value="ALL">All statuses</option>
+              {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initialView, onClose, onEventClick, users }) {
+  if (!isOpen || !activeUser) return null
+
+  const userColor = getUserCalendarColor(activeUser.id, users)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6">
+      <div className="flex h-[94vh] w-full max-w-[1600px] flex-col overflow-y-auto rounded-[24px] border border-slate-200 bg-white shadow-2xl sm:rounded-[30px]">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-6 sm:py-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Read-Only Calendar View</p>
+              <div className="mt-2 flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: userColor }} />
+                <h2 className="truncate text-xl font-semibold text-slate-950 sm:text-2xl">{activeUser.name}</h2>
+              </div>
+              <p className="mt-2 text-sm text-slate-500">
+                Expanded activity view for {activeUser.email}. This calendar is read-only.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 p-3 sm:p-5">
+          <FullCalendar
+            key={`${activeUser.id}-${initialView}-${initialDate.toISOString()}`}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+            initialView={initialView}
+            initialDate={initialDate}
+            headerToolbar={{
+              left: 'prev,next today',
+              center: 'title',
+              right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek',
+            }}
+            buttonText={{
+              today: 'Today',
+              timeGridDay: 'Day',
+              timeGridWeek: 'Week',
+              dayGridMonth: 'Month',
+              listWeek: 'Agenda',
+            }}
+            views={{ listWeek: { buttonText: 'Agenda' } }}
+            nowIndicator
+            events={events}
+            editable={false}
+            selectable={false}
+            slotEventOverlap={false}
+            dayMaxEvents={4}
+            slotMinTime="00:00:00"
+            slotMaxTime="24:00:00"
+            allDaySlot
+            height="calc(100vh - 210px)"
+            eventClick={onEventClick}
+            eventDidMount={(info) => {
+              info.el.style.setProperty('--calendar-user-color', info.event.extendedProps.calendarColor || info.event.borderColor || '#0f6cbd')
+              info.el.title = formatEventTooltip(info.event)
+            }}
+            eventContent={(info) => {
+              const viewType = info.view.type
+              const showStatus = viewType === 'listWeek'
+              const isMonthView = viewType === 'dayGridMonth'
+              const isTimeGridView = viewType === 'timeGridWeek' || viewType === 'timeGridDay'
+              const startTimeText = !info.event.allDay && info.timeText ? info.timeText.split(' - ')[0] : ''
+              const titleWithTime = startTimeText ? `${startTimeText} ${info.event.title}` : info.event.title
+
+              return (
+                <div className="fc-activity-card">
+                  <div className="fc-activity-card__header">
+                    <span className={classNames('fc-activity-card__title', isTimeGridView && 'fc-activity-card__title--multiline')}>
+                      {isMonthView ? titleWithTime : info.event.title}
+                    </span>
+                    {showStatus && (
+                      <span className="fc-activity-card__status">{STATUS_LABELS[info.event.extendedProps.status]}</span>
+                    )}
+                  </div>
+                  {isTimeGridView && info.event.extendedProps.location && (
+                    <div className="fc-activity-card__meta">
+                      <span>{info.event.extendedProps.location}</span>
+                    </div>
+                  )}
+                  {showStatus && (
+                    <div className="fc-activity-card__meta">
+                      <span>{CATEGORY_LABELS[info.event.extendedProps.category]}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function Calendar() {
+  const SIDEBAR_COLLAPSE_BREAKPOINT = 1080
+  const SPLIT_VIEW_BREAKPOINT = 1220
+  const { logout, user, updateUser } = useAuth()
+  const calendarRef = useRef(null)
+  const isAdmin = user?.isAdmin === true
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
+  const [allEvents, setAllEvents] = useState([])
+  const [users, setUsers] = useState([])
+  const [summary, setSummary] = useState([])
+  const [selectedUserIds, setSelectedUserIds] = useState(null)
+  const [selectedCategory, setSelectedCategory] = useState('ALL')
+  const [selectedStatus, setSelectedStatus] = useState('ALL')
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentView, setCurrentView] = useState('timeGridWeek')
+  const [calendarTitle, setCalendarTitle] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [metricPanel, setMetricPanel] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [userManagerOpen, setUserManagerOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const [expandedCalendarUser, setExpandedCalendarUser] = useState(null)
+  const deferredCategory = useDeferredValue(selectedCategory)
+  const deferredStatus = useDeferredValue(selectedStatus)
+  const isTablet = viewportWidth < SIDEBAR_COLLAPSE_BREAKPOINT
+  const isPhone = viewportWidth < 768
+  const canCreateActivities = true
+  const canEditActivities = !isAdmin
+
+  useEffect(() => {
+    function handleResize() {
+      setViewportWidth(window.innerWidth)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    if (viewportWidth < SIDEBAR_COLLAPSE_BREAKPOINT) {
+      setSidebarCollapsed(true)
+    }
+  }, [viewportWidth])
+
+  async function loadEvents() {
+    const response = await eventsAPI.getAll()
+    setAllEvents(response.data.map((item) => ({
+      ...item,
+      userId: item.user?.id ?? item.userId,
+      userName: item.user?.name,
+      originalColor: item.color,
+      calendarColor: getUserCalendarColor(item.user?.id ?? item.userId, users),
+      backgroundColor: hexToRgba(getUserCalendarColor(item.user?.id ?? item.userId, users), 0.24),
+      borderColor: getUserCalendarColor(item.user?.id ?? item.userId, users),
+      textColor: '#0f172a',
+    })))
+  }
+
+  async function loadUsers() {
+    if (!isAdmin) {
+      setUsers(user ? [user] : [])
+      return
+    }
+    const response = await usersAPI.getAll()
+    setUsers(response.data)
+  }
+
+  async function loadSummary() {
+    if (!isAdmin) return
+    const response = await usersAPI.getActivitySummary()
+    setSummary(response.data)
+  }
+
+  useEffect(() => {
+    loadEvents().catch((error) => console.error('Failed to fetch events', error))
+    loadUsers().catch((error) => console.error('Failed to fetch users', error))
+    loadSummary().catch((error) => console.error('Failed to fetch summary', error))
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (users.length === 0) return
+
+    setAllEvents((prev) => prev.map((item) => {
+      const userColor = getUserCalendarColor(item.userId, users)
+      return {
+        ...item,
+        calendarColor: userColor,
+        backgroundColor: hexToRgba(userColor, 0.24),
+        borderColor: userColor,
+      }
+    }))
+  }, [users])
+
+  const visibleEvents = useMemo(() => {
+    return allEvents.filter((event) => {
+      if (selectedUserIds !== null && !selectedUserIds.includes(event.userId)) return false
+      if (deferredCategory !== 'ALL' && event.category !== deferredCategory) return false
+      if (deferredStatus !== 'ALL' && event.status !== deferredStatus) return false
+      return true
+    })
+  }, [allEvents, selectedUserIds, deferredCategory, deferredStatus])
+
+  const todayActivities = useMemo(
+    () => visibleEvents.filter((event) => isSameDay(parseISO(event.start), currentDate)).slice(0, 5),
+    [visibleEvents, currentDate],
+  )
+
+  const bannerMetrics = useMemo(() => {
+    const planned = visibleEvents.filter((event) => event.status === 'PLANNED').length
+    const priority = visibleEvents.filter((event) => ['HIGH', 'CRITICAL'].includes(event.priority)).length
+    return [
+      { key: 'planned_tasks', label: 'Planned Tasks', value: planned },
+      { key: 'priority_tasks', label: 'Priority Tasks', value: priority },
+    ]
+  }, [visibleEvents])
+
+  const metricPanelEvents = useMemo(() => {
+    if (!metricPanel) return []
+
+    if (metricPanel === 'planned_tasks') {
+      return visibleEvents.filter((event) => event.status === 'PLANNED')
+    }
+
+    if (metricPanel === 'priority_tasks') {
+      return visibleEvents.filter((event) => ['HIGH', 'CRITICAL'].includes(event.priority))
+    }
+
+    return []
+  }, [metricPanel, visibleEvents])
+
+  const metricPanelTitle = useMemo(() => {
+    if (metricPanel === 'planned_tasks') return 'Planned Tasks'
+    if (metricPanel === 'priority_tasks') return 'Priority Tasks'
+    return ''
+  }, [metricPanel])
+
+  const activeUsers = useMemo(() => {
+    if (!isAdmin) {
+      return user ? [user] : []
+    }
+
+    if (selectedUserIds === null) {
+      return users
+    }
+
+    return users.filter((member) => selectedUserIds.includes(member.id))
+  }, [isAdmin, selectedUserIds, user, users])
+
+  const splitCalendarView = isAdmin && viewportWidth >= SPLIT_VIEW_BREAKPOINT && (currentView === 'timeGridWeek' || currentView === 'timeGridDay') && activeUsers.length > 0
+  const expandedCalendarEvents = useMemo(
+    () => expandedCalendarUser ? visibleEvents.filter((event) => event.userId === expandedCalendarUser.id) : [],
+    [expandedCalendarUser, visibleEvents],
+  )
+
+  const singleCalendarHeight = isPhone ? 'calc(100vh - 170px)' : 'calc(100vh - 120px)'
+  const splitCalendarHeight = isPhone ? 'calc(100vh - 200px)' : 'calc(100vh - 140px)'
+
+  useEffect(() => {
+    if (!splitCalendarView) {
+      setExpandedCalendarUser(null)
+    }
+  }, [splitCalendarView])
+
+  function openNewActivity(dateInfo) {
+    if (!canCreateActivities) return
+    const startDate = dateInfo.date ? dateInfo.date : dateInfo
+    const endDate = new Date(startDate)
+    if (dateInfo.allDay) {
+      endDate.setDate(endDate.getDate() + 1)
+    } else {
+      endDate.setHours(endDate.getHours() + 1)
+    }
+
+    setSelectedEvent({
+      title: '',
+      description: '',
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      allDay: Boolean(dateInfo.allDay),
+      color: '#2563eb',
+      category: 'WORK_SESSION',
+      status: 'PLANNED',
+      priority: 'MEDIUM',
+      userId: Array.isArray(selectedUserIds) && selectedUserIds.length === 1 ? selectedUserIds[0] : user?.id,
+    })
+    setModalOpen(true)
+  }
+
+  function openExistingActivity(clickInfo) {
+    const event = clickInfo.event
+    setSelectedEvent({
+      id: Number(event.id),
+      title: event.title,
+      description: event.extendedProps.description || '',
+      location: event.extendedProps.location || '',
+      start: event.startStr,
+      end: event.endStr || event.startStr,
+      allDay: event.allDay,
+      color: event.extendedProps.originalColor || event.backgroundColor,
+      category: event.extendedProps.category,
+      status: event.extendedProps.status,
+      priority: event.extendedProps.priority,
+      userId: event.extendedProps.userId,
+    })
+    setModalOpen(true)
+  }
+
+  async function handleSaveActivity(payload) {
+    if (payload.id && !canEditActivities) return
+    try {
+      if (payload.id) {
+        await eventsAPI.update(payload.id, payload)
+      } else {
+        await eventsAPI.create(payload)
+      }
+      await Promise.all([loadEvents(), loadSummary()])
+      setModalOpen(false)
+      setSelectedEvent(null)
+    } catch (error) {
+      console.error('Failed to save activity', error)
+      alert('Failed to save activity')
+    }
+  }
+
+  async function handleCalendarMutation(changeInfo) {
+    if (!canEditActivities) {
+      changeInfo.revert()
+      return
+    }
+    const event = changeInfo.event
+    try {
+      await eventsAPI.update(event.id, {
+        title: event.title,
+        description: event.extendedProps.description || '',
+        location: event.extendedProps.location || '',
+        start: event.start?.toISOString(),
+        end: (event.end || event.start)?.toISOString(),
+        allDay: event.allDay,
+        color: event.extendedProps.originalColor || event.backgroundColor,
+        category: event.extendedProps.category,
+        status: event.extendedProps.status,
+        priority: event.extendedProps.priority,
+        userId: event.extendedProps.userId,
+      })
+      await Promise.all([loadEvents(), loadSummary()])
+    } catch (error) {
+      console.error('Failed to update activity timing', error)
+      changeInfo.revert()
+    }
+  }
+
+  async function handleDeleteActivity() {
+    if (!canEditActivities) return
+    if (!selectedEvent?.id) return
+    if (!window.confirm('Delete this activity record?')) return
+
+    try {
+      await eventsAPI.delete(selectedEvent.id)
+      await Promise.all([loadEvents(), loadSummary()])
+      setModalOpen(false)
+      setSelectedEvent(null)
+    } catch (error) {
+      console.error('Failed to delete activity', error)
+      alert('Failed to delete activity')
+    }
+  }
+
+  function jumpToDate(date) {
+    setCurrentDate(date)
+    setCurrentView('timeGridDay')
+    const api = calendarRef.current?.getApi()
+    if (!api) return
+    api.gotoDate(date)
+    api.changeView('timeGridDay')
+  }
+
+  async function handleCreateUser(payload) {
+    await usersAPI.create(payload)
+    await Promise.all([loadUsers(), loadSummary()])
+  }
+
+  async function handleUpdateUser(userId, payload) {
+    const response = await usersAPI.update(userId, payload)
+    await Promise.all([loadUsers(), loadSummary(), loadEvents()])
+
+    if (user?.id === userId) {
+      updateUser({
+        ...user,
+        name: response.data.name,
+        email: response.data.email,
+        isAdmin: response.data.isAdmin,
+      })
+    }
+  }
+
+  async function handleDeleteUser(targetUser) {
+    await usersAPI.delete(targetUser.id)
+    await Promise.all([loadUsers(), loadSummary(), loadEvents()])
+
+    setSelectedUserIds((prev) => {
+      if (prev === null) return null
+      return prev.filter((userId) => userId !== targetUser.id)
+    })
+  }
+
+  function handleToggleUser(userId) {
+    setSelectedUserIds((prev) => {
+      if (prev === null) {
+        const allOtherIds = summary.map((member) => member.id).filter((id) => id !== userId)
+        return allOtherIds
+      }
+
+      if (prev.includes(userId)) {
+        const next = prev.filter((id) => id !== userId)
+        return next.length === 0 ? [] : next
+      }
+
+      return [...prev, userId]
+    })
+  }
+
+  function handleSelectAllUsers() {
+    setSelectedUserIds((prev) => (prev === null ? [] : null))
+  }
+
+  async function handleUpdateProfile(payload) {
+    const response = await usersAPI.updateMe(payload)
+    updateUser({
+      ...user,
+      name: response.data.name,
+      email: response.data.email,
+      isAdmin: response.data.isAdmin,
+    })
+    await Promise.all([loadUsers(), loadSummary(), loadEvents()])
+  }
+
+  function navigateCalendar(action) {
+    if (!splitCalendarView) {
+      const api = calendarRef.current?.getApi()
+      if (!api) return
+
+      if (action === 'today') api.today()
+      if (action === 'prev') api.prev()
+      if (action === 'next') api.next()
+      return
+    }
+
+    if (action === 'today') {
+      setCurrentDate(new Date())
+      return
+    }
+
+    setCurrentDate((prev) => {
+      const next = new Date(prev)
+      const delta = currentView === 'timeGridDay' ? 1 : 7
+      next.setDate(next.getDate() + (action === 'next' ? delta : -delta))
+      return next
+    })
+  }
+
+  function changeCalendarView(view) {
+    setCurrentView(view)
+
+    if (splitCalendarView && (view === 'timeGridWeek' || view === 'timeGridDay')) {
+      return
+    }
+
+    const api = calendarRef.current?.getApi()
+    if (!api) return
+    api.changeView(view)
+  }
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(251,146,60,0.18),_transparent_26%),linear-gradient(180deg,_#f8fafc,_#e2e8f0)] px-3 py-3 text-slate-900 sm:px-5 sm:py-5">
+      <div className="mx-auto flex max-w-[1800px] flex-col gap-5">
+        <header className="banner-industrial relative overflow-hidden rounded-[24px] border border-slate-800 px-5 py-3 text-white shadow-[0_24px_70px_rgba(15,23,42,0.24)] sm:rounded-[30px] sm:px-6 sm:py-3 md:px-7">
+          <div className="banner-industrial__glow" />
+          <div className="banner-industrial__beam banner-industrial__beam--one" />
+          <div className="banner-industrial__beam banner-industrial__beam--two" />
+          <div className="banner-industrial__grid" />
+          <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="max-w-4xl min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full border border-sky-400/40 bg-sky-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.32em] text-sky-200">
+                  WaldrichSiegen | Herkules
+                </span>
+                <span className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-300">
+                  Operations Calendar
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <p className="text-[12px] font-medium uppercase tracking-[0.42em] text-slate-400">Engineering schedules. Boundaries? None.</p>
+                <p className="mt-2 max-w-3xl text-base font-medium leading-7 text-slate-200 sm:text-[1.1rem] sm:leading-8 xl:text-[1.2rem]">
+                  A shared planning workspace for WaldrichSiegen and Herkules sales teams and project execution staff.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
+              <div className="grid grid-cols-2 gap-2 xl:min-w-[280px]">
+                {bannerMetrics.map((metric) => (
+                  <button
+                    key={metric.key}
+                    type="button"
+                    onClick={() => setMetricPanel((prev) => prev === metric.key ? null : metric.key)}
+                    className={classNames(
+                      'rounded-[18px] border border-white/10 bg-white/5 px-3 py-3 text-center backdrop-blur-sm transition hover:bg-white/10',
+                      metricPanel === metric.key && 'border-sky-300/40 bg-sky-400/10',
+                    )}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-400">{metric.label}</p>
+                    <p className="mt-1 text-xl font-semibold text-white">{metric.value}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-2 sm:gap-3 xl:justify-end">
+              <button
+                type="button"
+                onClick={() => setProfileModalOpen(true)}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                {user?.name || user?.email || 'User'}
+              </button>
+              {isTablet && (
+                <button
+                  onClick={() => setSidebarCollapsed((prev) => !prev)}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  {sidebarCollapsed ? 'Filters' : 'Hide filters'}
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => setUserManagerOpen(true)}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 sm:px-5 sm:py-2.5"
+                >
+                  Manage staff
+                </button>
+              )}
+              {canCreateActivities && (
+                <button
+                  onClick={() => openNewActivity(new Date())}
+                  className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-300 sm:px-5 sm:py-2.5"
+                >
+                  New activity
+                </button>
+              )}
+              <button
+                onClick={logout}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 sm:px-5 sm:py-2.5"
+              >
+                Logout
+              </button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {metricPanel && (
+          <section className="rounded-[24px] border border-white/60 bg-white/85 p-4 shadow-[0_16px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[28px] sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Agenda View</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">{metricPanelTitle}</h2>
+                <p className="mt-1 text-sm text-slate-500">{metricPanelEvents.length} matching items</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMetricPanel(null)}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {metricPanelEvents.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-500">
+                  No matching items for the current filters.
+                </div>
+              )}
+              {metricPanelEvents.map((event) => (
+                <button
+                  key={`metric-${event.id}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedEvent(event)
+                    setModalOpen(true)
+                  }}
+                  className="flex w-full items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: event.calendarColor || event.borderColor }} />
+                      <p className="truncate font-semibold text-slate-900">{event.title}</p>
+                    </div>
+                    <p className="mt-1 truncate text-sm text-slate-500">
+                      {format(parseISO(event.start), 'MMM d, HH:mm')} · {event.userName || user?.name}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                    {CATEGORY_LABELS[event.category]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <div className={classNames('grid gap-4', sidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[340px,40px,minmax(0,1fr)]')}>
+          {!sidebarCollapsed && (
+          <aside className="space-y-5 lg:min-w-0">
+            <MiniMonth events={visibleEvents} anchorDate={currentDate} onJump={jumpToDate} />
+            <TeamPanel
+              summary={summary}
+              users={users}
+              selectedUserIds={selectedUserIds}
+              onToggleUser={handleToggleUser}
+              onSelectAllUsers={handleSelectAllUsers}
+              isAdmin={isAdmin}
+            />
+
+            <section className="rounded-[28px] border border-white/50 bg-white/80 p-5 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Today</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{format(currentDate, 'EEEE, MMM d')}</h3>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{todayActivities.length} items</span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {todayActivities.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-500">
+                    No activity records for the selected day.
+                  </div>
+                )}
+                {todayActivities.map((event) => (
+                  <button
+                    key={event.id}
+                    onClick={() => {
+                      setSelectedEvent(event)
+                      setModalOpen(true)
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-900">{event.title}</p>
+                      <span className="rounded-full px-2 py-1 text-xs font-semibold text-white" style={{ backgroundColor: event.color }}>
+                        {PRIORITY_LABELS[event.priority]}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-500">{event.userName || user?.name} · {CATEGORY_LABELS[event.category]}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </aside>
+          )}
+
+          {!sidebarCollapsed && !isTablet && (
+            <div className="hidden lg:flex items-start justify-center pt-24">
+              <button
+                onClick={() => setSidebarCollapsed(true)}
+                className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50"
+                title="Hide sidebar"
+              >
+                &lt;
+              </button>
+            </div>
+          )}
+
+          <main className="min-w-0 rounded-[24px] border border-white/60 bg-white/80 p-3 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[32px] sm:p-4">
+            <div className="mb-4">
+              <FiltersPanel
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+                selectedStatus={selectedStatus}
+                setSelectedStatus={setSelectedStatus}
+              />
+            </div>
+
+            {sidebarCollapsed && (
+              <div className="mb-4 flex items-center justify-between gap-3">
+                {!isTablet && (
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50"
+                  title="Show sidebar"
+                >
+                  &gt;
+                </button>
+                )}
+                <div className="text-sm text-slate-500">
+                  {isTablet ? 'Filters hidden for wider calendar view' : 'Sidebar hidden for expanded calendar view'}
+                </div>
+              </div>
+            )}
+
+            {splitCalendarView ? (
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => navigateCalendar('prev')} className="rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200">
+                      Prev
+                    </button>
+                    <button onClick={() => navigateCalendar('today')} className="rounded-full bg-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
+                      Today
+                    </button>
+                    <button onClick={() => navigateCalendar('next')} className="rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200">
+                      Next
+                    </button>
+                  </div>
+
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{calendarTitle}</h2>
+
+                  <div className="flex overflow-x-auto rounded-full border border-slate-200">
+                    {[
+                      ['timeGridDay', 'Day'],
+                      ['timeGridWeek', 'Week'],
+                      ['dayGridMonth', 'Month'],
+                      ['listWeek', 'Agenda'],
+                    ].map(([view, label]) => (
+                      <button
+                        key={view}
+                        onClick={() => changeCalendarView(view)}
+                        className={classNames(
+                          'px-4 py-2 text-sm font-semibold transition',
+                          currentView === view ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <div className="grid min-w-max gap-4" style={{ gridTemplateColumns: `repeat(${activeUsers.length}, minmax(${isTablet ? 280 : 320}px, 1fr))` }}>
+                    {activeUsers.map((activeUser, index) => {
+                      const userColor = getUserCalendarColor(activeUser.id, users)
+                      const userEvents = visibleEvents.filter((event) => event.userId === activeUser.id)
+
+                      return (
+                        <section
+                          key={activeUser.id}
+                          onClick={() => setExpandedCalendarUser(activeUser)}
+                          className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition hover:border-slate-300 hover:shadow-[0_14px_40px_rgba(15,23,42,0.09)]"
+                        >
+                          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: userColor }} />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-950">{activeUser.name}</p>
+                              <p className="truncate text-xs text-slate-500">{activeUser.email}</p>
+                            </div>
+                            </div>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                              Open
+                            </span>
+                          </div>
+
+                          <FullCalendar
+                            key={`${activeUser.id}-${currentView}-${currentDate.toISOString()}`}
+                            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+                            initialView={currentView}
+                            initialDate={currentDate}
+                            headerToolbar={false}
+                            nowIndicator
+                            events={userEvents}
+                            editable={false}
+                            selectable={false}
+                            slotEventOverlap={false}
+                            dayMaxEvents={4}
+                            slotMinTime="00:00:00"
+                            slotMaxTime="24:00:00"
+                            allDaySlot
+                            height={splitCalendarHeight}
+                            eventDidMount={(info) => {
+                              info.el.style.setProperty('--calendar-user-color', info.event.extendedProps.calendarColor || info.event.borderColor || '#0f6cbd')
+                              info.el.title = formatEventTooltip(info.event)
+                            }}
+                            datesSet={(info) => {
+                              if (index !== 0) return
+                              const anchorDate = info.view.calendar.getDate()
+                              setCurrentDate(anchorDate)
+                              setCurrentView(info.view.type)
+                              setCalendarTitle(info.view.title)
+                            }}
+                            eventContent={(info) => {
+                              return (
+                                <div className="fc-activity-card">
+                                  <div className="fc-activity-card__header">
+                                    <span className="fc-activity-card__title fc-activity-card__title--multiline">{info.event.title}</span>
+                                  </div>
+                                  {info.event.extendedProps.location && (
+                                    <div className="fc-activity-card__meta">
+                                      <span>{info.event.extendedProps.location}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            }}
+                          />
+                        </section>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <FullCalendar
+                ref={calendarRef}
+                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+                initialView={currentView}
+                headerToolbar={{
+                  left: 'prev,next today',
+                  center: 'title',
+                  right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek',
+                }}
+                buttonText={{
+                  today: 'Today',
+                  timeGridDay: 'Day',
+                  timeGridWeek: 'Week',
+                  dayGridMonth: 'Month',
+                  listWeek: 'Agenda',
+                }}
+                views={{ listWeek: { buttonText: 'Agenda' } }}
+                nowIndicator
+                events={visibleEvents}
+                editable={canEditActivities}
+                selectable={canCreateActivities}
+                dayMaxEvents={4}
+                slotMinTime="00:00:00"
+                slotMaxTime="24:00:00"
+                allDaySlot
+                height={singleCalendarHeight}
+                dateClick={canCreateActivities ? openNewActivity : undefined}
+                select={canCreateActivities ? (selection) => openNewActivity(selection) : undefined}
+                eventClick={openExistingActivity}
+                eventDrop={canEditActivities ? handleCalendarMutation : undefined}
+                eventResize={canEditActivities ? handleCalendarMutation : undefined}
+                eventDidMount={(info) => {
+                  info.el.style.setProperty('--calendar-user-color', info.event.extendedProps.calendarColor || info.event.borderColor || '#0f6cbd')
+                  info.el.title = formatEventTooltip(info.event)
+                }}
+                datesSet={(info) => {
+                  const anchorDate = info.view.calendar.getDate()
+                  setCurrentDate(anchorDate)
+                  setCurrentView(info.view.type)
+                  setCalendarTitle(info.view.title)
+                }}
+                eventContent={(info) => {
+                  const showStatus = currentView === 'listWeek'
+                  const isMonthView = currentView === 'dayGridMonth'
+                  const isTimeGridView = currentView === 'timeGridWeek' || currentView === 'timeGridDay'
+                  const startTimeText = !info.event.allDay && info.timeText ? info.timeText.split(' - ')[0] : ''
+                  const titleWithTime = startTimeText ? `${startTimeText} ${info.event.title}` : info.event.title
+
+                  return (
+                    <div className="fc-activity-card">
+                      <div className="fc-activity-card__header">
+                        <span className={classNames('fc-activity-card__title', isTimeGridView && 'fc-activity-card__title--multiline')}>
+                          {isMonthView ? titleWithTime : info.event.title}
+                        </span>
+                        {showStatus && (
+                          <span className="fc-activity-card__status">{STATUS_LABELS[info.event.extendedProps.status]}</span>
+                        )}
+                      </div>
+                      {isTimeGridView && info.event.extendedProps.location && (
+                        <div className="fc-activity-card__meta">
+                          <span>{info.event.extendedProps.location}</span>
+                        </div>
+                      )}
+                      {showStatus && (
+                        <div className="fc-activity-card__meta">
+                          <span>{CATEGORY_LABELS[info.event.extendedProps.category]}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                }}
+              />
+            )}
+          </main>
+        </div>
+      </div>
+
+      <EventModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setSelectedEvent(null)
+        }}
+        onSave={handleSaveActivity}
+        onDelete={handleDeleteActivity}
+        event={selectedEvent}
+        users={users}
+        isAdmin={isAdmin}
+        currentUser={user}
+        readOnly={isAdmin && Boolean(selectedEvent?.id)}
+      />
+
+      <ExpandedCalendarModal
+        isOpen={Boolean(expandedCalendarUser)}
+        activeUser={expandedCalendarUser}
+        events={expandedCalendarEvents}
+        initialDate={currentDate}
+        initialView={currentView}
+        onClose={() => setExpandedCalendarUser(null)}
+        onEventClick={openExistingActivity}
+        users={users}
+      />
+
+      <UserManagementModal
+        isOpen={userManagerOpen}
+        onClose={() => setUserManagerOpen(false)}
+        users={users}
+        currentUser={user}
+        onCreateUser={handleCreateUser}
+        onUpdateUser={handleUpdateUser}
+        onDeleteUser={handleDeleteUser}
+      />
+
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        user={user}
+        onSave={handleUpdateProfile}
+      />
+    </div>
+  )
+}

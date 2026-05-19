@@ -1,0 +1,69 @@
+[
+  {
+    "id": "china-holidays-2026",
+    "label": "China Holidays 2026",
+    "description": "Official State Council holiday schedule",
+    "enabled": true,
+    "published": true,
+    "year": 2026,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm",
+    "publishedAt": "2025-11-04",
+    "lastCheckedAt": "2026-04-13T00:00:00.000Z",
+    "events": [
+      {
+        "id": "cn-holiday-2026-new-year",
+        "title": "China Holiday: New Year",
+        "start": "2026-01-01",
+        "endExclusive": "2026-01-04"
+      },
+      {
+        "id": "cn-holiday-2026-spring-festival",
+        "title": "China Holiday: Spring Festival",
+        "start": "2026-02-15",
+        "endExclusive": "2026-02-24"
+      },
+      {
+        "id": "cn-holiday-2026-qingming",
+        "title": "China Holiday: Qingming Festival",
+        "start": "2026-04-04",
+        "endExclusive": "2026-04-07"
+      },
+      {
+        "id": "cn-holiday-2026-labor-day",
+        "title": "China Holiday: Labor Day",
+        "start": "2026-05-01",
+        "endExclusive": "2026-05-06"
+      },
+      {
+        "id": "cn-holiday-2026-dragon-boat",
+        "title": "China Holiday: Dragon Boat Festival",
+        "start": "2026-06-19",
+        "endExclusive": "2026-06-22"
+      },
+      {
+        "id": "cn-holiday-2026-mid-autumn",
+        "title": "China Holiday: Mid-Autumn Festival",
+        "start": "2026-09-25",
+        "endExclusive": "2026-09-28"
+      },
+      {
+        "id": "cn-holiday-2026-national-day",
+        "title": "China Holiday: National Day",
+        "start": "2026-10-01",
+        "endExclusive": "2026-10-08"
+      }
+    ]
+  },
+  {
+    "id": "china-holidays-2027",
+    "label": "China Holidays 2027",
+    "description": "Awaiting official State Council announcement",
+    "enabled": false,
+    "published": false,
+    "year": 2027,
+    "sourceUrl": "",
+    "publishedAt": "",
+    "lastCheckedAt": "2026-05-01T03:00:02.941Z",
+    "events": []
+  }
+]

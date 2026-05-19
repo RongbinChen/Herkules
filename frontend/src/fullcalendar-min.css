@@ -1,0 +1,113 @@
+/* FullCalendar TimeGrid Essential Styles */
+.fc {
+  --fc-border-color: #d1d5db;
+  --fc-button-bg-color: #3b82f6;
+  --fc-button-border-color: #2563eb;
+  --fc-button-text-color: #fff;
+  --fc-today-bg-color: #eff6ff;
+  font-size: 13px;
+}
+.fc .fc-col-header {
+  background: #f9fafb;
+}
+.fc .fc-col-header-cell {
+  padding: 10px 0;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+}
+.fc .fc-timegrid {
+  display: flex;
+  position: relative;
+}
+.fc .fc-timegrid-body {
+  flex: 1;
+  position: relative;
+}
+.fc .fc-timegrid-axis {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 60px;
+  min-width: 60px;
+  background: #1f2937 !important;
+  border-right: 2px solid #4b5563 !important;
+  z-index: 2;
+}
+.fc .fc-timegrid-slot-label {
+  text-align: right;
+  padding-right: 8px;
+  padding-top: 4px;
+  font-size: 11px;
+  color: #ffffff !important;
+  font-weight: 600;
+  vertical-align: top;
+}
+.fc .fc-timegrid-slot-label-cushion {
+  color: #ffffff !important;
+  font-weight: 600;
+  font-size: 11px;
+  display: block;
+  text-align: right;
+  padding-right: 8px;
+}
+.fc .fc-timegrid-slot {
+  height: 48px;
+  border-bottom: 1px solid #e5e7eb;
+  position: relative;
+}
+.fc .fc-timegrid-slot-minor {
+  border-bottom: 1px dashed #e5e7eb;
+}
+.fc .fc-timegrid-col {
+  position: relative;
+  border-left: 1px solid #e5e7eb;
+}
+.fc .fc-event {
+  background-color: #3b82f6;
+  border: none;
+  border-left: 3px solid #2563eb;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.fc .fc-event-main {
+  padding: 2px;
+}
+.fc .fc-toolbar-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.fc .fc-button {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fc .fc-button-primary {
+  background-color: #3b82f6;
+  border-color: #2563eb;
+  color: #fff;
+}
+.fc .fc-button-primary:hover {
+  background-color: #2563eb;
+}
+.fc .fc-day-today .fc-col-header-cell {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+}
+.fc .fc-daygrid-day-events {
+  min-height: 20px;
+}
+.fc .fc-list-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.fc .fc-list-item:hover {
+  background-color: #f9fafb;
+}
+.fc .fc-list-day-cushion {
+  background-color: #f3f4f6;
+  padding: 8px 12px;
+  font-weight: 600;
+}
