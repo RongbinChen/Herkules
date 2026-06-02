@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    
+        <script>
+            L_NO_TOUCH = false;
+            L_DISABLE_3D = false;
+        </script>
+    
+    <style>html, body {width: 100%;height: 100%;margin: 0;padding: 0;}</style>
+    <style>#map {position:absolute;top:0;bottom:0;right:0;left:0;}</style>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.6.0/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.6.0/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap-theme.min.css"/>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_58146e9752de3063cba77cbb590f0b3c {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+            </style>
+        
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/1.4.2/Control.FullScreen.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/1.4.2/Control.FullScreen.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.1.0/leaflet.markercluster.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.1.0/MarkerCluster.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.1.0/MarkerCluster.Default.css"/>
+</head>
+<body>
+    
+    <div style="position: fixed; top: 10px; left: 50px; z-index: 9999; background: white; padding: 10px 14px; border: 1px solid #999; border-radius: 4px; font-family: Arial; font-size: 14px;"><b>北京甲级办公楼选址地图</b><br>点击点位查看租金、面积、地址与备注</div>
+    
+            <div class="folium-map" id="map_58146e9752de3063cba77cbb590f0b3c" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_58146e9752de3063cba77cbb590f0b3c = L.map(
+                "map_58146e9752de3063cba77cbb590f0b3c",
+                {
+                    center: [39.94472, 116.45941600000002],
+                    crs: L.CRS.EPSG3857,
+                    zoom: 11,
+                    zoomControl: true,
+                    preferCanvas: false,
+                }
+            );
+            L.control.scale().addTo(map_58146e9752de3063cba77cbb590f0b3c);
+
+            
+
+        
+    
+            var tile_layer_9de3e3f32dc6595f8da82c09d5d80259 = L.tileLayer(
+                "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {"attribution": "Data by \u0026copy; \u003ca href=\"http://openstreetmap.org\"\u003eOpenStreetMap\u003c/a\u003e, under \u003ca href=\"http://www.openstreetmap.org/copyright\"\u003eODbL\u003c/a\u003e.", "detectRetina": false, "maxNativeZoom": 18, "maxZoom": 18, "minZoom": 0, "noWrap": false, "opacity": 1, "subdomains": "abc", "tms": false}
+            ).addTo(map_58146e9752de3063cba77cbb590f0b3c);
+        
+    
+            L.control.fullscreen(
+                {"forceSeparateButton": false, "position": "topleft", "title": "Full Screen", "titleCancel": "Exit Full Screen"}
+            ).addTo(map_58146e9752de3063cba77cbb590f0b3c);
+        
+    
+            var tile_layer_bda85ef1be474415af54566052d3dc6b = L.tileLayer(
+                "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {"attribution": "Data by \u0026copy; \u003ca href=\"http://openstreetmap.org\"\u003eOpenStreetMap\u003c/a\u003e, under \u003ca href=\"http://www.openstreetmap.org/copyright\"\u003eODbL\u003c/a\u003e.", "detectRetina": false, "maxNativeZoom": 18, "maxZoom": 18, "minZoom": 0, "noWrap": false, "opacity": 1, "subdomains": "abc", "tms": false}
+            );
+            var mini_map_0fb937c25ed3bee4ee3e1a4babef8365 = new L.Control.MiniMap(
+                tile_layer_bda85ef1be474415af54566052d3dc6b,
+                {"autoToggleDisplay": false, "centerFixed": false, "collapsedHeight": 25, "collapsedWidth": 25, "height": 150, "minimized": false, "position": "bottomright", "toggleDisplay": true, "width": 150, "zoomAnimation": false, "zoomLevelOffset": -5}
+            );
+            map_58146e9752de3063cba77cbb590f0b3c.addControl(mini_map_0fb937c25ed3bee4ee3e1a4babef8365);
+
+            var chaoyang_boundary_layer = L.featureGroup().addTo(map_58146e9752de3063cba77cbb590f0b3c);
+            fetch("/potential-offices/chaoyang-boundary.geojson")
+                .then(function(response) { return response.json(); })
+                .then(function(geojson) {
+                    L.geoJSON(geojson, {
+                        style: {
+                            color: "#d92d20",
+                            weight: 3,
+                            opacity: 0.95,
+                            fillColor: "#f97316",
+                            fillOpacity: 0.08,
+                            dashArray: "8 6"
+                        }
+                    }).addTo(chaoyang_boundary_layer);
+                });
+        
+    
+            var marker_cluster_ad1789db5f5209a634f0af0000761928 = L.markerClusterGroup(
+                {}
+            );
+            map_58146e9752de3063cba77cbb590f0b3c.addLayer(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var marker_4f04c9e0b1d6517ef65fb2994f8e2958 = L.marker(
+                [39.9088, 116.457],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_382040a70d5a96c0469f820e0f19244b = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "red", "prefix": "fa"}
+            );
+            marker_4f04c9e0b1d6517ef65fb2994f8e2958.setIcon(icon_382040a70d5a96c0469f820e0f19244b);
+        
+    
+        var popup_4e84b0e3778e6e379968c7378ee74615 = L.popup({"maxWidth": 330});
+
+        
+            var html_a2b3aefc8df0551f14b60dd2ec5f2693 = $(`<div id="html_a2b3aefc8df0551f14b60dd2ec5f2693" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>1. SK大厦</b><br>SK Tower<br>     <b>区域：</b>CBD / 国贸 / 建外<br>     <b>地址：</b>建国门外大街甲6号<br>     <b>租金：</b>9–12.5 元/㎡/天（均值 10.75）<br>     <b>面积：</b>300–2,976 ㎡<br>     <b>备注：</b>甲级/5A；2005；国贸站1/10；JLL管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9088,116.457' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_4e84b0e3778e6e379968c7378ee74615.setContent(html_a2b3aefc8df0551f14b60dd2ec5f2693);
+        
+
+        marker_4f04c9e0b1d6517ef65fb2994f8e2958.bindPopup(popup_4e84b0e3778e6e379968c7378ee74615)
+        ;
+
+        
+    
+    
+            marker_4f04c9e0b1d6517ef65fb2994f8e2958.bindTooltip(
+                `<div>
+                     1. SK大厦｜10.75元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_7569df7a9d55ce37668b57625aedd396 = L.marker(
+                [39.91, 116.4608],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_e6c70839ee91a290f708bb3b7ab0d66a = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "red", "prefix": "fa"}
+            );
+            marker_7569df7a9d55ce37668b57625aedd396.setIcon(icon_e6c70839ee91a290f708bb3b7ab0d66a);
+        
+    
+        var popup_bedc5dd73dac77d5e26de1d784df2ab4 = L.popup({"maxWidth": 330});
+
+        
+            var html_7fc162e707578c7267c6d44efcfe9851 = $(`<div id="html_7fc162e707578c7267c6d44efcfe9851" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>2. 中海广场</b><br>COFCO/Zhonghai Plaza<br>     <b>区域：</b>CBD / 国贸 / 建外<br>     <b>地址：</b>建外大街光华东里8号<br>     <b>租金：</b>9–16 元/㎡/天（均值 12.5）<br>     <b>面积：</b>188–1,813 ㎡<br>     <b>备注：</b>甲级；2009；LEED Gold；国贸站<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.91,116.4608' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_bedc5dd73dac77d5e26de1d784df2ab4.setContent(html_7fc162e707578c7267c6d44efcfe9851);
+        
+
+        marker_7569df7a9d55ce37668b57625aedd396.bindPopup(popup_bedc5dd73dac77d5e26de1d784df2ab4)
+        ;
+
+        
+    
+    
+            marker_7569df7a9d55ce37668b57625aedd396.bindTooltip(
+                `<div>
+                     2. 中海广场｜12.5元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_290737c75bfc98d7ed4d85b1223bdb05 = L.marker(
+                [39.9108, 116.4648],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_9eac3748f5683cc3bbac9d610cd10f53 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "red", "prefix": "fa"}
+            );
+            marker_290737c75bfc98d7ed4d85b1223bdb05.setIcon(icon_9eac3748f5683cc3bbac9d610cd10f53);
+        
+    
+        var popup_06deca44c8b969515fccd258113e163a = L.popup({"maxWidth": 330});
+
+        
+            var html_ff9e26df8f17bda2fafe72d1c7beb3e2 = $(`<div id="html_ff9e26df8f17bda2fafe72d1c7beb3e2" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>3. 阳光金融中心</b><br>Sunshine Financial Center (SFC)<br>     <b>区域：</b>CBD / 国贸 / 建外<br>     <b>地址：</b>景辉街33号院1号楼<br>     <b>租金：</b>15–18 元/㎡/天（均值 16.5）<br>     <b>面积：</b>200–3,000 ㎡<br>     <b>备注：</b>超甲级；2021；LEED+WELL Gold；CBRE管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9108,116.4648' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_06deca44c8b969515fccd258113e163a.setContent(html_ff9e26df8f17bda2fafe72d1c7beb3e2);
+        
+
+        marker_290737c75bfc98d7ed4d85b1223bdb05.bindPopup(popup_06deca44c8b969515fccd258113e163a)
+        ;
+
+        
+    
+    
+            marker_290737c75bfc98d7ed4d85b1223bdb05.bindTooltip(
+                `<div>
+                     3. 阳光金融中心｜16.5元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_fec9362c02f1d0572d2e4d543f7857f7 = L.marker(
+                [39.9095, 116.4625],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_d338de6871a75244ff102176443be4ef = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "red", "prefix": "fa"}
+            );
+            marker_fec9362c02f1d0572d2e4d543f7857f7.setIcon(icon_d338de6871a75244ff102176443be4ef);
+        
+    
+        var popup_516106acd9df326a002b8f927f49ab51 = L.popup({"maxWidth": 330});
+
+        
+            var html_8a73c817eb6499e960a0f3a8e7c60e4b = $(`<div id="html_8a73c817eb6499e960a0f3a8e7c60e4b" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>4. 招商局大厦</b><br>China Merchants Tower<br>     <b>区域：</b>CBD / 国贸 / 建外<br>     <b>地址：</b>建国路118号<br>     <b>租金：</b>7.1–7.1 元/㎡/天（均值 7.1）<br>     <b>面积：</b>标准层约1,955 ㎡<br>     <b>备注：</b>甲级；国贸站；约320,000㎡综合体<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9095,116.4625' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_516106acd9df326a002b8f927f49ab51.setContent(html_8a73c817eb6499e960a0f3a8e7c60e4b);
+        
+
+        marker_fec9362c02f1d0572d2e4d543f7857f7.bindPopup(popup_516106acd9df326a002b8f927f49ab51)
+        ;
+
+        
+    
+    
+            marker_fec9362c02f1d0572d2e4d543f7857f7.bindTooltip(
+                `<div>
+                     4. 招商局大厦｜7.1元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_492c4787a9b0f29e899e03e0d34b539f = L.marker(
+                [39.9215, 116.4568],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_82ff58fe520265c84142e78c98ac0cd9 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "red", "prefix": "fa"}
+            );
+            marker_492c4787a9b0f29e899e03e0d34b539f.setIcon(icon_82ff58fe520265c84142e78c98ac0cd9);
+        
+    
+        var popup_8115acd801bb314502ea6b1f72583fff = L.popup({"maxWidth": 330});
+
+        
+            var html_9e7ce3bd167584bdd40f1508faff2577 = $(`<div id="html_9e7ce3bd167584bdd40f1508faff2577" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>5. 万通中心</b><br>Vantone Center<br>     <b>区域：</b>CBD / 朝外<br>     <b>地址：</b>朝外大街甲6号<br>     <b>租金：</b>6–8 元/㎡/天（均值 7.0）<br>     <b>面积：</b>300–1,500 ㎡<br>     <b>备注：</b>甲级；金台夕照站10号线；四栋楼<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9215,116.4568' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_8115acd801bb314502ea6b1f72583fff.setContent(html_9e7ce3bd167584bdd40f1508faff2577);
+        
+
+        marker_492c4787a9b0f29e899e03e0d34b539f.bindPopup(popup_8115acd801bb314502ea6b1f72583fff)
+        ;
+
+        
+    
+    
+            marker_492c4787a9b0f29e899e03e0d34b539f.bindTooltip(
+                `<div>
+                     5. 万通中心｜7.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_b63392dee05eae112a6dac278a2105c0 = L.marker(
+                [39.9132, 116.46],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_6aa9e9176fc01b3febfe018845967854 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "red", "prefix": "fa"}
+            );
+            marker_b63392dee05eae112a6dac278a2105c0.setIcon(icon_6aa9e9176fc01b3febfe018845967854);
+        
+    
+        var popup_fe6c09d43cd81104d3dd1624878be02b = L.popup({"maxWidth": 330});
+
+        
+            var html_cc89dd8e1556c21852801df223f328c8 = $(`<div id="html_cc89dd8e1556c21852801df223f328c8" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>6. 远洋光华国际</b><br>Ocean Express / Sino-Ocean Guanghua Intl<br>     <b>区域：</b>金台夕照 / 光华路<br>     <b>地址：</b>金桐西路10号<br>     <b>租金：</b>9–17 元/㎡/天（均值 13.0）<br>     <b>面积：</b>187–2,500 ㎡<br>     <b>备注：</b>甲级；2008；约212,946㎡；CBRE/JLL物业管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9132,116.46' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_fe6c09d43cd81104d3dd1624878be02b.setContent(html_cc89dd8e1556c21852801df223f328c8);
+        
+
+        marker_b63392dee05eae112a6dac278a2105c0.bindPopup(popup_fe6c09d43cd81104d3dd1624878be02b)
+        ;
+
+        
+    
+    
+            marker_b63392dee05eae112a6dac278a2105c0.bindTooltip(
+                `<div>
+                     6. 远洋光华国际｜13.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_f8573065498273e7f434e0163059396b = L.marker(
+                [39.9095, 116.4728],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_8750375cbdea03e2dda3b9166bf8cb12 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "blue", "prefix": "fa"}
+            );
+            marker_f8573065498273e7f434e0163059396b.setIcon(icon_8750375cbdea03e2dda3b9166bf8cb12);
+        
+    
+        var popup_565218261821dc1125640d5459b51454 = L.popup({"maxWidth": 330});
+
+        
+            var html_50969939102303551e2b0c33cbf11021 = $(`<div id="html_50969939102303551e2b0c33cbf11021" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>7. 金地中心</b><br>Gemdale Plaza<br>     <b>区域：</b>大望路 / 双井 / 合生汇<br>     <b>地址：</b>建国路91号<br>     <b>租金：</b>6–8 元/㎡/天（均值 7.0）<br>     <b>面积：</b>180–4,200 ㎡<br>     <b>备注：</b>甲级；2007；大望路站1/14；Savills管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9095,116.4728' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_565218261821dc1125640d5459b51454.setContent(html_50969939102303551e2b0c33cbf11021);
+        
+
+        marker_f8573065498273e7f434e0163059396b.bindPopup(popup_565218261821dc1125640d5459b51454)
+        ;
+
+        
+    
+    
+            marker_f8573065498273e7f434e0163059396b.bindTooltip(
+                `<div>
+                     7. 金地中心｜7.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_b9357108d29893e9fc86918f4a831873 = L.marker(
+                [39.91, 116.4725],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_72a279da76335d1d35bd7ec7dccc5406 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "blue", "prefix": "fa"}
+            );
+            marker_b9357108d29893e9fc86918f4a831873.setIcon(icon_72a279da76335d1d35bd7ec7dccc5406);
+        
+    
+        var popup_83272e1fe26084729c4152ccd02af458 = L.popup({"maxWidth": 330});
+
+        
+            var html_a1ff2f6b8a2aa2f8f9abfec6b47c0983 = $(`<div id="html_a1ff2f6b8a2aa2f8f9abfec6b47c0983" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>8. 北京万达广场CBD</b><br>Wanda Plaza CBD<br>     <b>区域：</b>大望路 / 双井 / 合生汇<br>     <b>地址：</b>建国路93号<br>     <b>租金：</b>6–6 元/㎡/天（均值 6.0）<br>     <b>面积：</b>灵活 ㎡<br>     <b>备注：</b>5A；2006；大望路站1/14<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.91,116.4725' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_83272e1fe26084729c4152ccd02af458.setContent(html_a1ff2f6b8a2aa2f8f9abfec6b47c0983);
+        
+
+        marker_b9357108d29893e9fc86918f4a831873.bindPopup(popup_83272e1fe26084729c4152ccd02af458)
+        ;
+
+        
+    
+    
+            marker_b9357108d29893e9fc86918f4a831873.bindTooltip(
+                `<div>
+                     8. 北京万达广场CBD｜6.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_87094a0a7bb1a52c4655cf071be9048c = L.marker(
+                [39.8918, 116.4788],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_dd46d092a7f80017baf1897eb6378ad9 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "blue", "prefix": "fa"}
+            );
+            marker_87094a0a7bb1a52c4655cf071be9048c.setIcon(icon_dd46d092a7f80017baf1897eb6378ad9);
+        
+    
+        var popup_ff04bd89ce11337b7bd2b44a720dd604 = L.popup({"maxWidth": 330});
+
+        
+            var html_1f4ad2ae6f0a85c34adaf76cbde4cad2 = $(`<div id="html_1f4ad2ae6f0a85c34adaf76cbde4cad2" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>9. 合生汇</b><br>Hopson One (office)<br>     <b>区域：</b>大望路 / 双井 / 合生汇<br>     <b>地址：</b>西大望路21号<br>     <b>租金：</b>5.5–8 元/㎡/天（均值 6.75）<br>     <b>面积：</b>251–6,800 ㎡<br>     <b>备注：</b>甲级/5A；2018；九龙山站7/14<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.8918,116.4788' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_ff04bd89ce11337b7bd2b44a720dd604.setContent(html_1f4ad2ae6f0a85c34adaf76cbde4cad2);
+        
+
+        marker_87094a0a7bb1a52c4655cf071be9048c.bindPopup(popup_ff04bd89ce11337b7bd2b44a720dd604)
+        ;
+
+        
+    
+    
+            marker_87094a0a7bb1a52c4655cf071be9048c.bindTooltip(
+                `<div>
+                     9. 合生汇｜6.75元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_1c581c15669a10c7e1c9ad66eafe318f = L.marker(
+                [39.8948, 116.4628],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_b006eda76de93a2cf4317cfc3f72b796 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "blue", "prefix": "fa"}
+            );
+            marker_1c581c15669a10c7e1c9ad66eafe318f.setIcon(icon_b006eda76de93a2cf4317cfc3f72b796);
+        
+    
+        var popup_8d8e5938188b2de7db437cf5fbd1872c = L.popup({"maxWidth": 330});
+
+        
+            var html_bb475926e198a44a4ba021a0dc27d329 = $(`<div id="html_bb475926e198a44a4ba021a0dc27d329" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>10. 富力中心</b><br>R&F Center<br>     <b>区域：</b>大望路 / 双井 / 合生汇<br>     <b>地址：</b>东三环中路63号<br>     <b>租金：</b>7–7.8 元/㎡/天（均值 7.4）<br>     <b>面积：</b>200–2,400 ㎡<br>     <b>备注：</b>甲级；双井站7/10<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.8948,116.4628' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_8d8e5938188b2de7db437cf5fbd1872c.setContent(html_bb475926e198a44a4ba021a0dc27d329);
+        
+
+        marker_1c581c15669a10c7e1c9ad66eafe318f.bindPopup(popup_8d8e5938188b2de7db437cf5fbd1872c)
+        ;
+
+        
+    
+    
+            marker_1c581c15669a10c7e1c9ad66eafe318f.bindTooltip(
+                `<div>
+                     10. 富力中心｜7.4元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_0df1450327e6ce22024291d4dcae7a27 = L.marker(
+                [39.9222, 116.4598],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_87285f4fa2d504187365e4f4edc479cd = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "purple", "prefix": "fa"}
+            );
+            marker_0df1450327e6ce22024291d4dcae7a27.setIcon(icon_87285f4fa2d504187365e4f4edc479cd);
+        
+    
+        var popup_d85b2b39ef33d2805b57e5429b56f788 = L.popup({"maxWidth": 330});
+
+        
+            var html_d3d9c6e07afa6799a8f8a1dcbdbd99b9 = $(`<div id="html_d3d9c6e07afa6799a8f8a1dcbdbd99b9" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>11. 泰康金融大厦</b><br>Taikang Financial Tower<br>     <b>区域：</b>朝外 / 朝阳门 / 呼家楼 / 东大桥<br>     <b>地址：</b>东三环北路38号院1号<br>     <b>租金：</b>6–16 元/㎡/天（均值 11.0）<br>     <b>面积：</b>109–2,100 ㎡<br>     <b>备注：</b>甲级；2008；呼家楼站6/10；Savills管理；CCTV对面<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9222,116.4598' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_d85b2b39ef33d2805b57e5429b56f788.setContent(html_d3d9c6e07afa6799a8f8a1dcbdbd99b9);
+        
+
+        marker_0df1450327e6ce22024291d4dcae7a27.bindPopup(popup_d85b2b39ef33d2805b57e5429b56f788)
+        ;
+
+        
+    
+    
+            marker_0df1450327e6ce22024291d4dcae7a27.bindTooltip(
+                `<div>
+                     11. 泰康金融大厦｜11.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_96b00ac05dc1eb7bb3b8be64f90116f1 = L.marker(
+                [39.9228, 116.44],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_6f8a082c78fbc9894654255bff1ae774 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "purple", "prefix": "fa"}
+            );
+            marker_96b00ac05dc1eb7bb3b8be64f90116f1.setIcon(icon_6f8a082c78fbc9894654255bff1ae774);
+        
+    
+        var popup_57c10b602e601d6d4f57da49a0c1d3d8 = L.popup({"maxWidth": 330});
+
+        
+            var html_91415cd5d714c4b065433f2943e8b32a = $(`<div id="html_91415cd5d714c4b065433f2943e8b32a" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>12. 丰联广场</b><br>Fullink Plaza<br>     <b>区域：</b>朝外 / 朝阳门 / 呼家楼 / 东大桥<br>     <b>地址：</b>朝阳门外大街18号<br>     <b>租金：</b>8–8.7 元/㎡/天（均值 8.35）<br>     <b>面积：</b>120–2,000 ㎡<br>     <b>备注：</b>甲级；1997；朝阳门站2/6；Savills管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9228,116.44' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_57c10b602e601d6d4f57da49a0c1d3d8.setContent(html_91415cd5d714c4b065433f2943e8b32a);
+        
+
+        marker_96b00ac05dc1eb7bb3b8be64f90116f1.bindPopup(popup_57c10b602e601d6d4f57da49a0c1d3d8)
+        ;
+
+        
+    
+    
+            marker_96b00ac05dc1eb7bb3b8be64f90116f1.bindTooltip(
+                `<div>
+                     12. 丰联广场｜8.35元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_11dd1194ceb77ede7a102b4ccd627656 = L.marker(
+                [39.9528, 116.4635],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_cb84fb40c02edc2c41df62a221b96e39 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "orange", "prefix": "fa"}
+            );
+            marker_11dd1194ceb77ede7a102b4ccd627656.setIcon(icon_cb84fb40c02edc2c41df62a221b96e39);
+        
+    
+        var popup_24939ad718520cc4a9aaece4a1794672 = L.popup({"maxWidth": 330});
+
+        
+            var html_226fbfe61cb6c5ee5ee494428f79240e = $(`<div id="html_226fbfe61cb6c5ee5ee494428f79240e" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>13. 燕莎中心写字楼</b><br>Lufthansa Center (Kempinski)<br>     <b>区域：</b>亮马桥 / 燕莎 / 三元桥<br>     <b>地址：</b>亮马桥路50号<br>     <b>租金：</b>13–13 元/㎡/天（均值 13.0）<br>     <b>面积：</b>100–1,800 ㎡<br>     <b>备注：</b>甲级；1990；亮马桥站10；Kempinski管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9528,116.4635' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_24939ad718520cc4a9aaece4a1794672.setContent(html_226fbfe61cb6c5ee5ee494428f79240e);
+        
+
+        marker_11dd1194ceb77ede7a102b4ccd627656.bindPopup(popup_24939ad718520cc4a9aaece4a1794672)
+        ;
+
+        
+    
+    
+            marker_11dd1194ceb77ede7a102b4ccd627656.bindTooltip(
+                `<div>
+                     13. 燕莎中心写字楼｜13.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_0eecf1e8dcc9cc80ddc164bac2e49985 = L.marker(
+                [39.9558, 116.4642],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_d68883f07568c620d159eca12601c1df = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "orange", "prefix": "fa"}
+            );
+            marker_0eecf1e8dcc9cc80ddc164bac2e49985.setIcon(icon_d68883f07568c620d159eca12601c1df);
+        
+    
+        var popup_ddfb496b2c78fbf01fad006c1d49f795 = L.popup({"maxWidth": 330});
+
+        
+            var html_f6840849f9ddf4b3151ae571ca3aeba4 = $(`<div id="html_f6840849f9ddf4b3151ae571ca3aeba4" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>14. 鹏润大厦</b><br>Pengrun Tower<br>     <b>区域：</b>亮马桥 / 燕莎 / 三元桥<br>     <b>地址：</b>霄云路26号<br>     <b>租金：</b>7–9 元/㎡/天（均值 8.0）<br>     <b>面积：</b>200–7,200 ㎡<br>     <b>备注：</b>甲级；大面积楼层；三元桥站10<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9558,116.4642' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_ddfb496b2c78fbf01fad006c1d49f795.setContent(html_f6840849f9ddf4b3151ae571ca3aeba4);
+        
+
+        marker_0eecf1e8dcc9cc80ddc164bac2e49985.bindPopup(popup_ddfb496b2c78fbf01fad006c1d49f795)
+        ;
+
+        
+    
+    
+            marker_0eecf1e8dcc9cc80ddc164bac2e49985.bindTooltip(
+                `<div>
+                     14. 鹏润大厦｜8.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_cdadf0a852a402a2355b7554952d7d2f = L.marker(
+                [39.9345, 116.471],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_e7ab7c67f8ac8e9f2c0b57ee962c9079 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "green", "prefix": "fa"}
+            );
+            marker_cdadf0a852a402a2355b7554952d7d2f.setIcon(icon_e7ab7c67f8ac8e9f2c0b57ee962c9079);
+        
+    
+        var popup_64ab5ad83cd95aa796fcc143643b642c = L.popup({"maxWidth": 330});
+
+        
+            var html_92149dd9442214183be8e23daccc4f95 = $(`<div id="html_92149dd9442214183be8e23daccc4f95" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>15. 凤凰国际传媒中心</b><br>Phoenix Center<br>     <b>区域：</b>朝阳公园 / 太阳宫<br>     <b>地址：</b>朝阳公园南路3号<br>     <b>租金：</b>6.1–9 元/㎡/天（均值 7.55）<br>     <b>面积：</b>150–2,584 ㎡<br>     <b>备注：</b>甲级；2013；朝阳公园站14；凤凰卫视总部<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9345,116.471' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_64ab5ad83cd95aa796fcc143643b642c.setContent(html_92149dd9442214183be8e23daccc4f95);
+        
+
+        marker_cdadf0a852a402a2355b7554952d7d2f.bindPopup(popup_64ab5ad83cd95aa796fcc143643b642c)
+        ;
+
+        
+    
+    
+            marker_cdadf0a852a402a2355b7554952d7d2f.bindTooltip(
+                `<div>
+                     15. 凤凰国际传媒中心｜7.55元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_5898654f1f0881b9d9156718535e33e6 = L.marker(
+                [39.971, 116.4492],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_bc768157a6a1696ef471144411ee4996 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "green", "prefix": "fa"}
+            );
+            marker_5898654f1f0881b9d9156718535e33e6.setIcon(icon_bc768157a6a1696ef471144411ee4996);
+        
+    
+        var popup_7884a591e428e2a0e3d0b3a62331ad3f = L.popup({"maxWidth": 330});
+
+        
+            var html_e6c9470e1802e35478865cc3e3065235 = $(`<div id="html_e6c9470e1802e35478865cc3e3065235" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>16. 太阳宫大厦</b><br>Sun Palace / CapitaMall submarket<br>     <b>区域：</b>朝阳公园 / 太阳宫<br>     <b>地址：</b>太阳宫中路12号<br>     <b>租金：</b>5–7 元/㎡/天（均值 6.0）<br>     <b>面积：</b>灵活 ㎡<br>     <b>备注：</b>5A；太阳宫站10；CapitaLand管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.971,116.4492' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_7884a591e428e2a0e3d0b3a62331ad3f.setContent(html_e6c9470e1802e35478865cc3e3065235);
+        
+
+        marker_5898654f1f0881b9d9156718535e33e6.bindPopup(popup_7884a591e428e2a0e3d0b3a62331ad3f)
+        ;
+
+        
+    
+    
+            marker_5898654f1f0881b9d9156718535e33e6.bindTooltip(
+                `<div>
+                     16. 太阳宫大厦｜6.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_62dedab259a854879c5bdcc004d952c1 = L.marker(
+                [39.996, 116.4878],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_2f214ce17038da2fdae6df3667c11706 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "cadetblue", "prefix": "fa"}
+            );
+            marker_62dedab259a854879c5bdcc004d952c1.setIcon(icon_2f214ce17038da2fdae6df3667c11706);
+        
+    
+        var popup_834f8a8853622b4569fd6b910db7c2e9 = L.popup({"maxWidth": 330});
+
+        
+            var html_605efada308982004b1218112a84fb1b = $(`<div id="html_605efada308982004b1218112a84fb1b" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>17. 望京绿地中心·中国锦</b><br>Greenland Center 'China Jin'<br>     <b>区域：</b>望京 / 大望京<br>     <b>地址：</b>宏泰东街<br>     <b>租金：</b>7–9 元/㎡/天（均值 8.0）<br>     <b>面积：</b>185–1,796 ㎡<br>     <b>备注：</b>超甲级；望京地标；SOM设计；望京东站15<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.996,116.4878' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_834f8a8853622b4569fd6b910db7c2e9.setContent(html_605efada308982004b1218112a84fb1b);
+        
+
+        marker_62dedab259a854879c5bdcc004d952c1.bindPopup(popup_834f8a8853622b4569fd6b910db7c2e9)
+        ;
+
+        
+    
+    
+            marker_62dedab259a854879c5bdcc004d952c1.bindTooltip(
+                `<div>
+                     17. 望京绿地中心·中国锦｜8.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_95afd4eee18cdc4082d15d58444b794e = L.marker(
+                [39.9928, 116.4738],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_01468aedca5c44a38a9eee3404098a37 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "cadetblue", "prefix": "fa"}
+            );
+            marker_95afd4eee18cdc4082d15d58444b794e.setIcon(icon_01468aedca5c44a38a9eee3404098a37);
+        
+    
+        var popup_f3ec2538a331805fac43cc7519547eff = L.popup({"maxWidth": 330});
+
+        
+            var html_658e78b564b3682bcb94ba435e5ff9f5 = $(`<div id="html_658e78b564b3682bcb94ba435e5ff9f5" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>18. 浦项中心</b><br>POSCO Center<br>     <b>区域：</b>望京 / 大望京<br>     <b>地址：</b>望京东园四区<br>     <b>租金：</b>7.9–8.5 元/㎡/天（均值 8.2）<br>     <b>面积：</b>185–2,100 ㎡<br>     <b>备注：</b>甲级；2015；望京东站15；Savills管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9928,116.4738' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_f3ec2538a331805fac43cc7519547eff.setContent(html_658e78b564b3682bcb94ba435e5ff9f5);
+        
+
+        marker_95afd4eee18cdc4082d15d58444b794e.bindPopup(popup_f3ec2538a331805fac43cc7519547eff)
+        ;
+
+        
+    
+    
+            marker_95afd4eee18cdc4082d15d58444b794e.bindTooltip(
+                `<div>
+                     18. 浦项中心｜8.2元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_823f62802b415be2712f7abe13dc59c0 = L.marker(
+                [40.003, 116.4828],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_5ba0fe5847c84e772d0698c999bbcc5c = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "cadetblue", "prefix": "fa"}
+            );
+            marker_823f62802b415be2712f7abe13dc59c0.setIcon(icon_5ba0fe5847c84e772d0698c999bbcc5c);
+        
+    
+        var popup_146ca05dadef7e5c97a27deb7452536b = L.popup({"maxWidth": 330});
+
+        
+            var html_d27b5cfd917c9681afe3a732295c5c51 = $(`<div id="html_d27b5cfd917c9681afe3a732295c5c51" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>19. 保利国际广场</b><br>Poly International Plaza<br>     <b>区域：</b>望京 / 大望京<br>     <b>地址：</b>大望京街与外环路<br>     <b>租金：</b>7–9 元/㎡/天（均值 8.0）<br>     <b>面积：</b>灵活 ㎡<br>     <b>备注：</b>超甲级；SOM设计；望京东/南14/15<br>     <a href='https://www.google.com/maps/search/?api=1&query=40.003,116.4828' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_146ca05dadef7e5c97a27deb7452536b.setContent(html_d27b5cfd917c9681afe3a732295c5c51);
+        
+
+        marker_823f62802b415be2712f7abe13dc59c0.bindPopup(popup_146ca05dadef7e5c97a27deb7452536b)
+        ;
+
+        
+    
+    
+            marker_823f62802b415be2712f7abe13dc59c0.bindTooltip(
+                `<div>
+                     19. 保利国际广场｜8.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_a68c20107bc201c1014c87ac240f7bc9 = L.marker(
+                [39.9968, 116.472],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_1d01c9a4e1c2e5cb8be7aa2c2479a80b = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "cadetblue", "prefix": "fa"}
+            );
+            marker_a68c20107bc201c1014c87ac240f7bc9.setIcon(icon_1d01c9a4e1c2e5cb8be7aa2c2479a80b);
+        
+    
+        var popup_2b4d231933d23815f326294484e12323 = L.popup({"maxWidth": 330});
+
+        
+            var html_481e2c271d66b32be0f21ab022b2ba0d = $(`<div id="html_481e2c271d66b32be0f21ab022b2ba0d" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>20. 利星行中心</b><br>Lei Shing Hong Center<br>     <b>区域：</b>望京 / 大望京<br>     <b>地址：</b>广顺南大街8号<br>     <b>租金：</b>8–8 元/㎡/天（均值 8.0）<br>     <b>面积：</b>灵活 ㎡<br>     <b>备注：</b>5A；175,000㎡；阜通站14；JLL管理<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9968,116.472' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_2b4d231933d23815f326294484e12323.setContent(html_481e2c271d66b32be0f21ab022b2ba0d);
+        
+
+        marker_a68c20107bc201c1014c87ac240f7bc9.bindPopup(popup_2b4d231933d23815f326294484e12323)
+        ;
+
+        
+    
+    
+            marker_a68c20107bc201c1014c87ac240f7bc9.bindTooltip(
+                `<div>
+                     20. 利星行中心｜8.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_f62a96d899ef533c0655abff60d48641 = L.marker(
+                [39.9928, 116.4708],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_7dcb40dd5cc849367d7aa2fd13d9ec2d = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "cadetblue", "prefix": "fa"}
+            );
+            marker_f62a96d899ef533c0655abff60d48641.setIcon(icon_7dcb40dd5cc849367d7aa2fd13d9ec2d);
+        
+    
+        var popup_3a0e429ef301a566b4e1146703059f5c = L.popup({"maxWidth": 330});
+
+        
+            var html_119fb3ac7727b146aa3f78c24de737b4 = $(`<div id="html_119fb3ac7727b146aa3f78c24de737b4" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>21. 宝能中心</b><br>Baoneng Center<br>     <b>区域：</b>望京 / 大望京<br>     <b>地址：</b>阜通东大街12号<br>     <b>租金：</b>8–8 元/㎡/天（均值 8.0）<br>     <b>面积：</b>100–1,500 ㎡<br>     <b>备注：</b>甲级；2010；望京南站14；4.2m层高<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9928,116.4708' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_3a0e429ef301a566b4e1146703059f5c.setContent(html_119fb3ac7727b146aa3f78c24de737b4);
+        
+
+        marker_f62a96d899ef533c0655abff60d48641.bindPopup(popup_3a0e429ef301a566b4e1146703059f5c)
+        ;
+
+        
+    
+    
+            marker_f62a96d899ef533c0655abff60d48641.bindTooltip(
+                `<div>
+                     21. 宝能中心｜8.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_c96e143630bdf7724cd17881ce3319ff = L.marker(
+                [39.9658, 116.4902],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_a7094cd76b369082708b14b285295c43 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "darkgreen", "prefix": "fa"}
+            );
+            marker_c96e143630bdf7724cd17881ce3319ff.setIcon(icon_a7094cd76b369082708b14b285295c43);
+        
+    
+        var popup_c5b241f4efb317fe9c2df28794608a57 = L.popup({"maxWidth": 330});
+
+        
+            var html_43bbc33c834237087225711e4b5c3cf7 = $(`<div id="html_43bbc33c834237087225711e4b5c3cf7" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>22. 颐堤港一座</b><br>One Indigo / Swire<br>     <b>区域：</b>酒仙桥 / 将台<br>     <b>地址：</b>酒仙桥路18号<br>     <b>租金：</b>8.2–11.3 元/㎡/天（均值 9.75）<br>     <b>面积：</b>368–2,360 ㎡<br>     <b>备注：</b>甲级；2011；将台站14；Swire管理；LEED Platinum；北京太古坊<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9658,116.4902' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_c5b241f4efb317fe9c2df28794608a57.setContent(html_43bbc33c834237087225711e4b5c3cf7);
+        
+
+        marker_c96e143630bdf7724cd17881ce3319ff.bindPopup(popup_c5b241f4efb317fe9c2df28794608a57)
+        ;
+
+        
+    
+    
+            marker_c96e143630bdf7724cd17881ce3319ff.bindTooltip(
+                `<div>
+                     22. 颐堤港一座｜9.75元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_29241b3afa3eb4a6c9692790757b7406 = L.marker(
+                [39.998, 116.3905],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_8f7c1772405eac6ae38c3c4a28d997af = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "darkblue", "prefix": "fa"}
+            );
+            marker_29241b3afa3eb4a6c9692790757b7406.setIcon(icon_8f7c1772405eac6ae38c3c4a28d997af);
+        
+    
+        var popup_1136fdaff01b83b872364e757d4aef71 = L.popup({"maxWidth": 330});
+
+        
+            var html_47871b78f536f84f5163d3d01f565520 = $(`<div id="html_47871b78f536f84f5163d3d01f565520" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>23. 北辰世纪中心</b><br>Beichen Century Center<br>     <b>区域：</b>亚奥 / 奥体<br>     <b>地址：</b>北辰西路8号院<br>     <b>租金：</b>9–11 元/㎡/天（均值 10.0）<br>     <b>面积：</b>150–6,600 ㎡<br>     <b>备注：</b>5A；奥林匹克公园站8/15；近国家会议中心<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.998,116.3905' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_1136fdaff01b83b872364e757d4aef71.setContent(html_47871b78f536f84f5163d3d01f565520);
+        
+
+        marker_29241b3afa3eb4a6c9692790757b7406.bindPopup(popup_1136fdaff01b83b872364e757d4aef71)
+        ;
+
+        
+    
+    
+            marker_29241b3afa3eb4a6c9692790757b7406.bindTooltip(
+                `<div>
+                     23. 北辰世纪中心｜10.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_4268d52d2e621fc4b71c37afbdbae248 = L.marker(
+                [39.993, 116.3872],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_a205cdbdc8b7bf6f96930ffea6cd005d = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "darkblue", "prefix": "fa"}
+            );
+            marker_4268d52d2e621fc4b71c37afbdbae248.setIcon(icon_a205cdbdc8b7bf6f96930ffea6cd005d);
+        
+    
+        var popup_ef0903cc16ce2c328d86cf354c372cf9 = L.popup({"maxWidth": 330});
+
+        
+            var html_32b7940b2e73f772321fc25be9a07d2d = $(`<div id="html_32b7940b2e73f772321fc25be9a07d2d" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>24. 盘古大观</b><br>Pangu Plaza<br>     <b>区域：</b>亚奥 / 奥体<br>     <b>地址：</b>北四环中路27号<br>     <b>租金：</b>13–13 元/㎡/天（均值 13.0）<br>     <b>面积：</b>500–3,300 ㎡<br>     <b>备注：</b>超5A；2008；192m；奥体中心站8；鸟巢旁<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.993,116.3872' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_ef0903cc16ce2c328d86cf354c372cf9.setContent(html_32b7940b2e73f772321fc25be9a07d2d);
+        
+
+        marker_4268d52d2e621fc4b71c37afbdbae248.bindPopup(popup_ef0903cc16ce2c328d86cf354c372cf9)
+        ;
+
+        
+    
+    
+            marker_4268d52d2e621fc4b71c37afbdbae248.bindTooltip(
+                `<div>
+                     24. 盘古大观｜13.0元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var marker_b4049daca49b7cb099e8d9c46fbd6d0c = L.marker(
+                [39.9408, 116.4338],
+                {}
+            ).addTo(marker_cluster_ad1789db5f5209a634f0af0000761928);
+        
+    
+            var icon_16534c3384a532560f7e7e03d4ebcc5e = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "building", "iconColor": "white", "markerColor": "gray", "prefix": "fa"}
+            );
+            marker_b4049daca49b7cb099e8d9c46fbd6d0c.setIcon(icon_16534c3384a532560f7e7e03d4ebcc5e);
+        
+    
+        var popup_070e1e702053b2ba2808f84863cf14c1 = L.popup({"maxWidth": 330});
+
+        
+            var html_0e0f55ca764f2d8fff8dd6cd66cba6ff = $(`<div id="html_0e0f55ca764f2d8fff8dd6cd66cba6ff" style="width: 100.0%; height: 100.0%;">     <div style='font-family:Arial; width:280px'>     <b>25. 国华投资大厦</b><br>Guohua Investment Tower<br>     <b>区域：</b>边界待核实 / 东直门<br>     <b>地址：</b>东直门南大街3号<br>     <b>租金：</b>6–15 元/㎡/天（均值 10.5）<br>     <b>面积：</b>单层最高约3,300 ㎡<br>     <b>备注：</b>甲级；2007；东直门站2/13；官方属东城区，朝阳边界，需核实<br>     <a href='https://www.google.com/maps/search/?api=1&query=39.9408,116.4338' target='_blank'>Google Maps定位</a>     </div>     </div>`)[0];
+            popup_070e1e702053b2ba2808f84863cf14c1.setContent(html_0e0f55ca764f2d8fff8dd6cd66cba6ff);
+        
+
+        marker_b4049daca49b7cb099e8d9c46fbd6d0c.bindPopup(popup_070e1e702053b2ba2808f84863cf14c1)
+        ;
+
+        
+    
+    
+            marker_b4049daca49b7cb099e8d9c46fbd6d0c.bindTooltip(
+                `<div>
+                     25. 国华投资大厦｜10.5元/㎡/天
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var feature_group_e8558bc246e83e292ff667b98dea09bc = L.featureGroup(
+                {}
+            ).addTo(map_58146e9752de3063cba77cbb590f0b3c);
+        
+    
+            var circle_marker_c8bec2dce3276e02ba4ad872950b90d9 = L.circleMarker(
+                [39.9088, 116.457],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 11.899999999999999, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_c2865d6d4da25aa2bbd350b247865263 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_8f48de9ce67b74f0fd1b5b67cbbf8aee = $(`<div id="html_8f48de9ce67b74f0fd1b5b67cbbf8aee" style="width: 100.0%; height: 100.0%;">SK大厦：10.75 元/㎡/天</div>`)[0];
+            popup_c2865d6d4da25aa2bbd350b247865263.setContent(html_8f48de9ce67b74f0fd1b5b67cbbf8aee);
+        
+
+        circle_marker_c8bec2dce3276e02ba4ad872950b90d9.bindPopup(popup_c2865d6d4da25aa2bbd350b247865263)
+        ;
+
+        
+    
+    
+            circle_marker_c8bec2dce3276e02ba4ad872950b90d9.bindTooltip(
+                `<div>
+                     SK大厦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_f51105e16c14bf0a18a1cd39fb3193f3 = L.circleMarker(
+                [39.91, 116.4608],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 14.0, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_f27ac73749adbe980135b5ede82ba6b8 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_cfa5f09fecf444f92f18cf08d39610cf = $(`<div id="html_cfa5f09fecf444f92f18cf08d39610cf" style="width: 100.0%; height: 100.0%;">中海广场：12.5 元/㎡/天</div>`)[0];
+            popup_f27ac73749adbe980135b5ede82ba6b8.setContent(html_cfa5f09fecf444f92f18cf08d39610cf);
+        
+
+        circle_marker_f51105e16c14bf0a18a1cd39fb3193f3.bindPopup(popup_f27ac73749adbe980135b5ede82ba6b8)
+        ;
+
+        
+    
+    
+            circle_marker_f51105e16c14bf0a18a1cd39fb3193f3.bindTooltip(
+                `<div>
+                     中海广场
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_b2624e39ed03beadbd75822cca1c8d2c = L.circleMarker(
+                [39.9108, 116.4648],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 18.799999999999997, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_b09bb55311eed1a91fcc63aae1639e27 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_905a41ff61bcc1531e41a79a244ef839 = $(`<div id="html_905a41ff61bcc1531e41a79a244ef839" style="width: 100.0%; height: 100.0%;">阳光金融中心：16.5 元/㎡/天</div>`)[0];
+            popup_b09bb55311eed1a91fcc63aae1639e27.setContent(html_905a41ff61bcc1531e41a79a244ef839);
+        
+
+        circle_marker_b2624e39ed03beadbd75822cca1c8d2c.bindPopup(popup_b09bb55311eed1a91fcc63aae1639e27)
+        ;
+
+        
+    
+    
+            circle_marker_b2624e39ed03beadbd75822cca1c8d2c.bindTooltip(
+                `<div>
+                     阳光金融中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_f7319559cf9d7839ba3de8db14c2aeb7 = L.circleMarker(
+                [39.9095, 116.4625],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7.52, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_edd8aa38baf3158c7ae7edd4795361b4 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_afacacddda00b6925667bf8e3c48e364 = $(`<div id="html_afacacddda00b6925667bf8e3c48e364" style="width: 100.0%; height: 100.0%;">招商局大厦：7.1 元/㎡/天</div>`)[0];
+            popup_edd8aa38baf3158c7ae7edd4795361b4.setContent(html_afacacddda00b6925667bf8e3c48e364);
+        
+
+        circle_marker_f7319559cf9d7839ba3de8db14c2aeb7.bindPopup(popup_edd8aa38baf3158c7ae7edd4795361b4)
+        ;
+
+        
+    
+    
+            circle_marker_f7319559cf9d7839ba3de8db14c2aeb7.bindTooltip(
+                `<div>
+                     招商局大厦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_c96b499df7e88c4ee9fcea1366cedb69 = L.circleMarker(
+                [39.9215, 116.4568],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7.4, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_2f4edf9f56bcc6a1daa8287ba5e27dab = L.popup({"maxWidth": "100%"});
+
+        
+            var html_6d059ef9a0022647ec4ef373e5665fb0 = $(`<div id="html_6d059ef9a0022647ec4ef373e5665fb0" style="width: 100.0%; height: 100.0%;">万通中心：7.0 元/㎡/天</div>`)[0];
+            popup_2f4edf9f56bcc6a1daa8287ba5e27dab.setContent(html_6d059ef9a0022647ec4ef373e5665fb0);
+        
+
+        circle_marker_c96b499df7e88c4ee9fcea1366cedb69.bindPopup(popup_2f4edf9f56bcc6a1daa8287ba5e27dab)
+        ;
+
+        
+    
+    
+            circle_marker_c96b499df7e88c4ee9fcea1366cedb69.bindTooltip(
+                `<div>
+                     万通中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_6a67aca56a5cfc53a43725cadd75d31b = L.circleMarker(
+                [39.9132, 116.46],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 14.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_ff1ed212db44366709dde784ece99c44 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_d6ff094a5d025392c0249396f0d368c6 = $(`<div id="html_d6ff094a5d025392c0249396f0d368c6" style="width: 100.0%; height: 100.0%;">远洋光华国际：13.0 元/㎡/天</div>`)[0];
+            popup_ff1ed212db44366709dde784ece99c44.setContent(html_d6ff094a5d025392c0249396f0d368c6);
+        
+
+        circle_marker_6a67aca56a5cfc53a43725cadd75d31b.bindPopup(popup_ff1ed212db44366709dde784ece99c44)
+        ;
+
+        
+    
+    
+            circle_marker_6a67aca56a5cfc53a43725cadd75d31b.bindTooltip(
+                `<div>
+                     远洋光华国际
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_08df2a8f5f131726d2e456f7c17a87bc = L.circleMarker(
+                [39.9095, 116.4728],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7.4, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_e60405e2d1d0d4155c24f2ef6be0a385 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_c31621c84127b3874fa11d46e5d41f63 = $(`<div id="html_c31621c84127b3874fa11d46e5d41f63" style="width: 100.0%; height: 100.0%;">金地中心：7.0 元/㎡/天</div>`)[0];
+            popup_e60405e2d1d0d4155c24f2ef6be0a385.setContent(html_c31621c84127b3874fa11d46e5d41f63);
+        
+
+        circle_marker_08df2a8f5f131726d2e456f7c17a87bc.bindPopup(popup_e60405e2d1d0d4155c24f2ef6be0a385)
+        ;
+
+        
+    
+    
+            circle_marker_08df2a8f5f131726d2e456f7c17a87bc.bindTooltip(
+                `<div>
+                     金地中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_72a3d63df7c37490d1be2c5903c7ec0b = L.circleMarker(
+                [39.91, 116.4725],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 6.2, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_d45b6c7c14bbb652a18418156feb9dd0 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_adddc1c09365e72a1e9dc3d44299b49d = $(`<div id="html_adddc1c09365e72a1e9dc3d44299b49d" style="width: 100.0%; height: 100.0%;">北京万达广场CBD：6.0 元/㎡/天</div>`)[0];
+            popup_d45b6c7c14bbb652a18418156feb9dd0.setContent(html_adddc1c09365e72a1e9dc3d44299b49d);
+        
+
+        circle_marker_72a3d63df7c37490d1be2c5903c7ec0b.bindPopup(popup_d45b6c7c14bbb652a18418156feb9dd0)
+        ;
+
+        
+    
+    
+            circle_marker_72a3d63df7c37490d1be2c5903c7ec0b.bindTooltip(
+                `<div>
+                     北京万达广场CBD
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_288dd2339605890c1e8d68e72ab21b82 = L.circleMarker(
+                [39.8918, 116.4788],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7.1, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_e6dc16f47f9f21ff17d9ffc1cd908a27 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_b9e3aa2cc3f36b0c8bc3134fd8b485f5 = $(`<div id="html_b9e3aa2cc3f36b0c8bc3134fd8b485f5" style="width: 100.0%; height: 100.0%;">合生汇：6.75 元/㎡/天</div>`)[0];
+            popup_e6dc16f47f9f21ff17d9ffc1cd908a27.setContent(html_b9e3aa2cc3f36b0c8bc3134fd8b485f5);
+        
+
+        circle_marker_288dd2339605890c1e8d68e72ab21b82.bindPopup(popup_e6dc16f47f9f21ff17d9ffc1cd908a27)
+        ;
+
+        
+    
+    
+            circle_marker_288dd2339605890c1e8d68e72ab21b82.bindTooltip(
+                `<div>
+                     合生汇
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_9f2a3757c5435d0ec1ab66f55d38861d = L.circleMarker(
+                [39.8948, 116.4628],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 7.880000000000001, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_7256550b56de658fb51d5604313ce667 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_c99019322c0789f91d3b9be9d58725ac = $(`<div id="html_c99019322c0789f91d3b9be9d58725ac" style="width: 100.0%; height: 100.0%;">富力中心：7.4 元/㎡/天</div>`)[0];
+            popup_7256550b56de658fb51d5604313ce667.setContent(html_c99019322c0789f91d3b9be9d58725ac);
+        
+
+        circle_marker_9f2a3757c5435d0ec1ab66f55d38861d.bindPopup(popup_7256550b56de658fb51d5604313ce667)
+        ;
+
+        
+    
+    
+            circle_marker_9f2a3757c5435d0ec1ab66f55d38861d.bindTooltip(
+                `<div>
+                     富力中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_8a2f1f3b4f8788f22b4a99d6abbdf753 = L.circleMarker(
+                [39.9222, 116.4598],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 12.2, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_5aa78782f740657be8b52f2e43bd6f73 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_714feef7c3a3b1053e59a0ab87d75d5d = $(`<div id="html_714feef7c3a3b1053e59a0ab87d75d5d" style="width: 100.0%; height: 100.0%;">泰康金融大厦：11.0 元/㎡/天</div>`)[0];
+            popup_5aa78782f740657be8b52f2e43bd6f73.setContent(html_714feef7c3a3b1053e59a0ab87d75d5d);
+        
+
+        circle_marker_8a2f1f3b4f8788f22b4a99d6abbdf753.bindPopup(popup_5aa78782f740657be8b52f2e43bd6f73)
+        ;
+
+        
+    
+    
+            circle_marker_8a2f1f3b4f8788f22b4a99d6abbdf753.bindTooltip(
+                `<div>
+                     泰康金融大厦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_254cf5cdbad95a8f2e58b604ecc58285 = L.circleMarker(
+                [39.9228, 116.44],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9.02, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_c1671c4ac9f6d2dc9fd1024e3e875bbb = L.popup({"maxWidth": "100%"});
+
+        
+            var html_f5d6107053ebe6dcb1d8259f689203a2 = $(`<div id="html_f5d6107053ebe6dcb1d8259f689203a2" style="width: 100.0%; height: 100.0%;">丰联广场：8.35 元/㎡/天</div>`)[0];
+            popup_c1671c4ac9f6d2dc9fd1024e3e875bbb.setContent(html_f5d6107053ebe6dcb1d8259f689203a2);
+        
+
+        circle_marker_254cf5cdbad95a8f2e58b604ecc58285.bindPopup(popup_c1671c4ac9f6d2dc9fd1024e3e875bbb)
+        ;
+
+        
+    
+    
+            circle_marker_254cf5cdbad95a8f2e58b604ecc58285.bindTooltip(
+                `<div>
+                     丰联广场
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_e65737d7b38e5e5d25afc7736160c4c5 = L.circleMarker(
+                [39.9528, 116.4635],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 14.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_7c2e2d8ee515decb67f6690faf61d7df = L.popup({"maxWidth": "100%"});
+
+        
+            var html_3758eff4bb122c02aa3bf229431e01ee = $(`<div id="html_3758eff4bb122c02aa3bf229431e01ee" style="width: 100.0%; height: 100.0%;">燕莎中心写字楼：13.0 元/㎡/天</div>`)[0];
+            popup_7c2e2d8ee515decb67f6690faf61d7df.setContent(html_3758eff4bb122c02aa3bf229431e01ee);
+        
+
+        circle_marker_e65737d7b38e5e5d25afc7736160c4c5.bindPopup(popup_7c2e2d8ee515decb67f6690faf61d7df)
+        ;
+
+        
+    
+    
+            circle_marker_e65737d7b38e5e5d25afc7736160c4c5.bindTooltip(
+                `<div>
+                     燕莎中心写字楼
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_57cdcfd180ce4076cbce62d64fc5733a = L.circleMarker(
+                [39.9558, 116.4642],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_14fae402813141a981e56896a07e77f0 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_a6b19da36735641c383181759192c5f9 = $(`<div id="html_a6b19da36735641c383181759192c5f9" style="width: 100.0%; height: 100.0%;">鹏润大厦：8.0 元/㎡/天</div>`)[0];
+            popup_14fae402813141a981e56896a07e77f0.setContent(html_a6b19da36735641c383181759192c5f9);
+        
+
+        circle_marker_57cdcfd180ce4076cbce62d64fc5733a.bindPopup(popup_14fae402813141a981e56896a07e77f0)
+        ;
+
+        
+    
+    
+            circle_marker_57cdcfd180ce4076cbce62d64fc5733a.bindTooltip(
+                `<div>
+                     鹏润大厦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_a86e16e13931a15cefde3c28e6d26e85 = L.circleMarker(
+                [39.9345, 116.471],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.059999999999999, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_d7e37fd0eb149463ab3f05d28149dc73 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_b1129e3741ec163e6a2ac1be01e00031 = $(`<div id="html_b1129e3741ec163e6a2ac1be01e00031" style="width: 100.0%; height: 100.0%;">凤凰国际传媒中心：7.55 元/㎡/天</div>`)[0];
+            popup_d7e37fd0eb149463ab3f05d28149dc73.setContent(html_b1129e3741ec163e6a2ac1be01e00031);
+        
+
+        circle_marker_a86e16e13931a15cefde3c28e6d26e85.bindPopup(popup_d7e37fd0eb149463ab3f05d28149dc73)
+        ;
+
+        
+    
+    
+            circle_marker_a86e16e13931a15cefde3c28e6d26e85.bindTooltip(
+                `<div>
+                     凤凰国际传媒中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_fd037076ec98b7273cff55216887250c = L.circleMarker(
+                [39.971, 116.4492],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 6.2, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_9c74bda6fc04c26122b925a3d6f97f4a = L.popup({"maxWidth": "100%"});
+
+        
+            var html_aafd2334863bb54c02f1f77f958c247e = $(`<div id="html_aafd2334863bb54c02f1f77f958c247e" style="width: 100.0%; height: 100.0%;">太阳宫大厦：6.0 元/㎡/天</div>`)[0];
+            popup_9c74bda6fc04c26122b925a3d6f97f4a.setContent(html_aafd2334863bb54c02f1f77f958c247e);
+        
+
+        circle_marker_fd037076ec98b7273cff55216887250c.bindPopup(popup_9c74bda6fc04c26122b925a3d6f97f4a)
+        ;
+
+        
+    
+    
+            circle_marker_fd037076ec98b7273cff55216887250c.bindTooltip(
+                `<div>
+                     太阳宫大厦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_78f7ab099ae70ea0ee2da49dd32a5b1e = L.circleMarker(
+                [39.996, 116.4878],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_f6c4b486c89ee20fff963741abc9a4cc = L.popup({"maxWidth": "100%"});
+
+        
+            var html_7e17490e24e9c277d7bf6577a85876dd = $(`<div id="html_7e17490e24e9c277d7bf6577a85876dd" style="width: 100.0%; height: 100.0%;">望京绿地中心·中国锦：8.0 元/㎡/天</div>`)[0];
+            popup_f6c4b486c89ee20fff963741abc9a4cc.setContent(html_7e17490e24e9c277d7bf6577a85876dd);
+        
+
+        circle_marker_78f7ab099ae70ea0ee2da49dd32a5b1e.bindPopup(popup_f6c4b486c89ee20fff963741abc9a4cc)
+        ;
+
+        
+    
+    
+            circle_marker_78f7ab099ae70ea0ee2da49dd32a5b1e.bindTooltip(
+                `<div>
+                     望京绿地中心·中国锦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_4819dcd97898f2c65d453f8e98d2144c = L.circleMarker(
+                [39.9928, 116.4738],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.84, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_3ad1bd78373fe1032178bf2b9b15067a = L.popup({"maxWidth": "100%"});
+
+        
+            var html_e6c38546be0bca011fe500c44672b2d4 = $(`<div id="html_e6c38546be0bca011fe500c44672b2d4" style="width: 100.0%; height: 100.0%;">浦项中心：8.2 元/㎡/天</div>`)[0];
+            popup_3ad1bd78373fe1032178bf2b9b15067a.setContent(html_e6c38546be0bca011fe500c44672b2d4);
+        
+
+        circle_marker_4819dcd97898f2c65d453f8e98d2144c.bindPopup(popup_3ad1bd78373fe1032178bf2b9b15067a)
+        ;
+
+        
+    
+    
+            circle_marker_4819dcd97898f2c65d453f8e98d2144c.bindTooltip(
+                `<div>
+                     浦项中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_e9e4643715acd0efb9e00fd5f347d2e2 = L.circleMarker(
+                [40.003, 116.4828],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_984e7fc0b3319246aec49fc44b96b9cc = L.popup({"maxWidth": "100%"});
+
+        
+            var html_ab3ef69b8cd53a8e87bd7dd4c389ca7e = $(`<div id="html_ab3ef69b8cd53a8e87bd7dd4c389ca7e" style="width: 100.0%; height: 100.0%;">保利国际广场：8.0 元/㎡/天</div>`)[0];
+            popup_984e7fc0b3319246aec49fc44b96b9cc.setContent(html_ab3ef69b8cd53a8e87bd7dd4c389ca7e);
+        
+
+        circle_marker_e9e4643715acd0efb9e00fd5f347d2e2.bindPopup(popup_984e7fc0b3319246aec49fc44b96b9cc)
+        ;
+
+        
+    
+    
+            circle_marker_e9e4643715acd0efb9e00fd5f347d2e2.bindTooltip(
+                `<div>
+                     保利国际广场
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_cfcadd2dcab31f44f3bee4fa82dc0060 = L.circleMarker(
+                [39.9968, 116.472],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_2a249383bf67fb972695761c8f76c79c = L.popup({"maxWidth": "100%"});
+
+        
+            var html_1d7da2cc4280a322e1176dbb9013058b = $(`<div id="html_1d7da2cc4280a322e1176dbb9013058b" style="width: 100.0%; height: 100.0%;">利星行中心：8.0 元/㎡/天</div>`)[0];
+            popup_2a249383bf67fb972695761c8f76c79c.setContent(html_1d7da2cc4280a322e1176dbb9013058b);
+        
+
+        circle_marker_cfcadd2dcab31f44f3bee4fa82dc0060.bindPopup(popup_2a249383bf67fb972695761c8f76c79c)
+        ;
+
+        
+    
+    
+            circle_marker_cfcadd2dcab31f44f3bee4fa82dc0060.bindTooltip(
+                `<div>
+                     利星行中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_24656b34a8abd93a1ac4cce4adcf85a5 = L.circleMarker(
+                [39.9928, 116.4708],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 8.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_8aa280fd387568f1ecef41581cc5155a = L.popup({"maxWidth": "100%"});
+
+        
+            var html_e26d6ce5189a63141d8a942dd4033914 = $(`<div id="html_e26d6ce5189a63141d8a942dd4033914" style="width: 100.0%; height: 100.0%;">宝能中心：8.0 元/㎡/天</div>`)[0];
+            popup_8aa280fd387568f1ecef41581cc5155a.setContent(html_e26d6ce5189a63141d8a942dd4033914);
+        
+
+        circle_marker_24656b34a8abd93a1ac4cce4adcf85a5.bindPopup(popup_8aa280fd387568f1ecef41581cc5155a)
+        ;
+
+        
+    
+    
+            circle_marker_24656b34a8abd93a1ac4cce4adcf85a5.bindTooltip(
+                `<div>
+                     宝能中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_177127cc6c795d4d04396db9a362f0ef = L.circleMarker(
+                [39.9658, 116.4902],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 10.7, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_4397c23cb02b44d604d3ffbcc50db66d = L.popup({"maxWidth": "100%"});
+
+        
+            var html_a8658c5ea78a7350cac4769ca005447b = $(`<div id="html_a8658c5ea78a7350cac4769ca005447b" style="width: 100.0%; height: 100.0%;">颐堤港一座：9.75 元/㎡/天</div>`)[0];
+            popup_4397c23cb02b44d604d3ffbcc50db66d.setContent(html_a8658c5ea78a7350cac4769ca005447b);
+        
+
+        circle_marker_177127cc6c795d4d04396db9a362f0ef.bindPopup(popup_4397c23cb02b44d604d3ffbcc50db66d)
+        ;
+
+        
+    
+    
+            circle_marker_177127cc6c795d4d04396db9a362f0ef.bindTooltip(
+                `<div>
+                     颐堤港一座
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_32b93ab06c328f6ade8761a63be61523 = L.circleMarker(
+                [39.998, 116.3905],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 11.0, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_5d27a3c9760ccd26076285361484fbf3 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_d73c40ebe2a736e42634c05451970643 = $(`<div id="html_d73c40ebe2a736e42634c05451970643" style="width: 100.0%; height: 100.0%;">北辰世纪中心：10.0 元/㎡/天</div>`)[0];
+            popup_5d27a3c9760ccd26076285361484fbf3.setContent(html_d73c40ebe2a736e42634c05451970643);
+        
+
+        circle_marker_32b93ab06c328f6ade8761a63be61523.bindPopup(popup_5d27a3c9760ccd26076285361484fbf3)
+        ;
+
+        
+    
+    
+            circle_marker_32b93ab06c328f6ade8761a63be61523.bindTooltip(
+                `<div>
+                     北辰世纪中心
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_059267d1185372a204e402454ba7a4d2 = L.circleMarker(
+                [39.993, 116.3872],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 14.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_d576eb1929d54ea1f09fda1be2fb35d4 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_dd80a6111eb97bb74be115c07f68ca14 = $(`<div id="html_dd80a6111eb97bb74be115c07f68ca14" style="width: 100.0%; height: 100.0%;">盘古大观：13.0 元/㎡/天</div>`)[0];
+            popup_d576eb1929d54ea1f09fda1be2fb35d4.setContent(html_dd80a6111eb97bb74be115c07f68ca14);
+        
+
+        circle_marker_059267d1185372a204e402454ba7a4d2.bindPopup(popup_d576eb1929d54ea1f09fda1be2fb35d4)
+        ;
+
+        
+    
+    
+            circle_marker_059267d1185372a204e402454ba7a4d2.bindTooltip(
+                `<div>
+                     盘古大观
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var circle_marker_fd5e2c0f2c7fe3c45dece26d7e786b23 = L.circleMarker(
+                [39.9408, 116.4338],
+                {"bubblingMouseEvents": true, "color": "#3388ff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#3388ff", "fillOpacity": 0.55, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 11.6, "stroke": true, "weight": 3}
+            ).addTo(feature_group_e8558bc246e83e292ff667b98dea09bc);
+        
+    
+        var popup_47eedbceca94e377117e8733dc88b9e0 = L.popup({"maxWidth": "100%"});
+
+        
+            var html_901418198ba33efd03aa35ba672cc730 = $(`<div id="html_901418198ba33efd03aa35ba672cc730" style="width: 100.0%; height: 100.0%;">国华投资大厦：10.5 元/㎡/天</div>`)[0];
+            popup_47eedbceca94e377117e8733dc88b9e0.setContent(html_901418198ba33efd03aa35ba672cc730);
+        
+
+        circle_marker_fd5e2c0f2c7fe3c45dece26d7e786b23.bindPopup(popup_47eedbceca94e377117e8733dc88b9e0)
+        ;
+
+        
+    
+    
+            circle_marker_fd5e2c0f2c7fe3c45dece26d7e786b23.bindTooltip(
+                `<div>
+                     国华投资大厦
+                 </div>`,
+                {"sticky": true}
+            );
+        
+    
+            var layer_control_5352bf4ca1507b3312730e090337e7e7 = {
+                base_layers : {
+                    "openstreetmap" : tile_layer_9de3e3f32dc6595f8da82c09d5d80259,
+                },
+                overlays :  {
+                    "\u671d\u9633\u533a\u8fb9\u754c" : chaoyang_boundary_layer,
+                    "\u529e\u516c\u697c\u70b9\u4f4d" : marker_cluster_ad1789db5f5209a634f0af0000761928,
+                    "\u6309\u79df\u91d1\u5747\u503c\u663e\u793a" : feature_group_e8558bc246e83e292ff667b98dea09bc,
+                },
+            };
+            L.control.layers(
+                layer_control_5352bf4ca1507b3312730e090337e7e7.base_layers,
+                layer_control_5352bf4ca1507b3312730e090337e7e7.overlays,
+                {"autoZIndex": true, "collapsed": true, "position": "topright"}
+            ).addTo(map_58146e9752de3063cba77cbb590f0b3c);
+            feature_group_e8558bc246e83e292ff667b98dea09bc.remove();
+        
+</script>
+</html>
