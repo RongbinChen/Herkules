@@ -1,4 +1,5 @@
 import { prisma } from '../index.js';
+import { parseListPage, parseDetailPage } from './chinabiddingParser.js';
 
 const CHINABIDDING_BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -77,11 +78,12 @@ async function fetchWithAuth(url, retryCount = 0) {
   const cookies = await getCookies(retryCount > 0);
 
   const response = await fetch(url, {
+    // The site's anti-bot blocks (403) the full browser header set on GET
+    // search pages but allows this minimal one. Also: don't set
+    // Accept-Encoding manually or undici won't auto-decompress the body.
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate',
+      'User-Agent': 'Mozilla/5.0 Chrome/120',
+      'Accept': 'text/html',
       'Cookie': cookies
     }
   });
@@ -97,48 +99,8 @@ async function fetchWithAuth(url, retryCount = 0) {
   return text;
 }
 
-function parseProjectFromDetailPage(html, detailUrl) {
-  const project = {
-    projectName: null,
-    projectCode: null,
-    region: null,
-    industry: null,
-    biddingType: 'NEW',
-    publishDate: null,
-    deadline: null,
-    budget: null,
-    status: 'PUBLISHED',
-    sourceUrl: detailUrl,
-    rawContent: null
-  };
-
-  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-  if (titleMatch) {
-    project.projectName = titleMatch[1].replace('Chinabidding-', '').trim();
-  }
-
-  const codeMatch = html.match(/Bidding No[:\s]*([A-Z0-9\-]+)/i) || html.match(/项目编号[：:]\s*([A-Z0-9\-]+)/i);
-  if (codeMatch) project.projectCode = codeMatch[1].trim();
-
-  const regionMatch = html.match(/Place of Implementation[:\s]*([^\n<]+)/i);
-  if (regionMatch) {
-    const region = regionMatch[1].trim();
-    const provinceMatch = region.match(/([A-Za-z]+\s*Province)|([^\s]+市)|([^\s]+区)/);
-    project.region = provinceMatch ? provinceMatch[0] : region.substring(0, 50);
-  }
-
-  const publishDateMatch = html.match(/tender notice was released on www\.chinabidding\.com on(\d{4}-\d{2}-\d{2})/i);
-  if (publishDateMatch) project.publishDate = new Date(publishDateMatch[1]);
-
-  const deadlineMatch = html.match(/Deadline for Submitting Bids.*?(\d{4}-\d{2}-\d{2})/i) || html.match(/Ending of Selling Bidding Documents[:\s]*(\d{4}-\d{2}-\d{2})/i);
-  if (deadlineMatch) project.deadline = new Date(deadlineMatch[1]);
-
-  const budgetMatch = html.match(/Price of Bidding Documents[:\s]*([^<\n]+)/i);
-  if (budgetMatch && !budgetMatch[1].includes('Free') && !budgetMatch[1].includes('free')) {
-    project.budget = budgetMatch[1].trim();
-  }
-
-  return project;
+function fallbackCodeFromUrl(url) {
+  return url.split('/').pop().replace(/\.html?$/i, '');
 }
 
 async function scrapeProjectList(biddingType = 'NEW') {
@@ -146,20 +108,7 @@ async function scrapeProjectList(biddingType = 'NEW') {
   const searchUrl = `${CHINABIDDING_BASE_URL}/info/search.htm?infoClassCodes=${infoClassCode}`;
 
   const html = await fetchWithAuth(searchUrl);
-  const projectUrls = [];
-
-  const detailPattern = /www\.chinabidding\.com\/en\/detail\/[^\s"']+/gi;
-  const detailUrls = html.match(detailPattern) || [];
-  for (const detailUrl of detailUrls) {
-    if (!detailUrl.includes('必联网') && !detailUrl.includes('京ICP备')) {
-      projectUrls.push({
-        url: 'https://' + detailUrl,
-        title: detailUrl.split('/').pop()
-      });
-    }
-  }
-
-  return projectUrls;
+  return parseListPage(html);
 }
 
 export async function scrapeProjects(filters = {}) {
@@ -168,19 +117,24 @@ export async function scrapeProjects(filters = {}) {
   if (scrapeOnly) {
     await new Promise(r => setTimeout(r, 2000));
 
-    const projectUrls = await scrapeProjectList(biddingType);
+    const listItems = await scrapeProjectList(biddingType);
     let successCount = 0;
 
-    for (const { url, title } of projectUrls) {
+    for (const item of listItems) {
       await new Promise(r => setTimeout(r, 1000));
       try {
-        const html = await fetchWithAuth(url);
-        const project = parseProjectFromDetailPage(html, url);
-        project.projectName = title;
-        project.biddingType = biddingType;
+        const html = await fetchWithAuth(item.sourceUrl);
+        const project = parseDetailPage(html, item.sourceUrl);
+
+        // Prefer the clean list title; fall back to the list date and a
+        // URL-derived code so re-scrapes update instead of duplicating.
+        project.projectName = item.projectName || project.projectName;
+        project.biddingType = item.biddingType || biddingType;
+        if (!project.publishDate && item.listDate) project.publishDate = new Date(item.listDate);
+        project.projectCode = project.projectCode || fallbackCodeFromUrl(item.sourceUrl);
 
         await prisma.bidProject.upsert({
-          where: { projectCode: project.projectCode || title },
+          where: { projectCode: project.projectCode },
           update: {
             projectName: project.projectName,
             region: project.region,
@@ -188,13 +142,13 @@ export async function scrapeProjects(filters = {}) {
             deadline: project.deadline,
             budget: project.budget,
             status: project.status,
-            rawContent: html.substring(0, 5000)
+            rawContent: project.rawContent
           },
           create: project
         });
         successCount++;
       } catch (err) {
-        console.error(`Error scraping ${url}:`, err.message);
+        console.error(`Error scraping ${item.sourceUrl}:`, err.message);
       }
     }
 
@@ -274,29 +228,17 @@ export async function searchByKeyword(keyword) {
   });
 
   const html = await response.text();
-  const projects = [];
 
-  const detailPattern = /www\.chinabidding\.com\/en\/detail\/[^\s"']+/gi;
-  const detailUrls = html.match(detailPattern) || [];
-
-  for (const detailUrl of detailUrls) {
-    if (!detailUrl.includes('必联网') && !detailUrl.includes('京ICP备')) {
-      const fullUrl = 'https://' + detailUrl;
-      const titleMatch = html.match(new RegExp(detailUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^>]*title="([^"]+)"'));
-      projects.push({
-        projectName: titleMatch?.[1] || detailUrl.split('/').pop().replace('.html', ''),
-        projectCode: null,
-        region: null,
-        industry: null,
-        biddingType: 'NEW',
-        publishDate: null,
-        deadline: null,
-        budget: null,
-        status: 'PUBLISHED',
-        sourceUrl: fullUrl
-      });
-    }
-  }
-
-  return projects;
+  return parseListPage(html).map((item) => ({
+    projectName: item.projectName,
+    projectCode: null,
+    region: null,
+    industry: null,
+    biddingType: item.biddingType,
+    publishDate: item.listDate ? new Date(item.listDate) : null,
+    deadline: null,
+    budget: null,
+    status: 'PUBLISHED',
+    sourceUrl: item.sourceUrl
+  }));
 }
