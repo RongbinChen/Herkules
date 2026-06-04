@@ -1,11 +1,15 @@
 import { prisma } from '../index.js';
 
-const CHINABIDDING_BASE_URL = 'https://www.chinabidding.com/en';
-const CAS_LOGIN_URL = 'https://cas.ebnew.com/cas/login';
-const USERNAME = 'p3290';
-const PASSWORD = '1041343676p!';
+const CHINABIDDING_BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
+const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
+const USERNAME = process.env.CHINABIDDING_USERNAME;
+const PASSWORD = process.env.CHINABIDDING_PASSWORD;
 
 async function loginAndGetCookies() {
+  if (!USERNAME || !PASSWORD) {
+    throw new Error('Chinabidding credentials are not configured. Set CHINABIDDING_USERNAME and CHINABIDDING_PASSWORD environment variables.');
+  }
+
   const serviceUrl = encodeURIComponent('https://www.chinabidding.com/en/login/loginEn.htm');
 
   const r1 = await fetch(CAS_LOGIN_URL + '?service=' + serviceUrl, { redirect: 'manual' });

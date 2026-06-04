@@ -46,6 +46,10 @@ services:
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       JWT_EXPIRES_IN: 30d
       PORT: 3001
+      CHINABIDDING_BASE_URL: ${CHINABIDDING_BASE_URL:-https://www.chinabidding.com/en}
+      CHINABIDDING_CAS_LOGIN_URL: ${CHINABIDDING_CAS_LOGIN_URL:-https://cas.ebnew.com/cas/login}
+      CHINABIDDING_USERNAME: ${CHINABIDDING_USERNAME:-}
+      CHINABIDDING_PASSWORD: ${CHINABIDDING_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
