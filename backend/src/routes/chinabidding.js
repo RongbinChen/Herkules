@@ -1,7 +1,11 @@
 import express from 'express';
 import { scrapeProjects, getProjectStats, searchByKeyword } from '../services/chinabidding.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// All Chinabidding endpoints require a logged-in user.
+router.use(authenticateToken);
 
 router.get('/projects', async (req, res) => {
   try {
