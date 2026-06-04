@@ -30,6 +30,14 @@ export async function triggerScrape(type = 'NEW') {
   return res.json();
 }
 
+export async function getScrapeJob(jobId) {
+  const res = await fetch(`${API_BASE}/scrape-jobs/${jobId}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch scrape job');
+  return res.json();
+}
+
 export async function searchByKeyword(keyword) {
   const res = await fetch(`${API_BASE}/search`, {
     method: 'POST',

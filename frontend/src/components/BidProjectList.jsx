@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getProjects, triggerScrape, searchByKeyword } from '../api/chinabidding';
+import { getProjects, triggerScrape, getScrapeJob, searchByKeyword } from '../api/chinabidding';
 import './BidProjectList.css';
 
 const PREDEFINED_TAGS = ['georg', 'pomini', 'INNSE', 'DANIELI', 'SMS', 'VAI'];
@@ -13,6 +13,7 @@ function BidProjectList() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [filters, setFilters] = useState({ biddingType: 'NEW', status: '' });
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [scraping, setScraping] = useState(false);
 
   const fetchProjects = async (page = 1) => {
     setLoading(true);
@@ -32,9 +33,28 @@ function BidProjectList() {
   }, []);
 
   const handleScrape = async () => {
-    if (confirm('Scrape latest data?')) {
-      await triggerScrape(filters.biddingType);
-      fetchProjects();
+    if (!confirm('Scrape latest data? This runs in the background and may take a minute.')) return;
+    setScraping(true);
+    try {
+      const { jobId } = await triggerScrape(filters.biddingType);
+      // The scrape runs asynchronously on the server; poll the job until done.
+      for (let i = 0; i < 40; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const job = await getScrapeJob(jobId);
+        if (job.status === 'DONE') {
+          await fetchProjects();
+          break;
+        }
+        if (job.status === 'FAILED') {
+          alert('Scrape failed: ' + (job.error || 'unknown error'));
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Scrape failed:', error);
+      alert('Failed to start scrape');
+    } finally {
+      setScraping(false);
     }
   };
 
@@ -70,7 +90,9 @@ function BidProjectList() {
           </button>
           <h1>Bid Project List</h1>
         </div>
-        <button className="scrape-btn" onClick={handleScrape}>Scrape Data</button>
+        <button className="scrape-btn" onClick={handleScrape} disabled={scraping}>
+          {scraping ? 'Scraping…' : 'Scrape Data'}
+        </button>
       </div>
 
       <div className="bid-tags">
