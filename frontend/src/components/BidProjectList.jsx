@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getProjects, triggerScrape, searchByKeyword } from '../api/chinabidding';
 import './BidProjectList.css';
 
 const PREDEFINED_TAGS = ['georg', 'pomini', 'INNSE', 'DANIELI', 'SMS', 'VAI'];
 
 function BidProjectList() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [loading, setLoading] = useState(false);
@@ -62,7 +64,12 @@ function BidProjectList() {
   return (
     <div className="bid-list">
       <div className="bid-list-header">
-        <h1>Bid Project List</h1>
+        <div className="bid-list-header-left">
+          <button className="back-btn" onClick={() => navigate('/')} title="Back to module selection">
+            ← Modules
+          </button>
+          <h1>Bid Project List</h1>
+        </div>
         <button className="scrape-btn" onClick={handleScrape}>Scrape Data</button>
       </div>
 
