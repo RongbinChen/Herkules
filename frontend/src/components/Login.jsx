@@ -5,10 +5,8 @@ import { authAPI } from '../api/api'
 const HERKULES_GROUP_LOGO_URL = 'https://hgms.herkulesgroup.info/template-extension/hgms/herkulesgroup.png'
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
@@ -19,90 +17,81 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const data = isLogin ? { email, password } : { email, password, name }
-      const res = isLogin
-        ? await authAPI.login(data)
-        : await authAPI.register(data)
-
+      const res = await authAPI.login({ email, password })
       login(res.data.token, res.data.user)
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred')
+      setError(err.response?.data?.error || 'Invalid credentials')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 py-8">
-      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
-        <div className="mb-6 flex justify-center">
-          <img
-            src={HERKULES_GROUP_LOGO_URL}
-            alt="HerkulesGroup"
-            className="max-h-16 w-auto object-contain sm:max-h-20"
-          />
-        </div>
+    <div className="auth-scene">
+      {/* Animated aurora + floating orbs */}
+      <div className="auth-aurora" aria-hidden="true" />
+      <div className="auth-orb auth-orb--one" aria-hidden="true" />
+      <div className="auth-orb auth-orb--two" aria-hidden="true" />
+      <div className="auth-orb auth-orb--three" aria-hidden="true" />
+      <div className="auth-grid" aria-hidden="true" />
 
-        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">
-          Calendar App
-        </h1>
+      <div className="auth-card">
+        <div className="auth-card__glow" aria-hidden="true" />
 
-        <h2 className="text-xl mb-4 text-center">
-          {isLogin ? 'Login' : 'Register'}
-        </h2>
-
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+        <div className="auth-card__inner">
+          <div className="mb-6 flex justify-center">
+            <div className="auth-logo">
+              <span className="auth-logo__ring" aria-hidden="true" />
+              <img
+                src={HERKULES_GROUP_LOGO_URL}
+                alt="HerkulesGroup"
+                className="auth-logo__img"
+              />
+            </div>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <input
-              type="text"
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              required
-            />
-          )}
-          <input
-            type="text"
-            placeholder="Email or username"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            required
-            minLength={6}
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
-          >
-            {loading ? 'Please wait...' : isLogin ? 'Login' : 'Register'}
-          </button>
-        </form>
+          <h1 className="auth-title">Calendar App</h1>
+          <p className="auth-subtitle">Sign in to continue</p>
 
-        <p className="mt-4 text-center text-sm text-gray-600">
-          {isLogin ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-blue-500 hover:underline"
-          >
-            {isLogin ? 'Register' : 'Login'}
-          </button>
-        </p>
+          {error && <div className="auth-error">{error}</div>}
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+            <label className="auth-field">
+              <span className="auth-field__label">Email or username</span>
+              <input
+                type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@waldrich-siegen.com"
+                className="auth-input"
+                autoComplete="username"
+                required
+              />
+            </label>
+
+            <label className="auth-field">
+              <span className="auth-field__label">Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="auth-input"
+                autoComplete="current-password"
+                required
+                minLength={6}
+              />
+            </label>
+
+            <button type="submit" disabled={loading} className="auth-submit">
+              <span>{loading ? 'Signing in…' : 'Sign in'}</span>
+            </button>
+          </form>
+
+          <p className="auth-footnote">
+            Accounts are provisioned by your administrator.
+          </p>
+        </div>
       </div>
     </div>
   )
