@@ -152,7 +152,7 @@ export async function scrapeProjects(filters = {}) {
       }
     }
 
-    return { success: true, count: successCount };
+    return { success: true, count: successCount, found: listItems.length };
   }
 
   const where = {};
@@ -185,6 +185,55 @@ export async function scrapeProjects(filters = {}) {
       totalPages: Math.ceil(total / limit)
     }
   };
+}
+
+// Run a scrape in the background and record progress on the ScrapeJob row.
+async function runScrapeJob(jobId, biddingType) {
+  try {
+    const result = await scrapeProjects({ biddingType, scrapeOnly: true });
+    await prisma.scrapeJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'DONE',
+        itemsFound: result.found ?? 0,
+        itemsSaved: result.count ?? 0,
+        finishedAt: new Date()
+      }
+    });
+  } catch (err) {
+    console.error(`Scrape job ${jobId} failed:`, err);
+    await prisma.scrapeJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'FAILED',
+        error: String(err?.message || err).slice(0, 2000),
+        finishedAt: new Date()
+      }
+    });
+  }
+}
+
+// Create a ScrapeJob and kick off scraping asynchronously (does not block).
+export async function startScrapeJob({ biddingType = 'NEW', userId = null } = {}) {
+  const job = await prisma.scrapeJob.create({
+    data: { type: biddingType, status: 'RUNNING', triggeredBy: userId }
+  });
+
+  // Fire-and-forget: the HTTP request returns immediately with the job id.
+  runScrapeJob(job.id, biddingType);
+
+  return job;
+}
+
+export async function getScrapeJob(id) {
+  return prisma.scrapeJob.findUnique({ where: { id } });
+}
+
+export async function listScrapeJobs(limit = 20) {
+  return prisma.scrapeJob.findMany({
+    orderBy: { startedAt: 'desc' },
+    take: limit
+  });
 }
 
 export async function getProjectStats() {

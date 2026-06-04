@@ -1,5 +1,5 @@
 import express from 'express';
-import { scrapeProjects, getProjectStats, searchByKeyword } from '../services/chinabidding.js';
+import { scrapeProjects, getProjectStats, searchByKeyword, startScrapeJob, getScrapeJob, listScrapeJobs } from '../services/chinabidding.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -37,14 +37,40 @@ router.get('/statistics', async (req, res) => {
   }
 });
 
+// Start a scrape asynchronously and return the job id immediately.
 router.post('/scrape', async (req, res) => {
   try {
     const { type = 'NEW' } = req.body;
-    const result = await scrapeProjects({ biddingType: type, scrapeOnly: true });
-    res.json(result);
+    const job = await startScrapeJob({ biddingType: type, userId: req.user?.userId ?? null });
+    res.status(202).json({ jobId: job.id, status: job.status });
   } catch (error) {
-    console.error('Error scraping projects:', error);
-    res.status(500).json({ error: 'Failed to scrape projects' });
+    console.error('Error starting scrape job:', error);
+    res.status(500).json({ error: 'Failed to start scrape job' });
+  }
+});
+
+// List recent scrape jobs.
+router.get('/scrape-jobs', async (req, res) => {
+  try {
+    const jobs = await listScrapeJobs(parseInt(req.query.limit) || 20);
+    res.json(jobs);
+  } catch (error) {
+    console.error('Error listing scrape jobs:', error);
+    res.status(500).json({ error: 'Failed to list scrape jobs' });
+  }
+});
+
+// Poll a single scrape job's status/result.
+router.get('/scrape-jobs/:id', async (req, res) => {
+  try {
+    const job = await getScrapeJob(parseInt(req.params.id));
+    if (!job) {
+      return res.status(404).json({ error: 'Scrape job not found' });
+    }
+    res.json(job);
+  } catch (error) {
+    console.error('Error fetching scrape job:', error);
+    res.status(500).json({ error: 'Failed to fetch scrape job' });
   }
 });
 
