@@ -50,8 +50,31 @@ async function loginAndGetCookies() {
   return '';
 }
 
-async function fetchWithAuth(url, retryCount = 0) {
+// Cached CAS session so we don't re-login on every request.
+// Phase 0 uses a single shared account (env credentials); per-user sessions come later.
+const SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes
+let sessionCache = { cookies: null, expiresAt: 0 };
+
+function invalidateSession() {
+  sessionCache = { cookies: null, expiresAt: 0 };
+}
+
+async function getCookies(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && sessionCache.cookies && now < sessionCache.expiresAt) {
+    return sessionCache.cookies;
+  }
+
   const cookies = await loginAndGetCookies();
+  if (cookies) {
+    sessionCache = { cookies, expiresAt: now + SESSION_TTL_MS };
+  }
+  return cookies;
+}
+
+async function fetchWithAuth(url, retryCount = 0) {
+  // Force a fresh login on retries; otherwise reuse the cached session.
+  const cookies = await getCookies(retryCount > 0);
 
   const response = await fetch(url, {
     headers: {
@@ -64,7 +87,9 @@ async function fetchWithAuth(url, retryCount = 0) {
   });
 
   const text = await response.text();
-  if (text.includes('403 Forbidden') && retryCount < 3) {
+  // Session likely expired/blocked: drop the cached cookies and retry with a fresh login.
+  if ((response.status === 403 || text.includes('403 Forbidden')) && retryCount < 3) {
+    invalidateSession();
     await new Promise(r => setTimeout(r, 3000));
     return fetchWithAuth(url, retryCount + 1);
   }
@@ -231,7 +256,7 @@ export async function getProjectStats() {
 }
 
 export async function searchByKeyword(keyword) {
-  const cookies = await loginAndGetCookies();
+  const cookies = await getCookies();
   const searchUrl = `${CHINABIDDING_BASE_URL}/info/search.htm`;
 
   const response = await fetch(searchUrl, {
