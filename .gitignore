@@ -4,6 +4,7 @@
 
 .claude/
 .mcp.json
+.playwright-mcp/
 
 proxy/certs/
 
