@@ -1,5 +1,9 @@
 import express from 'express';
-import { scrapeProjects, getProjectStats, searchByKeyword, startScrapeJob, getScrapeJob, listScrapeJobs } from '../services/chinabidding.js';
+import {
+  scrapeProjects, getProjectStats, searchByKeyword,
+  startScrapeJob, getScrapeJob, listScrapeJobs,
+  listSavedSearches, createSavedSearch, deleteSavedSearch, runSavedSearch
+} from '../services/chinabidding.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -85,6 +89,55 @@ router.post('/search', async (req, res) => {
   } catch (error) {
     console.error('Error searching projects:', error);
     res.status(500).json({ error: 'Failed to search projects' });
+  }
+});
+
+// ── Saved Searches ────────────────────────────────────────────────────────────
+
+router.get('/saved-searches', async (req, res) => {
+  try {
+    const searches = await listSavedSearches(req.user.userId);
+    res.json(searches);
+  } catch (error) {
+    console.error('Error listing saved searches:', error);
+    res.status(500).json({ error: 'Failed to list saved searches' });
+  }
+});
+
+router.post('/saved-searches', async (req, res) => {
+  try {
+    const { name, keyword, tradeClassCode, infoClassCode, autoMonitor } = req.body;
+    if (!name || !keyword) {
+      return res.status(400).json({ error: 'name and keyword are required' });
+    }
+    const s = await createSavedSearch(req.user.userId, { name, keyword, tradeClassCode, infoClassCode, autoMonitor });
+    res.status(201).json(s);
+  } catch (error) {
+    console.error('Error creating saved search:', error);
+    res.status(500).json({ error: 'Failed to create saved search' });
+  }
+});
+
+router.delete('/saved-searches/:id', async (req, res) => {
+  try {
+    await deleteSavedSearch(parseInt(req.params.id), req.user.userId);
+    res.status(204).send();
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: 'Not found' });
+    console.error('Error deleting saved search:', error);
+    res.status(500).json({ error: 'Failed to delete saved search' });
+  }
+});
+
+// Trigger an async scrape for a saved search.
+router.post('/saved-searches/:id/run', async (req, res) => {
+  try {
+    const result = await runSavedSearch(parseInt(req.params.id), req.user.userId);
+    res.status(202).json(result);
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: 'Not found' });
+    console.error('Error running saved search:', error);
+    res.status(500).json({ error: 'Failed to run saved search' });
   }
 });
 

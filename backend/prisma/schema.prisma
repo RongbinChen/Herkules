@@ -104,6 +104,20 @@ model ScrapeJob {
   itemsSaved  Int             @default(0)
   error       String?         @db.Text
   triggeredBy Int?
+  savedSearchId Int?
   startedAt   DateTime        @default(now())
   finishedAt  DateTime?
+}
+
+model SavedSearch {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  name           String
+  keyword        String
+  tradeClassCode String?
+  infoClassCode  String    @default("e0905")
+  autoMonitor    Boolean   @default(false)
+  lastRunAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

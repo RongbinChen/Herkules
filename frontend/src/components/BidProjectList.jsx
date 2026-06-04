@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getProjects, triggerScrape, getScrapeJob, searchByKeyword } from '../api/chinabidding';
+import { getProjects, triggerScrape, getScrapeJob, searchByKeyword,
+         listSavedSearches, createSavedSearch, deleteSavedSearch, runSavedSearch } from '../api/chinabidding';
 import './BidProjectList.css';
 
 const PREDEFINED_TAGS = ['georg', 'pomini', 'INNSE', 'DANIELI', 'SMS', 'VAI'];
@@ -14,6 +15,11 @@ function BidProjectList() {
   const [filters, setFilters] = useState({ biddingType: 'NEW', status: '' });
   const [searchKeyword, setSearchKeyword] = useState('');
   const [scraping, setScraping] = useState(false);
+  const [savedSearches, setSavedSearches] = useState([]);
+  const [showSubscriptions, setShowSubscriptions] = useState(false);
+  const [newSearchName, setNewSearchName] = useState('');
+  const [newSearchKeyword, setNewSearchKeyword] = useState('');
+  const [runningSearchId, setRunningSearchId] = useState(null);
 
   const fetchProjects = async (page = 1) => {
     setLoading(true);
@@ -30,7 +36,39 @@ function BidProjectList() {
 
   useEffect(() => {
     fetchProjects();
+    loadSavedSearches();
   }, []);
+
+  const loadSavedSearches = async () => {
+    try { setSavedSearches(await listSavedSearches()); } catch {}
+  };
+
+  const handleCreateSearch = async () => {
+    if (!newSearchName.trim() || !newSearchKeyword.trim()) return;
+    try {
+      await createSavedSearch({ name: newSearchName.trim(), keyword: newSearchKeyword.trim(), autoMonitor: true });
+      setNewSearchName(''); setNewSearchKeyword('');
+      loadSavedSearches();
+    } catch (error) { console.error('Failed to create saved search:', error); }
+  };
+
+  const handleDeleteSearch = async (id) => {
+    try { await deleteSavedSearch(id); loadSavedSearches(); } catch {}
+  };
+
+  const handleRunSearch = async (id) => {
+    setRunningSearchId(id);
+    try {
+      const { jobId } = await runSavedSearch(id);
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const job = await getScrapeJob(jobId);
+        if (job.status === 'DONE') { loadSavedSearches(); await fetchProjects(); break; }
+        if (job.status === 'FAILED') { alert('Search failed: ' + (job.error || 'unknown')); break; }
+      }
+    } catch (error) { console.error('Failed to run search:', error); }
+    setRunningSearchId(null);
+  };
 
   const handleScrape = async () => {
     if (!confirm('Scrape latest data? This runs in the background and may take a minute.')) return;
@@ -93,6 +131,62 @@ function BidProjectList() {
         <button className="scrape-btn" onClick={handleScrape} disabled={scraping}>
           {scraping ? 'Scraping…' : 'Scrape Data'}
         </button>
+      </div>
+
+      {/* ── Keyword Subscriptions Panel ─────────────────────────────── */}
+      <div className="subscriptions-panel">
+        <button className="subscriptions-toggle" onClick={() => setShowSubscriptions(v => !v)}>
+          Keyword Subscriptions ({savedSearches.length}) {showSubscriptions ? '▲' : '▼'}
+        </button>
+
+        {showSubscriptions && (
+          <div className="subscriptions-body">
+            <div className="subscription-add">
+              <input
+                placeholder="Subscription name (e.g. Georg competitor)"
+                value={newSearchName}
+                onChange={e => setNewSearchName(e.target.value)}
+                className="sub-input"
+              />
+              <input
+                placeholder="Keyword (e.g. georg)"
+                value={newSearchKeyword}
+                onChange={e => setNewSearchKeyword(e.target.value)}
+                className="sub-input"
+              />
+              <button className="sub-add-btn" onClick={handleCreateSearch}
+                disabled={!newSearchName.trim() || !newSearchKeyword.trim()}>
+                + Add
+              </button>
+            </div>
+
+            {savedSearches.length === 0 ? (
+              <p className="sub-empty">No subscriptions yet. Add one above to track keywords automatically.</p>
+            ) : (
+              <ul className="sub-list">
+                {savedSearches.map(s => (
+                  <li key={s.id} className="sub-item">
+                    <div className="sub-item-info">
+                      <span className="sub-name">{s.name}</span>
+                      <span className="sub-keyword">"{s.keyword}"</span>
+                      {s.lastRunAt && <span className="sub-last">last run: {new Date(s.lastRunAt).toLocaleDateString()}</span>}
+                    </div>
+                    <div className="sub-item-actions">
+                      <button
+                        className="sub-run-btn"
+                        onClick={() => handleRunSearch(s.id)}
+                        disabled={runningSearchId === s.id}
+                      >
+                        {runningSearchId === s.id ? 'Running…' : '▶ Run'}
+                      </button>
+                      <button className="sub-del-btn" onClick={() => handleDeleteSearch(s.id)}>✕</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bid-tags">

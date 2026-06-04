@@ -38,6 +38,41 @@ export async function getScrapeJob(jobId) {
   return res.json();
 }
 
+export async function listSavedSearches() {
+  const res = await fetch(`${API_BASE}/saved-searches`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch saved searches');
+  return res.json();
+}
+
+export async function createSavedSearch(data) {
+  const res = await fetch(`${API_BASE}/saved-searches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to create saved search');
+  return res.json();
+}
+
+export async function deleteSavedSearch(id) {
+  const res = await fetch(`${API_BASE}/saved-searches/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  if (!res.ok) throw new Error('Failed to delete saved search');
+}
+
+export async function runSavedSearch(id) {
+  const res = await fetch(`${API_BASE}/saved-searches/${id}/run`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
+  if (!res.ok) throw new Error('Failed to run saved search');
+  return res.json();
+}
+
 export async function searchByKeyword(keyword) {
   const res = await fetch(`${API_BASE}/search`, {
     method: 'POST',

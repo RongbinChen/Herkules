@@ -185,3 +185,100 @@
   color: white;
   border-color: #2563eb;
 }
+/* ── Keyword Subscriptions Panel ─────────────────────────────────────────── */
+.subscriptions-panel {
+  margin-bottom: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.subscriptions-toggle {
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border: none;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #334155;
+  transition: background 0.15s;
+}
+.subscriptions-toggle:hover { background: #f1f5f9; }
+
+.subscriptions-body { padding: 14px 16px; background: white; }
+
+.subscription-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.sub-input {
+  flex: 1;
+  min-width: 160px;
+  padding: 7px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  font-size: 0.88rem;
+}
+
+.sub-add-btn {
+  padding: 7px 16px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sub-add-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.sub-empty { color: #94a3b8; font-size: 0.88rem; margin: 4px 0; }
+
+.sub-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.sub-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.sub-item-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sub-name { font-weight: 600; font-size: 0.9rem; color: #1e293b; }
+.sub-keyword { font-size: 0.83rem; color: #64748b; background: #e2e8f0; padding: 2px 7px; border-radius: 5px; }
+.sub-last { font-size: 0.78rem; color: #94a3b8; }
+
+.sub-item-actions { display: flex; gap: 6px; }
+
+.sub-run-btn {
+  padding: 5px 12px;
+  background: #0f172a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.sub-run-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.sub-del-btn {
+  padding: 5px 10px;
+  background: white;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.sub-del-btn:hover { background: #fef2f2; }

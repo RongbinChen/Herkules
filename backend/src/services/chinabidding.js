@@ -258,7 +258,7 @@ export async function getProjectStats() {
   };
 }
 
-export async function searchByKeyword(keyword) {
+export async function searchByKeyword(keyword, { saveToDb = false, tradeClassCode = null, infoClassCode = 'e0905' } = {}) {
   const cookies = await getCookies();
   const searchUrl = `${CHINABIDDING_BASE_URL}/info/search.htm`;
 
@@ -272,13 +272,15 @@ export async function searchByKeyword(keyword) {
     },
     body: new URLSearchParams({
       fullText: keyword,
-      infoClassCodes: 'e0905'
+      infoClassCodes: infoClassCode,
+      ...(tradeClassCode ? { tradeClassCodes: tradeClassCode } : {})
     }).toString()
   });
 
   const html = await response.text();
+  const listItems = parseListPage(html);
 
-  return parseListPage(html).map((item) => ({
+  const results = listItems.map((item) => ({
     projectName: item.projectName,
     projectCode: null,
     region: null,
@@ -290,4 +292,101 @@ export async function searchByKeyword(keyword) {
     status: 'PUBLISHED',
     sourceUrl: item.sourceUrl
   }));
+
+  // When triggered from a saved search, fetch detail pages and upsert into DB.
+  if (saveToDb && listItems.length > 0) {
+    for (const item of listItems) {
+      await new Promise(r => setTimeout(r, 800));
+      try {
+        const detailHtml = await fetchWithAuth(item.sourceUrl);
+        const project = parseDetailPage(detailHtml, item.sourceUrl);
+        project.projectName = item.projectName || project.projectName;
+        project.biddingType = item.biddingType;
+        if (!project.publishDate && item.listDate) project.publishDate = new Date(item.listDate);
+        project.projectCode = project.projectCode || fallbackCodeFromUrl(item.sourceUrl);
+
+        await prisma.bidProject.upsert({
+          where: { projectCode: project.projectCode },
+          update: {
+            projectName: project.projectName,
+            region: project.region,
+            publishDate: project.publishDate,
+            deadline: project.deadline,
+            budget: project.budget,
+            rawContent: project.rawContent
+          },
+          create: project
+        });
+      } catch (err) {
+        console.error(`Error saving search result ${item.sourceUrl}:`, err.message);
+      }
+    }
+  }
+
+  return results;
+}
+
+// ── SavedSearch CRUD ─────────────────────────────────────────────────────────
+
+export async function listSavedSearches(userId) {
+  return prisma.savedSearch.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' }
+  });
+}
+
+export async function createSavedSearch(userId, data) {
+  return prisma.savedSearch.create({
+    data: {
+      userId,
+      name: data.name,
+      keyword: data.keyword,
+      tradeClassCode: data.tradeClassCode ?? null,
+      infoClassCode: data.infoClassCode ?? 'e0905',
+      autoMonitor: data.autoMonitor ?? false
+    }
+  });
+}
+
+export async function deleteSavedSearch(id, userId) {
+  const s = await prisma.savedSearch.findUnique({ where: { id } });
+  if (!s || s.userId !== userId) throw Object.assign(new Error('Not found'), { status: 404 });
+  await prisma.savedSearch.delete({ where: { id } });
+}
+
+// Trigger a keyword search for a saved subscription and optionally save results.
+export async function runSavedSearch(id, userId) {
+  const s = await prisma.savedSearch.findUnique({ where: { id } });
+  if (!s || s.userId !== userId) throw Object.assign(new Error('Not found'), { status: 404 });
+
+  const job = await prisma.scrapeJob.create({
+    data: { type: 'NEW', status: 'RUNNING', triggeredBy: userId, savedSearchId: id }
+  });
+
+  // Fire-and-forget
+  (async () => {
+    try {
+      const results = await searchByKeyword(s.keyword, {
+        saveToDb: true,
+        tradeClassCode: s.tradeClassCode,
+        infoClassCode: s.infoClassCode
+      });
+      await prisma.savedSearch.update({
+        where: { id },
+        data: { lastRunAt: new Date() }
+      });
+      await prisma.scrapeJob.update({
+        where: { id: job.id },
+        data: { status: 'DONE', itemsFound: results.length, itemsSaved: results.length, finishedAt: new Date() }
+      });
+    } catch (err) {
+      console.error(`SavedSearch ${id} job failed:`, err.message);
+      await prisma.scrapeJob.update({
+        where: { id: job.id },
+        data: { status: 'FAILED', error: String(err?.message || err).slice(0, 2000), finishedAt: new Date() }
+      });
+    }
+  })();
+
+  return { jobId: job.id, status: 'RUNNING' };
 }
