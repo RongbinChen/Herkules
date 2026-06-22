@@ -14,9 +14,163 @@ model User {
   name              String
   isAdmin           Boolean  @default(false)
   calendarFeedToken String?  @unique
-  events            Event[]
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  events            Event[]
+}
+
+model Event {
+  id          Int              @id @default(autoincrement())
+  title       String
+  description String?
+  start       DateTime
+  end         DateTime
+  allDay      Boolean          @default(false)
+  color       String           @default("#2563eb")
+  location    String?
+  category    ActivityCategory @default(WORK_SESSION)
+  status      ActivityStatus   @default(PLANNED)
+  priority    ActivityPriority @default(MEDIUM)
+  userId      Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  customerId  Int?
+  customer    Customer?        @relation(fields: [customerId], references: [id])
+  agentId     Int?
+  agent       Agent?           @relation(fields: [agentId], references: [id])
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Customer {
+  id           Int            @id @default(autoincrement())
+  name         String
+  address      String?
+  contactName  String?
+  contactPhone String?
+  email        String?
+  notes        String?
+  latitude     Float?
+  longitude    Float?
+  status       CustomerStatus @default(LEAD) // 潜在 / 合作中 / 暂停 / 流失
+  tier         CustomerTier   @default(C)    // A=战略 / B=重点 / C=普通
+  tags         String[]                       // 自由标签（行业、来源等）
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  events       Event[]
+
+  @@index([status])
+  @@index([tier])
+}
+
+// 代理商 / 中间商（与终端客户区分），可关联到活动
+model Agent {
+  id           Int      @id @default(autoincrement())
+  name         String
+  company      String?
+  contactPhone String?
+  email        String?
+  region       String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  events       Event[]
+}
+
+model BidProject {
+  id          Int       @id @default(autoincrement())
+  projectName String
+  projectCode String?   @unique
+  region      String?
+  industry    String?
+  biddingType BidType   @default(NEW)
+  publishDate DateTime?
+  deadline    DateTime?
+  budget      String?
+  status      BidStatus @default(PUBLISHED)
+  sourceUrl        String
+  rawContent       String?
+  summary          String?
+  lastStatusChange DateTime?
+  // ── Structured fields (DeepSeek extraction) ──
+  purchaser     String? // 采购单位
+  winner        String? // 中标方（中标公告）
+  winningPrice  String? // 中标价
+  equipmentType String? // 设备类型标签（轧辊磨床/龙门铣/加工中心…）
+  infoClass     String? // 公告类型：New Tenders / Tender Changes / Evaluation Results / Tender Awards
+  threadKey     String? // 项目线索键（Bidding NO，归并同一项目的多条公告）
+  competitorId  Int? // 中标方匹配到的竞争对手
+  competitor    Competitor?     @relation(fields: [competitorId], references: [id])
+  follows       ProjectFollow[]
+  notifications Notification[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([threadKey])
+  @@index([publishDate])
+}
+
+// 被追踪公司档案：本集团 / 竞争对手 / 关注公司
+model Competitor {
+  id        Int          @id @default(autoincrement())
+  name      String       @unique
+  aliases   String[] // 名称别名（中英文、缩写）用于中标方匹配
+  country   String?
+  notes     String?
+  watchType WatchType    @default(COMPETITOR) // OWN=本集团 / COMPETITOR=竞品 / INTEREST=关注公司
+  createdAt DateTime     @default(now())
+  projects  BidProject[]
+}
+
+// 用户关注的项目
+model ProjectFollow {
+  id        Int        @id @default(autoincrement())
+  userId    Int
+  projectId Int
+  note      String?
+  createdAt DateTime   @default(now())
+  project   BidProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+// 站内通知
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  projectId Int?
+  message   String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  project   BidProject?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model ScrapeJob {
+  id            Int             @id @default(autoincrement())
+  type          BidType         @default(NEW)
+  status        ScrapeJobStatus @default(RUNNING)
+  itemsFound    Int             @default(0)
+  itemsSaved    Int             @default(0)
+  error         String?
+  triggeredBy   Int?
+  startedAt     DateTime        @default(now())
+  finishedAt    DateTime?
+  savedSearchId Int?
+}
+
+model SavedSearch {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  name           String
+  keyword        String
+  tradeClassCode String?
+  infoClassCode  String    @default("e0905")
+  autoMonitor    Boolean   @default(false)
+  lastRunAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 enum ActivityCategory {
@@ -43,24 +197,6 @@ enum ActivityPriority {
   CRITICAL
 }
 
-model Event {
-  id          Int              @id @default(autoincrement())
-  title       String
-  description String?
-  start       DateTime
-  end         DateTime
-  allDay      Boolean          @default(false)
-  color       String           @default("#2563eb")
-  location    String?
-  category    ActivityCategory @default(WORK_SESSION)
-  status      ActivityStatus   @default(PLANNED)
-  priority    ActivityPriority @default(MEDIUM)
-  userId      Int
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-}
-
 enum BidStatus {
   PUBLISHED
   CLOSED
@@ -73,51 +209,36 @@ enum BidType {
   PAST
 }
 
-model BidProject {
-  id            Int       @id @default(autoincrement())
-  projectName   String
-  projectCode   String?   @unique
-  region        String?
-  industry      String?
-  biddingType   BidType   @default(NEW)
-  publishDate   DateTime?
-  deadline      DateTime?
-  budget        String?
-  status        BidStatus @default(PUBLISHED)
-  sourceUrl     String
-  rawContent    String?   @db.Text
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-}
-
 enum ScrapeJobStatus {
   RUNNING
   DONE
   FAILED
 }
 
-model ScrapeJob {
-  id          Int             @id @default(autoincrement())
-  type        BidType         @default(NEW)
-  status      ScrapeJobStatus @default(RUNNING)
-  itemsFound  Int             @default(0)
-  itemsSaved  Int             @default(0)
-  error       String?         @db.Text
-  triggeredBy Int?
-  savedSearchId Int?
-  startedAt   DateTime        @default(now())
-  finishedAt  DateTime?
+enum NotificationType {
+  STATUS_CHANGE // 关注项目状态变更
+  DEADLINE_SOON // 关注项目截止临近
+  COMPETITOR_WIN // 竞争对手中标
+  OWN_WIN // 本集团中标
+  INTEREST_WIN // 关注公司中标
+  NEW_RELEVANT // 新相关项目
 }
 
-model SavedSearch {
-  id             Int       @id @default(autoincrement())
-  userId         Int
-  name           String
-  keyword        String
-  tradeClassCode String?
-  infoClassCode  String    @default("e0905")
-  autoMonitor    Boolean   @default(false)
-  lastRunAt      DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+enum WatchType {
+  OWN // 本集团（Herkules / Waldrich Siegen）
+  COMPETITOR // 竞争对手
+  INTEREST // 关注公司（感兴趣但非直接竞品）
+}
+
+enum CustomerStatus {
+  LEAD // 潜在客户
+  ACTIVE // 合作中
+  INACTIVE // 暂停 / 沉睡
+  LOST // 已流失
+}
+
+enum CustomerTier {
+  A // 战略客户
+  B // 重点客户
+  C // 普通客户
 }
