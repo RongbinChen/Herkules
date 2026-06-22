@@ -96,7 +96,11 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     if (req.user.isAdmin !== true) {
       return res.status(403).json({ error: 'Admin only' });
     }
-    await prisma.customer.delete({ where: { id: parseInt(req.params.id, 10) } });
+    const id = parseInt(req.params.id, 10);
+    // Detach related events first — Event.customerId is a restrict FK, so a hard
+    // delete would otherwise fail for any customer that has visit history.
+    await prisma.event.updateMany({ where: { customerId: id }, data: { customerId: null } });
+    await prisma.customer.delete({ where: { id } });
     res.json({ message: 'Customer deleted successfully' });
   } catch (error) {
     console.error(error);

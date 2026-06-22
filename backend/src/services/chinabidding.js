@@ -217,6 +217,9 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
 
   project.infoClass = item.tenderTypeLabel || null;
   project.threadKey = extractThreadKey(project.projectName) || project.projectCode || null;
+  // Derive status from the announcement type so status changes are detectable,
+  // instead of hard-coding PUBLISHED for every announcement.
+  project.status = project.biddingType === 'PAST' ? 'CLOSED' : 'PUBLISHED';
 
   const existing = await prisma.bidProject.findFirst({ where: { sourceUrl: project.sourceUrl } });
 
@@ -258,17 +261,32 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   // Match winner against competitor profiles
   const competitor = await matchCompetitor(analysis.winner);
 
-  const created = await prisma.bidProject.create({
-    data: {
-      ...project,
-      summary: analysis.summary,
-      purchaser: analysis.purchaser,
-      winner: analysis.winner,
-      winningPrice: analysis.winningPrice,
-      equipmentType: analysis.equipmentType,
-      competitorId: competitor?.id ?? null,
-    },
-  });
+  const createData = {
+    ...project,
+    summary: analysis.summary,
+    purchaser: analysis.purchaser,
+    winner: analysis.winner,
+    winningPrice: analysis.winningPrice,
+    equipmentType: analysis.equipmentType,
+    competitorId: competitor?.id ?? null,
+  };
+
+  let created;
+  try {
+    created = await prisma.bidProject.create({ data: createData });
+  } catch (err) {
+    // projectCode is @unique; a different sourceUrl can derive a colliding code
+    // (or an old projectCode-keyed row predates the sourceUrl dedup). Update that
+    // row instead of dropping the item to a swallowed P2002.
+    if (err.code === 'P2002' && project.projectCode) {
+      await prisma.bidProject.update({
+        where: { projectCode: project.projectCode },
+        data: createData,
+      });
+      return { isNew: false, isUpdated: true };
+    }
+    throw err;
+  }
 
   // A tracked company won a bid — alert everyone (own group / competitor / interest)
   if (competitor) {
@@ -356,7 +374,19 @@ async function scrapeAllPages({ tradeClassCode = null, keyword = '', infoClassCo
 }
 
 // ── Daily job: run all configured scrape sources ──────────────────────────────
+// The actual work runs detached, so guard against overlapping runs (cron tick
+// landing on a still-running manual trigger) which would double-create
+// win/STATUS_CHANGE notifications.
+let dailyJobRunning = false;
 export async function runDailyJob(triggeredBy = null) {
+  if (dailyJobRunning) {
+    const running = await prisma.scrapeJob.findFirst({
+      where: { status: 'RUNNING' },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (running) return running;
+  }
+  dailyJobRunning = true;
   const job = await prisma.scrapeJob.create({
     data: { type: 'NEW', status: 'RUNNING', triggeredBy },
   });
@@ -403,7 +433,7 @@ export async function runDailyJob(triggeredBy = null) {
         console.log(`[chinabidding] saved search: ${s.name} (${s.keyword})`);
         const r = await scrapeAllPages({
           keyword: s.keyword,
-          infoClassCodes: s.infoClassCode,
+          infoClassCodes: s.infoClassCode || ALL_TENDER_CODES,
           ...(s.tradeClassCode ? { tradeClassCode: s.tradeClassCode } : {}),
         });
         await prisma.savedSearch.update({ where: { id: s.id }, data: { lastRunAt: new Date() } });
@@ -422,6 +452,8 @@ export async function runDailyJob(triggeredBy = null) {
         where: { id: job.id },
         data: { status: 'FAILED', error: String(err.message).slice(0, 2000), finishedAt: new Date() },
       });
+    } finally {
+      dailyJobRunning = false;
     }
   })();
 
@@ -644,7 +676,7 @@ export async function createSavedSearch(userId, data) {
       name: data.name,
       keyword: data.keyword,
       tradeClassCode: data.tradeClassCode ?? null,
-      infoClassCode: data.infoClassCode ?? 'e0905',
+      infoClassCode: data.infoClassCode ?? ALL_TENDER_CODES,
       autoMonitor: data.autoMonitor ?? false,
     },
   });
@@ -668,7 +700,7 @@ export async function runSavedSearch(id, userId) {
     try {
       const r = await scrapeAllPages({
         keyword: s.keyword,
-        infoClassCodes: s.infoClassCode,
+        infoClassCodes: s.infoClassCode || ALL_TENDER_CODES,
         ...(s.tradeClassCode ? { tradeClassCode: s.tradeClassCode } : {}),
       });
       await prisma.savedSearch.update({ where: { id }, data: { lastRunAt: new Date() } });

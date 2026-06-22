@@ -44,8 +44,8 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// ── Daily chinabidding scrape — runs at 08:00 every day (server local time) ──
-// Lazy import to avoid circular dependency at startup
+// ── Daily chinabidding scrape — runs at 08:00 China time every day ──
+// runDailyJob guards against overlapping runs internally.
 cron.schedule('0 8 * * *', async () => {
   console.log('[cron] Starting daily chinabidding scrape...');
   try {
@@ -54,6 +54,6 @@ cron.schedule('0 8 * * *', async () => {
   } catch (err) {
     console.error('[cron] Daily scrape error:', err.message);
   }
-});
+}, { timezone: 'Asia/Shanghai' });
 
 export { prisma };

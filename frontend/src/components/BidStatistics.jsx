@@ -99,8 +99,14 @@ function BidStatistics() {
   }, []);
 
   useEffect(() => {
+    let ignore = false;
     setTrends(null);
-    getTrends(months).then(setTrends).catch(console.error);
+    getTrends(months)
+      .then((data) => { if (!ignore) setTrends(data); })
+      .catch((err) => { if (!ignore) console.error(err); });
+    // Ignore a stale response if months changes (or unmounts) before it resolves,
+    // so a slow earlier request can't overwrite the current selection.
+    return () => { ignore = true; };
   }, [months]);
 
   const handleGenerateReport = async () => {

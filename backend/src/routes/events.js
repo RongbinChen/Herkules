@@ -32,6 +32,27 @@ const eventSchema = z.object({
   path: ['end'],
 });
 
+// Verify that referenced customer/agent rows exist before writing the event,
+// so a stale id from the client returns a clear 400 instead of an opaque 500
+// from a foreign-key (P2003) violation. Returns an error string, or null if OK.
+async function validateEventRefs(data) {
+  if (data.customerId != null) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: data.customerId },
+      select: { id: true },
+    });
+    if (!customer) return 'Invalid customerId — customer does not exist';
+  }
+  if (data.agentId != null) {
+    const agent = await prisma.agent.findUnique({
+      where: { id: data.agentId },
+      select: { id: true },
+    });
+    if (!agent) return 'Invalid agentId — agent does not exist';
+  }
+  return null;
+}
+
 function escapeIcsText(value = '') {
   return String(value)
     .replace(/\\/g, '\\\\')
@@ -205,6 +226,10 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const data = eventSchema.parse(req.body);
+    const refError = await validateEventRefs(data);
+    if (refError) {
+      return res.status(400).json({ error: refError });
+    }
     const targetUserId = req.user.isAdmin === true && data.userId ? data.userId : req.user.userId;
     const startDate = new Date(data.start);
     // Store the end as-is (inclusive last day). The frontend owns the all-day
@@ -239,6 +264,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const data = eventSchema.parse(req.body);
+    const refError = await validateEventRefs(data);
+    if (refError) {
+      return res.status(400).json({ error: refError });
+    }
     const eventId = parseInt(id, 10);
     const isAdmin = req.user.isAdmin === true;
 

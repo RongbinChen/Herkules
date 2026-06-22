@@ -91,7 +91,11 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     if (req.user.isAdmin !== true) {
       return res.status(403).json({ error: 'Admin only' });
     }
-    await prisma.agent.delete({ where: { id: parseInt(req.params.id, 10) } });
+    const id = parseInt(req.params.id, 10);
+    // Detach related events first — Event.agentId is a restrict FK, so a hard
+    // delete would otherwise fail for any agent linked to events.
+    await prisma.event.updateMany({ where: { agentId: id }, data: { agentId: null } });
+    await prisma.agent.delete({ where: { id } });
     res.json({ message: 'Agent deleted successfully' });
   } catch (error) {
     console.error(error);

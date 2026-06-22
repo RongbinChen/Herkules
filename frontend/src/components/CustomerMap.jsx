@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
@@ -49,9 +49,28 @@ export default function CustomerMap({ customers, onSelect }) {
   const layerRef = useRef(null)
   const [error, setError] = useState('')
 
-  const located = customers.filter(
-    (c) => typeof c.latitude === 'number' && typeof c.longitude === 'number',
+  const located = useMemo(
+    () =>
+      customers.filter(
+        (c) => typeof c.latitude === 'number' && typeof c.longitude === 'number',
+      ),
+    [customers],
   )
+
+  // A stable signature of what the markers actually depend on, so the redraw
+  // effect only re-runs when coordinates/status change — not on every parent
+  // render (which would reset the user's pan/zoom via fitBounds).
+  const locatedKey = useMemo(
+    () => located.map((c) => `${c.id}:${c.latitude},${c.longitude}:${c.status}`).join('|'),
+    [located],
+  )
+
+  // Keep onSelect in a ref so marker handlers call the latest callback without
+  // making the (possibly inline) prop a redraw dependency.
+  const onSelectRef = useRef(onSelect)
+  useEffect(() => {
+    onSelectRef.current = onSelect
+  }, [onSelect])
 
   useEffect(() => {
     let cancelled = false
@@ -77,7 +96,7 @@ export default function CustomerMap({ customers, onSelect }) {
             `<strong>${c.name}</strong><br/>${c.status} · Tier ${c.tier}<br/>${visits} visit(s)` +
               (c.contactName ? `<br/>${c.contactName}` : ''),
           )
-          if (onSelect) marker.on('click', () => onSelect(c))
+          marker.on('click', () => onSelectRef.current?.(c))
           marker.addTo(layerRef.current)
           bounds.push([c.latitude, c.longitude])
         })
@@ -93,7 +112,8 @@ export default function CustomerMap({ customers, onSelect }) {
     return () => {
       cancelled = true
     }
-  }, [located, onSelect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locatedKey])
 
   // Tear down the map on unmount.
   useEffect(() => {

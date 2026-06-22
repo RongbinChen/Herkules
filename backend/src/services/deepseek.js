@@ -94,6 +94,13 @@ function extractJson(reply) {
 
 const nullish = v => (v == null || v === 'null' || v === '' ? null : String(v).trim());
 
+// Robust truthy check — LLMs sometimes emit the string "false"/"否" instead of
+// a JSON boolean, and !!"false" === true would wrongly keep an irrelevant item.
+const truthy = v =>
+  v === true ||
+  v === 1 ||
+  ['true', 'yes', '1', '是', '相关'].includes(String(v ?? '').trim().toLowerCase());
+
 /**
  * Single-call full analysis of a tender notice.
  * Returns { relevant, reason, summary, purchaser, winner, winningPrice, equipmentType }.
@@ -110,7 +117,7 @@ export async function analyzeProject(projectName, rawContent = '') {
     const parsed = extractJson(reply);
     if (parsed) {
       return {
-        relevant: !!parsed.relevant,
+        relevant: truthy(parsed.relevant),
         reason: nullish(parsed.reason) || '',
         summary: nullish(parsed.summary) || '',
         purchaser: nullish(parsed.purchaser),
@@ -140,7 +147,7 @@ export async function checkRelevance(projectName, rawContent = '') {
 
     const parsed = extractJson(reply);
     if (parsed) {
-      return { relevant: !!parsed.relevant, reason: parsed.reason || '' };
+      return { relevant: truthy(parsed.relevant), reason: parsed.reason || '' };
     }
     const relevant = /true|是|相关/i.test(reply);
     return { relevant, reason: reply.slice(0, 100) };
