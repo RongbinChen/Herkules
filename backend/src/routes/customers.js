@@ -2,8 +2,22 @@ import express from 'express';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { geocodeAddress } from '../services/geocode.js';
 
 const router = express.Router();
+
+// Fill latitude/longitude from the address when an address is given but
+// coordinates weren't entered manually, so the customer shows on the map.
+// Best-effort — leaves coords null if geocoding fails.
+async function applyGeocode(data) {
+  if (data.address && (data.latitude == null || data.longitude == null)) {
+    const coords = await geocodeAddress(data.address);
+    if (coords) {
+      data.latitude = coords.latitude;
+      data.longitude = coords.longitude;
+    }
+  }
+}
 
 const customerSchema = z.object({
   name: z.string().min(1),
@@ -59,6 +73,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const data = customerSchema.parse(req.body);
+    await applyGeocode(data);
     const customer = await prisma.customer.create({ data });
     res.status(201).json(customer);
   } catch (error) {
@@ -79,6 +94,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    await applyGeocode(data);
     const updated = await prisma.customer.update({ where: { id }, data });
     res.json(updated);
   } catch (error) {
