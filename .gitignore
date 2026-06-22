@@ -4,6 +4,7 @@
 
 .claude/
 .mcp.json
+.mcp.json.disabled
 .playwright-mcp/
 
 proxy/certs/
@@ -26,3 +27,8 @@ pnpm-debug.log*
 
 .DS_Store
 proxy/*.bak.*
+
+# Local scratch files (kept on disk, not committed)
+/app-screenshot.png
+/calendar-login.png
+/project-handoff-for-claude-code.txt
