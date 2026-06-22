@@ -50,6 +50,27 @@ function matchDate(text, re) {
 }
 
 /**
+ * Extract the announcement's PUBLISH date from detail-page text.
+ * Different announcement types carry the publish date under different labels;
+ * we try them in priority order. We deliberately do NOT fall back to "first
+ * date in body" — that grabs unrelated dates like Open-Time of Bids / deadlines.
+ * When no labeled date is found, return null and let the caller fall back to the
+ * list-page "Time" column (authoritative).
+ */
+export function extractPublishDate(body) {
+  return (
+    // New Tenders
+    matchDate(body, /released on www\.chinabidding\.com on\s*(\d{4}-\d{2}-\d{2})/i) ||
+    // Tender Awards / 中标结果
+    matchDate(body, /Data of Bidding Result[:：]\s*(\d{4}-\d{2}-\d{2})/i) ||
+    // Evaluation Results — use the END of the evaluation window (closest to publish)
+    matchDate(body, /Data of Evaluation Result[:：][^]*?-\s*(\d{4}-\d{2}-\d{2})/i) ||
+    matchDate(body, /Data of Evaluation Result[:：]\s*(\d{4}-\d{2}-\d{2})/i) ||
+    null
+  );
+}
+
+/**
  * Parse a Chinabidding detail page. We extract clean text from the main
  * content node first, then run label-based patterns against that text —
  * far more robust than matching raw HTML.
@@ -88,9 +109,7 @@ export function parseDetailPage(html, detailUrl) {
   const region = body.match(/Place of Implementation[:：]\s*(.+?)(?=\s*List of Products|\s*NO\.|$)/i);
   if (region) project.region = region[1].trim().slice(0, 80);
 
-  project.publishDate =
-    matchDate(body, /released on www\.chinabidding\.com on\s*(\d{4}-\d{2}-\d{2})/i) ||
-    matchDate(body, /(\d{4}-\d{2}-\d{2})/);
+  project.publishDate = extractPublishDate(body);
 
   project.deadline =
     matchDate(body, /Deadline for Submitting Bids[^:：]*[:：]\s*(\d{4}-\d{2}-\d{2})/i) ||
