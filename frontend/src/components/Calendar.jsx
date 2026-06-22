@@ -7,7 +7,7 @@ import interactionPlugin from '@fullcalendar/interaction'
 import listPlugin from '@fullcalendar/list'
 import { addWeeks, format, isSameDay, parseISO, startOfWeek } from 'date-fns'
 import { useAuth } from '../context/AuthContext'
-import { eventsAPI, holidaysAPI, usersAPI } from '../api/api'
+import { agentsAPI, customersAPI, eventsAPI, holidaysAPI, usersAPI } from '../api/api'
 import EventModal from './EventModal'
 import ProfileModal from './ProfileModal'
 import UserManagementModal from './UserManagementModal'
@@ -156,11 +156,13 @@ function formatEventTooltip(event) {
   const userName = event.extendedProps.userName || 'Unassigned'
   const title = event.title || 'Untitled activity'
   const notes = event.extendedProps.description?.trim() || 'No notes'
+  const customerName = event.extendedProps.customer?.name
   const start = event.start ? format(event.start, event.allDay ? 'MM/dd/yyyy' : 'MM/dd/yyyy hh:mm aa') : 'No start date'
   const end = event.end ? format(event.end, event.allDay ? 'MM/dd/yyyy' : 'MM/dd/yyyy hh:mm aa') : 'No end date'
   const duration = `${start} - ${end}`
+  const customerLine = customerName ? `\nCustomer: ${customerName}` : ''
 
-  return `User: ${userName}\nActivity: ${title}\nDuration: ${duration}\nNotes: ${notes}`
+  return `User: ${userName}\nActivity: ${title}${customerLine}\nDuration: ${duration}\nNotes: ${notes}`
 }
 
 function MiniMonth({ events, anchorDate, onJump, collapsed, onToggle }) {
@@ -424,6 +426,7 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
               listWeek: { buttonText: 'Agenda' },
             }}
             nowIndicator
+            noEventsContent="No events to display in the selected period"
             events={events}
             editable={canEditActivities}
             selectable={false}
@@ -448,6 +451,7 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
               const isTimeGridView = viewType === 'timeGridWeek' || viewType === 'timeGridDay'
               const startTimeText = !info.event.allDay && info.timeText ? info.timeText.split(' - ')[0] : ''
               const titleWithTime = startTimeText ? `${startTimeText} ${info.event.title}` : info.event.title
+              const customerName = info.event.extendedProps.customer?.name
 
               return (
                 <div className="fc-activity-card">
@@ -462,6 +466,11 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
                   {isTimeGridView && info.event.extendedProps.location && (
                     <div className="fc-activity-card__meta">
                       <span>{info.event.extendedProps.location}</span>
+                    </div>
+                  )}
+                  {(isTimeGridView || showStatus) && customerName && (
+                    <div className="fc-activity-card__meta">
+                      <span className="fc-activity-card__customer">{customerName}</span>
                     </div>
                   )}
                   {showStatus && (
@@ -490,7 +499,11 @@ export default function Calendar() {
   const isAdmin = user?.isAdmin === true
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
   const [allEvents, setAllEvents] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [users, setUsers] = useState([])
+  const [customers, setCustomers] = useState([])
+  const [agents, setAgents] = useState([])
   const [summary, setSummary] = useState([])
   const [holidayCalendars, setHolidayCalendars] = useState([])
   const [adminNotices, setAdminNotices] = useState([])
@@ -587,6 +600,16 @@ export default function Calendar() {
     setUsers(response.data)
   }
 
+  async function loadCustomers() {
+    const response = await customersAPI.getAll()
+    setCustomers(response.data)
+  }
+
+  async function loadAgents() {
+    const response = await agentsAPI.getAll()
+    setAgents(response.data)
+  }
+
   async function loadHolidayCalendars() {
     const response = await holidaysAPI.getCalendars()
     setHolidayCalendars(response.data)
@@ -608,12 +631,29 @@ export default function Calendar() {
     setSummary(response.data)
   }
 
+  async function loadInitialData() {
+    setIsLoading(true)
+    setLoadError(false)
+    try {
+      await Promise.all([
+        loadEvents(),
+        loadUsers(),
+        loadCustomers(),
+        loadAgents(),
+        loadHolidayCalendars(),
+        loadAdminNotices(),
+        loadSummary(),
+      ])
+    } catch (error) {
+      console.error('Failed to load calendar data', error)
+      setLoadError(true)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
-    loadEvents().catch((error) => console.error('Failed to fetch events', error))
-    loadUsers().catch((error) => console.error('Failed to fetch users', error))
-    loadHolidayCalendars().catch((error) => console.error('Failed to fetch holiday calendars', error))
-    loadAdminNotices().catch((error) => console.error('Failed to fetch admin notices', error))
-    loadSummary().catch((error) => console.error('Failed to fetch summary', error))
+    loadInitialData()
   }, [isAdmin])
 
   useEffect(() => {
@@ -791,6 +831,8 @@ export default function Calendar() {
       category: event.extendedProps.category,
       status: event.extendedProps.status,
       userId: event.extendedProps.userId,
+      customerId: event.extendedProps.customerId ?? null,
+      agentId: event.extendedProps.agentId ?? null,
       readOnly: !canEditTargetEvent,
     })
     setModalOpen(true)
@@ -838,6 +880,8 @@ export default function Calendar() {
         category: event.extendedProps.category,
         status: event.extendedProps.status,
         userId: event.extendedProps.userId,
+        customerId: event.extendedProps.customerId ?? null,
+        agentId: event.extendedProps.agentId ?? null,
       })
       await Promise.all([loadEvents(), loadSummary()])
     } catch (error) {
@@ -1113,22 +1157,18 @@ export default function Calendar() {
         <header className="banner-simple relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 shadow-sm sm:rounded-2xl sm:px-6 sm:py-4 md:px-7">
           <div className="relative flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-4xl min-w-0">
-              <div className="inline-flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
-                <div className="flex items-center rounded-lg bg-white px-2 py-1.5">
-                  <img
-                    src="/brand/hrc.png"
-                    alt="HRC logo"
-                    className="h-8 w-auto object-contain sm:h-9"
-                  />
-                </div>
-                <div className="h-8 w-px bg-slate-200 sm:h-9" />
-                <div className="flex items-center rounded-lg bg-white px-2 py-1.5">
-                  <img
-                    src="/brand/wasi.png"
-                    alt="WASI logo"
-                    className="h-8 w-auto object-contain sm:h-9"
-                  />
-                </div>
+              <div className="inline-flex max-w-full flex-nowrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:gap-3 sm:px-4">
+                <img
+                  src="/brand/hrc.png"
+                  alt="HERKULES logo"
+                  className="h-6 w-auto min-w-0 shrink object-contain sm:h-9"
+                />
+                <div className="h-6 w-px shrink-0 bg-slate-200 sm:h-9" />
+                <img
+                  src="/brand/wasi.png"
+                  alt="WALDRICH SIEGEN logo"
+                  className="h-6 w-auto min-w-0 shrink object-contain sm:h-9"
+                />
               </div>
 
               <div className="mt-3 space-y-1">
@@ -1313,7 +1353,24 @@ export default function Calendar() {
               />
             </div>
 
-            {splitCalendarView ? (
+            {loadError ? (
+              <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+                <p className="text-base font-semibold text-slate-700">Unable to load calendar data</p>
+                <p className="max-w-sm text-sm text-slate-500">Something went wrong while fetching activities. Check your connection and try again.</p>
+                <button
+                  type="button"
+                  onClick={loadInitialData}
+                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : isLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+                <span className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
+                <p className="text-sm font-medium text-slate-500">Loading activities…</p>
+              </div>
+            ) : splitCalendarView ? (
               <div className="space-y-4">
                 <div className="workspace-toolbar flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex items-center gap-2">
@@ -1426,6 +1483,11 @@ export default function Calendar() {
                                       <span>{info.event.extendedProps.location}</span>
                                     </div>
                                   )}
+                                  {info.event.extendedProps.customer?.name && (
+                                    <div className="fc-activity-card__meta">
+                                      <span className="fc-activity-card__customer">{info.event.extendedProps.customer.name}</span>
+                                    </div>
+                                  )}
                                 </div>
                               )
                             }}
@@ -1464,6 +1526,7 @@ export default function Calendar() {
                   listWeek: { buttonText: 'Agenda' },
                 }}
                 nowIndicator
+                noEventsContent="No events to display in the selected period"
                 events={calendarEventsWithSelection}
                 editable={canEditActivities}
                 selectable={false}
@@ -1493,6 +1556,7 @@ export default function Calendar() {
                   const isTimeGridView = normalizedView === 'timeGridWeek' || normalizedView === 'timeGridDay'
                   const startTimeText = !info.event.allDay && info.timeText ? info.timeText.split(' - ')[0] : ''
                   const titleWithTime = startTimeText ? `${startTimeText} ${info.event.title}` : info.event.title
+                  const customerName = info.event.extendedProps.customer?.name
 
                   return (
                     <div className="fc-activity-card">
@@ -1507,6 +1571,11 @@ export default function Calendar() {
                       {isTimeGridView && info.event.extendedProps.location && (
                         <div className="fc-activity-card__meta">
                           <span>{info.event.extendedProps.location}</span>
+                        </div>
+                      )}
+                      {(isTimeGridView || showStatus) && customerName && (
+                        <div className="fc-activity-card__meta">
+                          <span className="fc-activity-card__customer">{customerName}</span>
                         </div>
                       )}
                       {showStatus && (
@@ -1533,6 +1602,10 @@ export default function Calendar() {
         onDelete={handleDeleteActivity}
         event={selectedEvent}
         users={users}
+        customers={customers}
+        onCustomersChanged={loadCustomers}
+        agents={agents}
+        onAgentsChanged={loadAgents}
         isAdmin={isAdmin}
         currentUser={user}
         readOnly={Boolean(selectedEvent?.readOnly)}

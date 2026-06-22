@@ -18,6 +18,11 @@ function Dashboard() {
           <h2>ChinaBidding</h2>
           <p>Tender Information - Scrape and analyze China bidding website projects</p>
         </div>
+        <div className="dashboard-card" onClick={() => navigate('/customers')}>
+          <div className="card-icon customer-icon">🤝</div>
+          <h2>Customers</h2>
+          <p>CRM - Manage customers, tiers, tags, visit history and map distribution</p>
+        </div>
       </div>
     </div>
   );
