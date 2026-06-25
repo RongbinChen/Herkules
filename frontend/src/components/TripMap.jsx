@@ -110,11 +110,11 @@ export default function TripMap({ stops, height = 460 }) {
 
   return (
     <div className="relative">
-      <div className="absolute right-3 top-3 z-[10]">
+      <div className="absolute right-3 top-3 z-[1100]">
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-sky-500"
+          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-md outline-none transition focus:border-sky-500"
           title="Map source"
         >
           {Object.entries(PROVIDERS).map(([key, cfg]) => (
@@ -125,7 +125,7 @@ export default function TripMap({ stops, height = 460 }) {
         </select>
       </div>
       {error && (
-        <div className="absolute inset-x-0 top-0 z-[5] m-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200">
+        <div className="absolute inset-x-0 top-0 z-[1100] m-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200">
           {error}
         </div>
       )}
