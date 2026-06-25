@@ -8,11 +8,18 @@ const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 // Tile providers. AMap (高德) is the China-accessible default; OSM is the
 // international fallback. `crs` says which datum the tiles are drawn in.
 export const PROVIDERS = {
+  esri: {
+    label: 'Esri (English)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: [],
+    attribution: 'Tiles &copy; Esri',
+    crs: 'wgs84',
+  },
   amap: {
-    label: '高德地图',
+    label: 'AMap (高德)',
     url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
     subdomains: ['1', '2', '3', '4'],
-    attribution: '&copy; 高德地图 AutoNavi',
+    attribution: '&copy; AMap AutoNavi',
     crs: 'gcj02',
   },
   osm: {

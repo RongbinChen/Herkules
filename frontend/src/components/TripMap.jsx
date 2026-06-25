@@ -15,7 +15,7 @@ export default function TripMap({ stops, height = 460 }) {
   const [error, setError] = useState('')
 
   const [provider, setProvider] = useState(
-    () => localStorage.getItem('tripMapProvider') || 'amap',
+    () => localStorage.getItem('tripMapProvider') || 'esri',
   )
   useEffect(() => {
     localStorage.setItem('tripMapProvider', provider)
@@ -48,7 +48,7 @@ export default function TripMap({ stops, height = 460 }) {
           mapRef.current = L.map(containerRef.current, { scrollWheelZoom: true }).setView([35, 110], 4)
           layerRef.current = L.layerGroup().addTo(mapRef.current)
         }
-        const cfg = PROVIDERS[provider] || PROVIDERS.amap
+        const cfg = PROVIDERS[provider] || PROVIDERS.esri
         if (tileProviderRef.current !== provider) {
           if (tileRef.current) tileRef.current.remove()
           tileRef.current = L.tileLayer(cfg.url, {
@@ -69,7 +69,7 @@ export default function TripMap({ stops, height = 460 }) {
           path.push([mlat, mlng])
           const marker = L.marker([mlat, mlng], { icon: numberedIcon(L, ROUTE_COLOR, i + 1) })
           const when = s.plannedArrival
-            ? new Date(s.plannedArrival).toLocaleString()
+            ? new Date(s.plannedArrival).toLocaleString('en-US')
             : ''
           marker.bindPopup(
             `<strong>${i + 1}. ${s.customer.name}</strong>` +
@@ -114,7 +114,7 @@ export default function TripMap({ stops, height = 460 }) {
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
           className="rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-sky-500"
-          title="选择地图源"
+          title="Map source"
         >
           {Object.entries(PROVIDERS).map(([key, cfg]) => (
             <option key={key} value={key}>
@@ -135,7 +135,7 @@ export default function TripMap({ stops, height = 460 }) {
       />
       {located.length === 0 && (
         <p className="mt-3 text-center text-sm text-slate-500">
-          行程中的客户暂无坐标，无法在地图上显示。请为客户补充地址。
+          No stops have coordinates yet. Add an address to each customer to plot them here.
         </p>
       )}
     </div>

@@ -2,7 +2,7 @@
 // share page so both render the itinerary identically.
 export default function TripItinerary({ stops }) {
   if (!stops || stops.length === 0) {
-    return <p className="text-sm text-slate-400">该行程暂无站点。</p>
+    return <p className="text-sm text-slate-400">This trip has no stops.</p>
   }
   return (
     <ol className="space-y-3">
@@ -17,11 +17,11 @@ export default function TripItinerary({ stops }) {
             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-400">
               {s.customer.contactName && (
                 <span>
-                  联系人：{s.customer.contactName}
+                  Contact: {s.customer.contactName}
                   {s.customer.contactPhone ? ` · ${s.customer.contactPhone}` : ''}
                 </span>
               )}
-              {s.plannedArrival && <span>建议到访：{new Date(s.plannedArrival).toLocaleString()}</span>}
+              {s.plannedArrival && <span>Arrival: {new Date(s.plannedArrival).toLocaleString('en-US')}</span>}
             </div>
           </div>
         </li>

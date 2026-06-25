@@ -146,10 +146,10 @@ export default function CustomerList() {
           <button
             onClick={() => setTripOpen(true)}
             disabled={filtered.length === 0}
-            title="将当前筛选出的客户安排成一次行程"
+            title="Schedule the currently filtered customers into a trip"
             className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 disabled:opacity-50"
           >
-            🗺️ 安排行程
+            🗺️ Schedule trip
           </button>
           <button
             onClick={openCreate}

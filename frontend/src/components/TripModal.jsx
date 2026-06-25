@@ -73,9 +73,9 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
 
   async function handleSubmit(event) {
     event.preventDefault()
-    if (!title.trim()) return setError('请填写行程标题')
-    if (selectedIds.length === 0) return setError('请至少选择一个客户')
-    if (new Date(endTime) <= new Date(startTime)) return setError('结束时间必须晚于开始时间')
+    if (!title.trim()) return setError('Title is required')
+    if (selectedIds.length === 0) return setError('Select at least one customer')
+    if (new Date(endTime) <= new Date(startTime)) return setError('End must be after start')
     setSaving(true)
     setError('')
     const payload = {
@@ -94,7 +94,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
     } catch (err) {
       console.error('Failed to save trip', err)
       const detail = err?.response?.data?.error
-      setError(typeof detail === 'string' ? detail : '保存行程失败')
+      setError(typeof detail === 'string' ? detail : 'Failed to save trip')
     } finally {
       setSaving(false)
     }
@@ -107,7 +107,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Trip</p>
             <h2 className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl">
-              {trip ? '编辑行程' : '安排行程'}
+              {trip ? 'Edit trip' : 'Schedule trip'}
             </h2>
           </div>
           <button onClick={onClose} className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
@@ -117,15 +117,15 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
 
         <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">行程标题</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="例如：华东客户拜访" required />
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Trip title</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="e.g. East China customer visits" required />
           </label>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">负责人（同事）</span>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">Assignee (colleague)</span>
               <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={inputCls}>
-                <option value="">— 未指定 —</option>
+                <option value="">— Unassigned —</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
@@ -136,29 +136,29 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">开始时间</span>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">Start</span>
               <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputCls} required />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">结束时间</span>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">End</span>
               <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={inputCls} required />
             </label>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">选择客户（拜访点）</span>
-              <span className="text-xs text-slate-400">已选 {selectedIds.length}</span>
+              <span className="text-sm font-medium text-slate-700">Select customers (stops)</span>
+              <span className="text-xs text-slate-400">{selectedIds.length} selected</span>
             </div>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索客户名称、地址、联系人..."
+              placeholder="Search name, address, contact..."
               className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white"
             />
             <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200">
               {filtered.length === 0 ? (
-                <p className="px-3 py-6 text-center text-sm text-slate-400">无匹配客户</p>
+                <p className="px-3 py-6 text-center text-sm text-slate-400">No matching customers</p>
               ) : (
                 filtered.map((c) => {
                   const checked = selectedIds.includes(c.id)
@@ -174,8 +174,8 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
                         {c.address && <span className="block truncate text-xs text-slate-400">{c.address}</span>}
                       </span>
                       {!hasCoords && (
-                        <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600" title="无坐标，不会显示在地图上">
-                          无坐标
+                        <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600" title="No coordinates — won't appear on the map">
+                          no coords
                         </span>
                       )}
                     </label>
@@ -183,17 +183,17 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
                 })
               )}
             </div>
-            <p className="mt-1.5 text-xs text-slate-400">行程顺序将按地理距离自动优化。</p>
+            <p className="mt-1.5 text-xs text-slate-400">Stops are auto-ordered by geographic distance.</p>
           </div>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">备注</span>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} placeholder="行程目的、注意事项..." />
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Notes</span>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} placeholder="Purpose, notes for the trip..." />
           </label>
 
           <label className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
             <input type="checkbox" checked={hidePhone} onChange={(e) => setHidePhone(e.target.checked)} className="h-4 w-4 accent-sky-600" />
-            <span className="text-sm text-slate-700">公开分享页隐藏客户联系电话</span>
+            <span className="text-sm text-slate-700">Hide customer phone on the public share page</span>
           </label>
 
           {error && <p className="text-sm font-medium text-red-600">{error}</p>}
@@ -201,10 +201,10 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <button onClick={onClose} type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-            取消
+            Cancel
           </button>
           <button onClick={handleSubmit} disabled={saving} className="rounded-xl bg-sky-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60">
-            {saving ? '保存中...' : trip ? '保存修改' : '生成行程'}
+            {saving ? 'Saving...' : trip ? 'Save changes' : 'Create trip'}
           </button>
         </div>
       </div>

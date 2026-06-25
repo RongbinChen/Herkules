@@ -47,24 +47,37 @@ export default function TripDetail() {
 
   const shareUrl = trip ? `${window.location.origin}/trip/share/${trip.shareToken}` : ''
 
+  // Spread arrival times evenly across the trip window, in current order — so
+  // reordering stops automatically re-sequences the suggested dates.
+  function redistribute(list) {
+    if (!trip || list.length === 0) return list
+    const start = new Date(trip.startTime).getTime()
+    const span = new Date(trip.endTime).getTime() - start
+    const n = list.length
+    return list.map((s, i) => ({
+      ...s,
+      plannedArrival: new Date(start + (span * i) / n).toISOString(),
+    }))
+  }
+
   async function copyShare() {
     try {
       await navigator.clipboard.writeText(shareUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      window.prompt('复制此分享链接：', shareUrl)
+      window.prompt('Copy this link:', shareUrl)
     }
   }
 
   async function handleDelete() {
-    if (!window.confirm(`删除行程「${trip.title}」？此操作不可撤销。`)) return
+    if (!window.confirm(`Delete trip “${trip.title}”? This cannot be undone.`)) return
     try {
       await tripsAPI.delete(trip.id)
       navigate('/trips')
     } catch (err) {
       console.error('Failed to delete trip', err)
-      window.alert('删除失败')
+      window.alert('Delete failed')
     }
   }
 
@@ -73,7 +86,8 @@ export default function TripDetail() {
     if (j < 0 || j >= stops.length) return
     const next = [...stops]
     ;[next[index], next[j]] = [next[j], next[index]]
-    setStops(next)
+    // Re-sequence suggested arrival dates to follow the new order.
+    setStops(redistribute(next))
     setDirty(true)
   }
 
@@ -110,7 +124,7 @@ export default function TripDetail() {
       setDirty(false)
     } catch (err) {
       console.error('Failed to save stops', err)
-      window.alert('保存调整失败')
+      window.alert('Failed to save changes')
     } finally {
       setSavingStops(false)
     }
@@ -120,9 +134,9 @@ export default function TripDetail() {
   if (!trip) {
     return (
       <div className="mx-auto max-w-[1100px] p-5">
-        <p className="py-16 text-center text-slate-400">行程不存在。</p>
+        <p className="py-16 text-center text-slate-400">Trip not found.</p>
         <div className="text-center">
-          <button onClick={() => navigate('/trips')} className="text-sky-600 hover:underline">← 返回行程列表</button>
+          <button onClick={() => navigate('/trips')} className="text-sky-600 hover:underline">← Back to trips</button>
         </div>
       </div>
     )
@@ -136,29 +150,29 @@ export default function TripDetail() {
             onClick={() => navigate('/trips')}
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
           >
-            ← 行程列表
+            ← Trips
           </button>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">{trip.title}</h1>
             <p className="text-sm text-slate-500">
-              {new Date(trip.startTime).toLocaleString()} → {new Date(trip.endTime).toLocaleString()}
-              {trip.assignee?.name ? ` · 负责人 ${trip.assignee.name}` : ''}
+              {new Date(trip.startTime).toLocaleString('en-US')} → {new Date(trip.endTime).toLocaleString('en-US')}
+              {trip.assignee?.name ? ` · Assignee ${trip.assignee.name}` : ''}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setEditOpen(true)} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50">
-            编辑
+            Edit
           </button>
           <button onClick={handleDelete} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50">
-            删除
+            Delete
           </button>
         </div>
       </div>
 
       {/* Share link */}
       <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-        <span className="text-sm font-semibold text-sky-700">公开分享链接</span>
+        <span className="text-sm font-semibold text-sky-700">Public share link</span>
         <input
           readOnly
           value={shareUrl}
@@ -166,11 +180,11 @@ export default function TripDetail() {
           className="min-w-[220px] flex-1 rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-sm text-slate-600 outline-none"
         />
         <button onClick={copyShare} className="rounded-lg bg-sky-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-sky-700">
-          {copied ? '已复制 ✓' : '复制链接'}
+          {copied ? 'Copied ✓' : 'Copy link'}
         </button>
         <p className="w-full text-xs text-sky-600/80">
-          任何人通过此链接无需登录即可查看行程与地图（默认高德地图，国内可访问）。
-          {trip.hidePhoneOnShare ? '联系电话已对外隐藏。' : ''}
+          Anyone with this link can view the trip and map without logging in (English map by default; AMap available for China).
+          {trip.hidePhoneOnShare ? ' Phone numbers are hidden from the public page.' : ''}
         </p>
       </div>
 
@@ -184,23 +198,23 @@ export default function TripDetail() {
           )}
 
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">拜访顺序 / 时间（可调整）</h2>
+            <h2 className="text-sm font-semibold text-slate-700">Visit order / times (editable)</h2>
             {dirty && (
               <div className="flex items-center gap-2">
-                <button onClick={() => load()} className="text-xs font-semibold text-slate-500 hover:underline">重置</button>
+                <button onClick={() => load()} className="text-xs font-semibold text-slate-500 hover:underline">Reset</button>
                 <button
                   onClick={saveStops}
                   disabled={savingStops}
                   className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
                 >
-                  {savingStops ? '保存中...' : '保存调整'}
+                  {savingStops ? 'Saving...' : 'Save changes'}
                 </button>
               </div>
             )}
           </div>
 
           {stops.length === 0 ? (
-            <p className="text-sm text-slate-400">该行程暂无站点。</p>
+            <p className="text-sm text-slate-400">This trip has no stops.</p>
           ) : (
             <ol className="space-y-3">
               {stops.map((s, i) => (
@@ -213,12 +227,12 @@ export default function TripDetail() {
                     {s.customer.address && <p className="mt-0.5 text-sm text-slate-500">{s.customer.address}</p>}
                     {s.customer.contactName && (
                       <p className="mt-0.5 text-xs text-slate-400">
-                        联系人：{s.customer.contactName}
+                        Contact: {s.customer.contactName}
                         {s.customer.contactPhone ? ` · ${s.customer.contactPhone}` : ''}
                       </p>
                     )}
                     <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                      建议到访
+                      Arrival
                       <input
                         type="datetime-local"
                         value={toLocalInput(s.plannedArrival)}
@@ -231,7 +245,7 @@ export default function TripDetail() {
                     <button
                       onClick={() => moveStop(i, -1)}
                       disabled={i === 0}
-                      title="上移"
+                      title="Move up"
                       className="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 transition hover:bg-slate-50 disabled:opacity-30"
                     >
                       ▲
@@ -239,7 +253,7 @@ export default function TripDetail() {
                     <button
                       onClick={() => moveStop(i, 1)}
                       disabled={i === stops.length - 1}
-                      title="下移"
+                      title="Move down"
                       className="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 transition hover:bg-slate-50 disabled:opacity-30"
                     >
                       ▼

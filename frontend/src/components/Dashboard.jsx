@@ -26,7 +26,7 @@ function Dashboard() {
         <div className="dashboard-card" onClick={() => navigate('/trips')}>
           <div className="card-icon trip-icon">🗺️</div>
           <h2>Trips</h2>
-          <p>行程安排 - 选择客户自动生成带地图的拜访行程，可分享给任何人</p>
+          <p>Itinerary planning - pick customers to auto-generate a site-visit trip with map, shareable with anyone</p>
         </div>
       </div>
     </div>
