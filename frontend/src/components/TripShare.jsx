@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { tripsAPI } from '../api/api'
 import TripMap from './TripMap'
 import TripItinerary from './TripItinerary'
+import TripPlanView from './TripPlanView'
 
 // Public, login-free itinerary view reached via /trip/share/:token.
 export default function TripShare() {
@@ -56,6 +57,12 @@ export default function TripShare() {
         <div className="mb-5">
           <TripMap stops={trip.stops} height={420} />
         </div>
+
+        {(trip.itinerary?.days?.length || (Array.isArray(trip.flights) && trip.flights.length)) && (
+          <div className="mb-6">
+            <TripPlanView trip={trip} />
+          </div>
+        )}
 
         <h2 className="mb-3 text-lg font-semibold text-slate-800">Visit order ({trip.stops?.length || 0} stops)</h2>
         <TripItinerary stops={trip.stops} />

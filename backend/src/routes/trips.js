@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { planItinerary } from '../services/tripPlanner.js';
 
 const router = express.Router();
 
@@ -10,7 +11,17 @@ const stopInputSchema = z.object({
   customerId: z.number().int(),
   order: z.number().int().optional(),
   plannedArrival: z.string().nullable().optional(),
+  priority: z.enum(['PRIORITY', 'NORMAL', 'BACKUP']).nullable().optional(),
+  visitDuration: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+});
+
+const flightSchema = z.object({
+  date: z.string().optional(),
+  flightNo: z.string().optional(),
+  routing: z.string().optional(),
+  time: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 const tripSchema = z
@@ -21,6 +32,8 @@ const tripSchema = z
     endTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid endTime'),
     assigneeId: z.number().int().nullable().optional(),
     hidePhoneOnShare: z.boolean().optional(),
+    flights: z.array(flightSchema).optional(),
+    constraints: z.string().nullable().optional(),
     // Provide either customerIds (auto-ordered by distance) OR explicit stops
     // (manual order + arrival times). stops wins when both are present.
     customerIds: z.array(z.number().int()).optional(),
@@ -118,6 +131,8 @@ async function buildManualStops(stops) {
       s.plannedArrival && !Number.isNaN(Date.parse(s.plannedArrival))
         ? new Date(s.plannedArrival)
         : null,
+    priority: s.priority ?? 'NORMAL',
+    visitDuration: s.visitDuration ?? null,
     notes: s.notes ?? null,
   }));
 }
@@ -165,6 +180,8 @@ router.get('/share/:token', async (req, res) => {
         startTime: true,
         endTime: true,
         hidePhoneOnShare: true,
+        flights: true,
+        itinerary: true,
         assignee: { select: { name: true } },
         stops: {
           orderBy: { order: 'asc' },
@@ -258,6 +275,8 @@ router.post('/', authenticateToken, async (req, res) => {
         endTime: end,
         assigneeId: data.assigneeId ?? null,
         hidePhoneOnShare: data.hidePhoneOnShare ?? false,
+        flights: data.flights ?? undefined,
+        constraints: data.constraints ?? undefined,
         createdById: req.user.userId,
         shareToken: shareToken(),
         stops: { create: stops },
@@ -300,6 +319,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
           endTime: end,
           assigneeId: data.assigneeId ?? null,
           hidePhoneOnShare: data.hidePhoneOnShare ?? false,
+          flights: data.flights ?? undefined,
+          constraints: data.constraints ?? undefined,
           stops: { create: stops },
         },
         include: stopInclude,
@@ -312,6 +333,28 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
     console.error(error);
     res.status(500).json({ error: 'Failed to update trip' });
+  }
+});
+
+// Generate the day-by-day itinerary with DeepSeek from the trip's customers,
+// dates, flights and constraints.
+router.post('/:id/plan', authenticateToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const trip = await prisma.trip.findUnique({ where: { id }, include: stopInclude });
+    if (!trip) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+    const { itinerary, model } = await planItinerary(trip);
+    const updated = await prisma.trip.update({
+      where: { id },
+      data: { itinerary, itineraryModel: model, itineraryAt: new Date() },
+      include: stopInclude,
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('[trips] plan error:', error.message);
+    res.status(502).json({ error: error.message || 'Failed to generate itinerary' });
   }
 });
 

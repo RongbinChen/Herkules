@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { tripsAPI } from '../api/api'
 import TripMap from './TripMap'
 import TripModal from './TripModal'
+import TripPlanView from './TripPlanView'
 
 // datetime-local needs "YYYY-MM-DDTHH:mm" in local time.
 function toLocalInput(value) {
@@ -24,6 +25,8 @@ export default function TripDetail() {
   const [stops, setStops] = useState([])
   const [dirty, setDirty] = useState(false)
   const [savingStops, setSavingStops] = useState(false)
+  const [planning, setPlanning] = useState(false)
+  const [planError, setPlanError] = useState('')
 
   async function load() {
     setLoading(true)
@@ -101,6 +104,31 @@ export default function TripDetail() {
     setDirty(true)
   }
 
+  function setStopField(index, field, value) {
+    const next = [...stops]
+    next[index] = { ...next[index], [field]: value }
+    setStops(next)
+    setDirty(true)
+  }
+
+  async function generateItinerary() {
+    setPlanning(true)
+    setPlanError('')
+    try {
+      // Persist any unsaved order/priority/duration edits first so the AI sees them.
+      if (dirty) await saveStops()
+      const res = await tripsAPI.plan(trip.id)
+      setTrip(res.data)
+      setStops(res.data.stops || [])
+    } catch (err) {
+      console.error('Failed to generate itinerary', err)
+      const detail = err?.response?.data?.error
+      setPlanError(typeof detail === 'string' ? detail : 'Failed to generate itinerary')
+    } finally {
+      setPlanning(false)
+    }
+  }
+
   async function saveStops() {
     setSavingStops(true)
     try {
@@ -115,6 +143,8 @@ export default function TripDetail() {
           customerId: s.customer.id,
           order: i,
           plannedArrival: s.plannedArrival,
+          priority: s.priority ?? 'NORMAL',
+          visitDuration: s.visitDuration ?? null,
           notes: s.notes ?? null,
         })),
       }
@@ -231,15 +261,38 @@ export default function TripDetail() {
                         {s.customer.contactPhone ? ` · ${s.customer.contactPhone}` : ''}
                       </p>
                     )}
-                    <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                      Arrival
-                      <input
-                        type="datetime-local"
-                        value={toLocalInput(s.plannedArrival)}
-                        onChange={(e) => setArrival(i, e.target.value)}
-                        className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
-                      />
-                    </label>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500">
+                      <label className="flex items-center gap-1.5">
+                        Arrival
+                        <input
+                          type="datetime-local"
+                          value={toLocalInput(s.plannedArrival)}
+                          onChange={(e) => setArrival(i, e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        Priority
+                        <select
+                          value={s.priority || 'NORMAL'}
+                          onChange={(e) => setStopField(i, 'priority', e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
+                        >
+                          <option value="PRIORITY">Priority</option>
+                          <option value="NORMAL">Normal</option>
+                          <option value="BACKUP">Backup</option>
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        Duration
+                        <input
+                          value={s.visitDuration || ''}
+                          onChange={(e) => setStopField(i, 'visitDuration', e.target.value)}
+                          placeholder="1 day"
+                          className="w-24 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
+                        />
+                      </label>
+                    </div>
                   </div>
                   <div className="flex flex-col items-center justify-center gap-1">
                     <button
@@ -264,6 +317,39 @@ export default function TripDetail() {
             </ol>
           )}
         </div>
+      </div>
+
+      {/* AI-generated itinerary */}
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Itinerary plan</h2>
+            <p className="text-xs text-slate-400">
+              {trip.itineraryAt
+                ? `Generated by ${trip.itineraryModel || 'DeepSeek'} · ${new Date(trip.itineraryAt).toLocaleString('en-US')}`
+                : 'Generate a day-by-day plan from the customers, dates, flights and constraints.'}
+            </p>
+          </div>
+          <button
+            onClick={generateItinerary}
+            disabled={planning}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {planning ? 'Generating… (~30s)' : trip.itinerary ? '↻ Regenerate with AI' : '✨ Generate with AI'}
+          </button>
+        </div>
+        {planError && <p className="mb-3 text-sm font-medium text-red-600">{planError}</p>}
+        {planning ? (
+          <p className="py-8 text-center text-sm text-slate-400">
+            DeepSeek is arranging the itinerary… this can take 20–60 seconds.
+          </p>
+        ) : trip.itinerary || (Array.isArray(trip.flights) && trip.flights.length) ? (
+          <TripPlanView trip={trip} />
+        ) : (
+          <p className="py-6 text-center text-sm text-slate-400">
+            No plan yet. Set priorities/durations above, add flights in Edit, then click “Generate with AI”.
+          </p>
+        )}
       </div>
 
       <TripModal isOpen={editOpen} trip={trip} onClose={() => setEditOpen(false)} onSaved={() => load()} />

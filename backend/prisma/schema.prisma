@@ -74,6 +74,11 @@ model Trip {
   endTime          DateTime
   hidePhoneOnShare Boolean    @default(false) // 公开分享页是否隐藏联系电话
   shareToken       String     @unique // 公开分享令牌（免登录访问）
+  flights          Json?      // 可选航班：[{date, flightNo, routing, time, notes}]
+  constraints      String?    // 规划约束/偏好（自由文本，喂给模型）
+  itinerary        Json?      // 模型生成：{ days:[{date,day,location,program,logistics}], notes:[...] }
+  itineraryModel   String?    // 生成所用模型
+  itineraryAt      DateTime?  // 生成时间
   createdById Int
   createdBy   User       @relation("TripCreator", fields: [createdById], references: [id], onDelete: Cascade)
   assigneeId  Int?
@@ -94,6 +99,8 @@ model TripStop {
   customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   order           Int       @default(0) // 拜访顺序（0-based）
   plannedArrival  DateTime? // 建议到访时间（按起止时间均分）
+  priority        String?   @default("NORMAL") // PRIORITY / NORMAL / BACKUP
+  visitDuration   String?   // 拜访时长提示，如 "half day" / "1 day" / "1-1.5 days"
   notes           String?
 
   @@index([tripId])

@@ -19,6 +19,8 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
   const [endTime, setEndTime] = useState('')
   const [notes, setNotes] = useState('')
   const [hidePhone, setHidePhone] = useState(false)
+  const [flights, setFlights] = useState([])
+  const [constraints, setConstraints] = useState('')
   const [selectedIds, setSelectedIds] = useState([])
 
   const [customers, setCustomers] = useState([])
@@ -42,6 +44,8 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       setEndTime(toLocalInput(trip.endTime))
       setNotes(trip.notes || '')
       setHidePhone(trip.hidePhoneOnShare === true)
+      setFlights(Array.isArray(trip.flights) ? trip.flights : [])
+      setConstraints(trip.constraints || '')
       setSelectedIds((trip.stops || []).map((s) => s.customer.id))
     } else {
       const now = new Date()
@@ -52,6 +56,8 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       setEndTime(toLocalInput(tomorrow))
       setNotes('')
       setHidePhone(false)
+      setFlights([])
+      setConstraints('')
       setSelectedIds(initialCustomerIds)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,6 +77,16 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
+  function addFlight() {
+    setFlights((prev) => [...prev, { date: '', flightNo: '', routing: '', time: '', notes: '' }])
+  }
+  function updateFlight(i, field, value) {
+    setFlights((prev) => prev.map((f, idx) => (idx === i ? { ...f, [field]: value } : f)))
+  }
+  function removeFlight(i) {
+    setFlights((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
     if (!title.trim()) return setError('Title is required')
@@ -83,6 +99,8 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       notes: notes.trim() || undefined,
       assigneeId: assigneeId ? Number(assigneeId) : null,
       hidePhoneOnShare: hidePhone,
+      flights: flights.filter((f) => f.flightNo || f.routing || f.date),
+      constraints: constraints.trim() || null,
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
       customerIds: selectedIds,
@@ -185,6 +203,37 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
             </div>
             <p className="mt-1.5 text-xs text-slate-400">Stops are auto-ordered by geographic distance.</p>
           </div>
+
+          {/* Flights (optional) */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Flights <span className="text-slate-400">(optional)</span></span>
+              <button type="button" onClick={addFlight} className="text-xs font-semibold text-sky-600 hover:underline">+ Add flight</button>
+            </div>
+            {flights.length > 0 && (
+              <div className="space-y-2">
+                {flights.map((f, i) => (
+                  <div key={i} className="rounded-xl border border-slate-200 p-2.5">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <input value={f.date || ''} onChange={(e) => updateFlight(i, 'date', e.target.value)} placeholder="Date e.g. 8 Jul" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                      <input value={f.flightNo || ''} onChange={(e) => updateFlight(i, 'flightNo', e.target.value)} placeholder="Flight e.g. CA4508" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                      <input value={f.routing || ''} onChange={(e) => updateFlight(i, 'routing', e.target.value)} placeholder="Routing e.g. → CTU" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                      <input value={f.time || ''} onChange={(e) => updateFlight(i, 'time', e.target.value)} placeholder="Time e.g. 06:55" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input value={f.notes || ''} onChange={(e) => updateFlight(i, 'notes', e.target.value)} placeholder="Notes" className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                      <button type="button" onClick={() => removeFlight(i)} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Planning constraints <span className="text-slate-400">(optional, for AI)</span></span>
+            <textarea value={constraints} onChange={(e) => setConstraints(e.target.value)} rows={2} className={inputCls} placeholder="e.g. Priority client needs 1.5 days; factories closed on weekends; pick one Shanghai client..." />
+          </label>
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Notes</span>

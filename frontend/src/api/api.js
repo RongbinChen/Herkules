@@ -69,6 +69,7 @@ export const tripsAPI = {
   create: (data) => api.post('/trips', data),
   update: (id, data) => api.put(`/trips/${id}`, data),
   delete: (id) => api.delete(`/trips/${id}`),
+  plan: (id) => api.post(`/trips/${id}/plan`),
   // Public — no auth required (interceptor simply omits the header when logged out).
   getShared: (token) => api.get(`/trips/share/${token}`),
 }
