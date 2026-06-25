@@ -1157,21 +1157,7 @@ export default function Calendar() {
         <header className="banner-simple relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 shadow-sm sm:rounded-2xl sm:px-6 sm:py-4 md:px-7">
           <div className="relative flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-4xl min-w-0">
-              <div className="inline-flex max-w-full flex-nowrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:gap-3 sm:px-4">
-                <img
-                  src="/brand/hrc.png"
-                  alt="HERKULES logo"
-                  className="h-6 w-auto min-w-0 shrink object-contain sm:h-9"
-                />
-                <div className="h-6 w-px shrink-0 bg-slate-200 sm:h-9" />
-                <img
-                  src="/brand/wasi.png"
-                  alt="WALDRICH SIEGEN logo"
-                  className="h-6 w-auto min-w-0 shrink object-contain sm:h-9"
-                />
-              </div>
-
-              <div className="mt-3 space-y-1">
+              <div className="space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Activity Tracker</p>
                 <p className="max-w-3xl text-[1rem] font-medium leading-6 text-slate-700 sm:text-[1.08rem] sm:leading-7 xl:text-[1.15rem]">
                   Shared planning workspace for sales teams and project execution staff.

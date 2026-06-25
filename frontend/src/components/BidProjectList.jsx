@@ -250,12 +250,7 @@ function BidProjectList() {
         <header className="banner-simple relative rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm sm:px-6 sm:py-4 md:px-7">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
-              <div className="inline-flex flex-col items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:gap-3 sm:py-2">
-                <img src="/brand/hrc.png" alt="HRC logo" className="h-7 w-auto object-contain sm:h-9" />
-                <div className="hidden h-9 w-px bg-slate-200 sm:block" />
-                <img src="/brand/wasi.png" alt="WASI logo" className="h-7 w-auto object-contain sm:h-9" />
-              </div>
-              <div className="mt-3 space-y-1">
+              <div className="space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Tender Intelligence</p>
                 <p className="text-[1rem] font-medium leading-6 text-slate-700 sm:text-[1.08rem]">
                   Track and analyse China bidding projects for sales opportunities and competitor activity.

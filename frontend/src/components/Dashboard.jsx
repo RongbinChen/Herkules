@@ -41,9 +41,10 @@ export default function Dashboard() {
       {/* Top bar */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🏛️</span>
-            <span className="font-semibold text-slate-800">Herkules</span>
+          <div className="inline-flex items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-sm sm:gap-3 sm:px-3">
+            <img src="/brand/hrc.png" alt="HERKULES" className="h-5 w-auto object-contain sm:h-6" />
+            <div className="h-5 w-px bg-slate-200 sm:h-6" />
+            <img src="/brand/wasi.png" alt="WALDRICH SIEGEN" className="h-5 w-auto object-contain sm:h-6" />
           </div>
           <div className="flex items-center gap-3">
             {user?.name && <span className="hidden text-sm text-slate-500 sm:inline">{user.name}</span>}

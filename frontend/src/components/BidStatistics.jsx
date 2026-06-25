@@ -134,16 +134,7 @@ function BidStatistics() {
         <header className="banner-simple relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm sm:px-6 sm:py-4 md:px-7">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
-              <div className="inline-flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
-                <div className="flex items-center rounded-lg bg-white px-2 py-1.5">
-                  <img src="/brand/hrc.png" alt="HRC logo" className="h-8 w-auto object-contain sm:h-9" />
-                </div>
-                <div className="h-8 w-px bg-slate-200 sm:h-9" />
-                <div className="flex items-center rounded-lg bg-white px-2 py-1.5">
-                  <img src="/brand/wasi.png" alt="WASI logo" className="h-8 w-auto object-contain sm:h-9" />
-                </div>
-              </div>
-              <div className="mt-3 space-y-1">
+              <div className="space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Market Intelligence</p>
                 <p className="text-[1rem] font-medium leading-6 text-slate-700 sm:text-[1.08rem]">
                   中国市场招投标趋势、竞争对手动态与销售机会分析
