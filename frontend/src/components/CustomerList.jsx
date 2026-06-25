@@ -197,7 +197,45 @@ export default function CustomerList() {
       ) : filtered.length === 0 ? (
         <p className="py-16 text-center text-slate-400">No customers match your filters.</p>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <>
+        {/* Mobile: card list */}
+        <div className="space-y-3 sm:hidden">
+          {filtered.map((c) => (
+            <div
+              key={c.id}
+              onClick={() => navigate(`/customers/${c.id}`)}
+              className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition active:bg-sky-50/60"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 font-semibold text-slate-800">{c.name}</p>
+                <TierBadge tier={c.tier} />
+              </div>
+              {c.address && <p className="mt-1 text-xs text-slate-400">{c.address}</p>}
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <StatusBadge status={c.status} />
+                <span className="text-xs text-slate-500">{c._count?.events ?? 0} visit(s)</span>
+                {c.contactName && (
+                  <span className="text-xs text-slate-500">· {c.contactName}{c.contactPhone ? ` ${c.contactPhone}` : ''}</span>
+                )}
+              </div>
+              {(c.tags || []).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {(c.tags || []).map((tag) => (
+                    <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{tag}</span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2">
+                <button onClick={(e) => openEdit(c, e)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 transition hover:bg-sky-50">Edit</button>
+                {isAdmin && (
+                  <button onClick={(e) => handleDelete(c, e)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-50">Delete</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Desktop: table */}
+        <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white sm:block">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -258,6 +296,7 @@ export default function CustomerList() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <CustomerModal

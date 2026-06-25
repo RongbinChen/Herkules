@@ -633,8 +633,8 @@ function BidProjectList() {
                 {projects.map((project) => (
                   <li key={project.id} className="group px-5 py-4 transition hover:bg-slate-50 sm:px-6">
                     {/* Row 1: star + title + type badge + date */}
-                    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-                      <div className="flex flex-1 min-w-0 items-start gap-2">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-x-4">
+                      <div className="flex min-w-0 flex-1 items-start gap-2">
                         <button
                           onClick={() => toggleFollow(project.id)}
                           title={followedIds.has(project.id) ? '取消关注' : '关注此项目（状态变更/截止临近会收到提醒）'}
@@ -648,7 +648,7 @@ function BidProjectList() {
                           href={project.sourceUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="min-w-0 text-[0.93rem] font-bold leading-snug text-slate-800 hover:text-blue-600 hover:underline"
+                          className="min-w-0 break-words text-[0.93rem] font-bold leading-snug text-slate-800 hover:text-blue-600 hover:underline"
                         >
                           {isNewProject(project) && (
                             <span className="mr-1.5 inline-block translate-y-[-1px] rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">NEW</span>
