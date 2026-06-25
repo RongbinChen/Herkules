@@ -68,11 +68,12 @@ model Customer {
 // 行程：给某位同事安排的一次出差/拜访，含多个客户站点，可生成公开分享链接
 model Trip {
   id          Int        @id @default(autoincrement())
-  title       String
-  notes       String?
-  startTime   DateTime
-  endTime     DateTime
-  shareToken  String     @unique // 公开分享令牌（免登录访问）
+  title            String
+  notes            String?
+  startTime        DateTime
+  endTime          DateTime
+  hidePhoneOnShare Boolean    @default(false) // 公开分享页是否隐藏联系电话
+  shareToken       String     @unique // 公开分享令牌（免登录访问）
   createdById Int
   createdBy   User       @relation("TripCreator", fields: [createdById], references: [id], onDelete: Cascade)
   assigneeId  Int?

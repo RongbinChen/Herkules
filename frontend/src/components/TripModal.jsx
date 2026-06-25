@@ -18,6 +18,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [notes, setNotes] = useState('')
+  const [hidePhone, setHidePhone] = useState(false)
   const [selectedIds, setSelectedIds] = useState([])
 
   const [customers, setCustomers] = useState([])
@@ -40,6 +41,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       setStartTime(toLocalInput(trip.startTime))
       setEndTime(toLocalInput(trip.endTime))
       setNotes(trip.notes || '')
+      setHidePhone(trip.hidePhoneOnShare === true)
       setSelectedIds((trip.stops || []).map((s) => s.customer.id))
     } else {
       const now = new Date()
@@ -49,6 +51,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       setStartTime(toLocalInput(now))
       setEndTime(toLocalInput(tomorrow))
       setNotes('')
+      setHidePhone(false)
       setSelectedIds(initialCustomerIds)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,6 +82,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       title: title.trim(),
       notes: notes.trim() || undefined,
       assigneeId: assigneeId ? Number(assigneeId) : null,
+      hidePhoneOnShare: hidePhone,
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
       customerIds: selectedIds,
@@ -185,6 +189,11 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700">备注</span>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} placeholder="行程目的、注意事项..." />
+          </label>
+
+          <label className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
+            <input type="checkbox" checked={hidePhone} onChange={(e) => setHidePhone(e.target.checked)} className="h-4 w-4 accent-sky-600" />
+            <span className="text-sm text-slate-700">公开分享页隐藏客户联系电话</span>
           </label>
 
           {error && <p className="text-sm font-medium text-red-600">{error}</p>}

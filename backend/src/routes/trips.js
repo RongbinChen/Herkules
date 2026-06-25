@@ -6,14 +6,29 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const tripSchema = z.object({
-  title: z.string().min(1),
-  notes: z.string().optional(),
-  startTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid startTime'),
-  endTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid endTime'),
-  assigneeId: z.number().int().nullable().optional(),
-  customerIds: z.array(z.number().int()).min(1),
+const stopInputSchema = z.object({
+  customerId: z.number().int(),
+  order: z.number().int().optional(),
+  plannedArrival: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
 });
+
+const tripSchema = z
+  .object({
+    title: z.string().min(1),
+    notes: z.string().optional(),
+    startTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid startTime'),
+    endTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid endTime'),
+    assigneeId: z.number().int().nullable().optional(),
+    hidePhoneOnShare: z.boolean().optional(),
+    // Provide either customerIds (auto-ordered by distance) OR explicit stops
+    // (manual order + arrival times). stops wins when both are present.
+    customerIds: z.array(z.number().int()).optional(),
+    stops: z.array(stopInputSchema).optional(),
+  })
+  .refine((d) => (d.customerIds && d.customerIds.length) || (d.stops && d.stops.length), {
+    message: 'Provide at least one customer (customerIds or stops)',
+  });
 
 // ── Geographic helpers ───────────────────────────────────────────────────────
 function haversine(a, b) {
@@ -69,19 +84,48 @@ function shareToken() {
   return randomBytes(20).toString('hex');
 }
 
-// Build the ordered stop rows for a trip from a set of customer ids.
-async function buildStops(customerIds, start, end) {
+// Build stop rows by auto-ordering a set of customer ids (nearest-neighbour)
+// and spreading arrival times evenly across the window.
+async function buildAutoStops(customerIds, start, end) {
   const customers = await prisma.customer.findMany({
     where: { id: { in: customerIds } },
     select: { id: true, latitude: true, longitude: true },
   });
-  // Preserve only existing ids, ordered by the route.
   const ordered = orderByNearestNeighbour(customers);
   return ordered.map((c, i) => ({
     customerId: c.id,
     order: i,
     plannedArrival: plannedArrivalFor(i, ordered.length, start, end),
   }));
+}
+
+// Build stop rows from an explicit, user-arranged list: honour the given order
+// and arrival times. Reindex order to 0..n-1, drop ids that no longer exist.
+async function buildManualStops(stops) {
+  const ids = stops.map((s) => s.customerId);
+  const existing = await prisma.customer.findMany({
+    where: { id: { in: ids } },
+    select: { id: true },
+  });
+  const valid = new Set(existing.map((c) => c.id));
+  const sorted = stops
+    .filter((s) => valid.has(s.customerId))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return sorted.map((s, i) => ({
+    customerId: s.customerId,
+    order: i,
+    plannedArrival:
+      s.plannedArrival && !Number.isNaN(Date.parse(s.plannedArrival))
+        ? new Date(s.plannedArrival)
+        : null,
+    notes: s.notes ?? null,
+  }));
+}
+
+// Pick the right builder: explicit stops (manual) take precedence.
+async function buildStops(data, start, end) {
+  if (data.stops && data.stops.length) return buildManualStops(data.stops);
+  return buildAutoStops(data.customerIds, start, end);
 }
 
 const stopInclude = {
@@ -120,6 +164,7 @@ router.get('/share/:token', async (req, res) => {
         notes: true,
         startTime: true,
         endTime: true,
+        hidePhoneOnShare: true,
         assignee: { select: { name: true } },
         stops: {
           orderBy: { order: 'asc' },
@@ -146,6 +191,12 @@ router.get('/share/:token', async (req, res) => {
     });
     if (!trip) {
       return res.status(404).json({ error: 'Trip not found' });
+    }
+    // Strip contact phone from the public payload when the trip opts to hide it.
+    if (trip.hidePhoneOnShare) {
+      trip.stops.forEach((s) => {
+        if (s.customer) s.customer.contactPhone = null;
+      });
     }
     res.json(trip);
   } catch (error) {
@@ -195,7 +246,7 @@ router.post('/', authenticateToken, async (req, res) => {
     if (end <= start) {
       return res.status(400).json({ error: 'endTime must be after startTime' });
     }
-    const stops = await buildStops(data.customerIds, start, end);
+    const stops = await buildStops(data, start, end);
     if (stops.length === 0) {
       return res.status(400).json({ error: 'No valid customers selected' });
     }
@@ -206,6 +257,7 @@ router.post('/', authenticateToken, async (req, res) => {
         startTime: start,
         endTime: end,
         assigneeId: data.assigneeId ?? null,
+        hidePhoneOnShare: data.hidePhoneOnShare ?? false,
         createdById: req.user.userId,
         shareToken: shareToken(),
         stops: { create: stops },
@@ -235,7 +287,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: 'Trip not found' });
     }
-    const stops = await buildStops(data.customerIds, start, end);
+    const stops = await buildStops(data, start, end);
     // Rebuild stops to reflect the new selection / ordering.
     const trip = await prisma.$transaction(async (tx) => {
       await tx.tripStop.deleteMany({ where: { tripId: id } });
@@ -247,6 +299,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
           startTime: start,
           endTime: end,
           assigneeId: data.assigneeId ?? null,
+          hidePhoneOnShare: data.hidePhoneOnShare ?? false,
           stops: { create: stops },
         },
         include: stopInclude,
