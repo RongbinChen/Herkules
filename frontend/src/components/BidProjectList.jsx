@@ -243,7 +243,7 @@ function BidProjectList() {
   const handleSearch = () => { if (searchKeyword.trim()) handleTagClick(searchKeyword.trim()); };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(251,146,60,0.18),_transparent_26%),linear-gradient(180deg,_#f8fafc,_#e2e8f0)] px-3 py-3 text-slate-900 sm:px-5 sm:py-5">
+    <div className="min-h-screen bg-slate-50 px-3 py-3 text-slate-900 sm:px-5 sm:py-5">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-5">
 
         {/* ── Header banner ──────────────────────────────────────────── */}

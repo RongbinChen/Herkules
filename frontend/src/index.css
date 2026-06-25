@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 html {
-  background: #e2e8f0;
+  background: #f8fafc; /* slate-50 — unified app background (matches module page) */
 }
 
 body {

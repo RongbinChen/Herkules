@@ -1152,7 +1152,7 @@ export default function Calendar() {
   )
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(251,146,60,0.18),_transparent_26%),linear-gradient(180deg,_#f8fafc,_#e2e8f0)] px-3 py-3 text-slate-900 sm:px-5 sm:py-5">
+    <div className="min-h-screen bg-slate-50 px-3 py-3 text-slate-900 sm:px-5 sm:py-5">
       <div className="mx-auto flex max-w-[1800px] flex-col gap-5">
         <header className="banner-simple relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 shadow-sm sm:rounded-2xl sm:px-6 sm:py-4 md:px-7">
           <div className="relative flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
