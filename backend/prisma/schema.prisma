@@ -17,6 +17,8 @@ model User {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   events            Event[]
+  createdTrips      Trip[]   @relation("TripCreator")
+  assignedTrips     Trip[]   @relation("TripAssignee")
 }
 
 model Event {
@@ -57,9 +59,43 @@ model Customer {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   events       Event[]
+  tripStops    TripStop[]
 
   @@index([status])
   @@index([tier])
+}
+
+// 行程：给某位同事安排的一次出差/拜访，含多个客户站点，可生成公开分享链接
+model Trip {
+  id          Int        @id @default(autoincrement())
+  title       String
+  notes       String?
+  startTime   DateTime
+  endTime     DateTime
+  shareToken  String     @unique // 公开分享令牌（免登录访问）
+  createdById Int
+  createdBy   User       @relation("TripCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assigneeId  Int?
+  assignee    User?      @relation("TripAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  stops       TripStop[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([shareToken])
+}
+
+// 行程站点：行程中的一个客户拜访点，按 order 排序（最近邻路线优化后的顺序）
+model TripStop {
+  id              Int       @id @default(autoincrement())
+  tripId          Int
+  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  customerId      Int
+  customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order           Int       @default(0) // 拜访顺序（0-based）
+  plannedArrival  DateTime? // 建议到访时间（按起止时间均分）
+  notes           String?
+
+  @@index([tripId])
 }
 
 // 代理商 / 中间商（与终端客户区分），可关联到活动

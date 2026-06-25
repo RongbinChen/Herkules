@@ -23,6 +23,11 @@ function Dashboard() {
           <h2>Customers</h2>
           <p>CRM - Manage customers, tiers, tags, visit history and map distribution</p>
         </div>
+        <div className="dashboard-card" onClick={() => navigate('/trips')}>
+          <div className="card-icon trip-icon">🗺️</div>
+          <h2>Trips</h2>
+          <p>行程安排 - 选择客户自动生成带地图的拜访行程，可分享给任何人</p>
+        </div>
       </div>
     </div>
   );

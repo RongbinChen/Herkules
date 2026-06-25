@@ -10,6 +10,7 @@ import usersRoutes from './routes/users.js';
 import chinabiddingRoutes from './routes/chinabidding.js';
 import customersRoutes from './routes/customers.js';
 import agentsRoutes from './routes/agents.js';
+import tripsRoutes from './routes/trips.js';
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/chinabidding', chinabiddingRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/agents', agentsRoutes);
+app.use('/api/trips', tripsRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

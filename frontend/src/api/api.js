@@ -63,6 +63,16 @@ export const agentsAPI = {
   delete: (id) => api.delete(`/agents/${id}`),
 }
 
+export const tripsAPI = {
+  getAll: () => api.get('/trips'),
+  get: (id) => api.get(`/trips/${id}`),
+  create: (data) => api.post('/trips', data),
+  update: (id, data) => api.put(`/trips/${id}`, data),
+  delete: (id) => api.delete(`/trips/${id}`),
+  // Public — no auth required (interceptor simply omits the header when logged out).
+  getShared: (token) => api.get(`/trips/share/${token}`),
+}
+
 export const usersAPI = {
   getAll: () => api.get('/users'),
   getVisible: () => api.get('/users/visible'),

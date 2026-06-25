@@ -4,6 +4,7 @@ import { customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import CustomerModal from './CustomerModal'
 import CustomerMap from './CustomerMap'
+import TripModal from './TripModal'
 import {
   STATUS_ORDER,
   TIER_ORDER,
@@ -44,6 +45,7 @@ export default function CustomerList() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [tripOpen, setTripOpen] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -141,6 +143,14 @@ export default function CustomerList() {
               Map
             </button>
           </div>
+          <button
+            onClick={() => setTripOpen(true)}
+            disabled={filtered.length === 0}
+            title="将当前筛选出的客户安排成一次行程"
+            className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 disabled:opacity-50"
+          >
+            🗺️ 安排行程
+          </button>
           <button
             onClick={openCreate}
             className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
@@ -255,6 +265,14 @@ export default function CustomerList() {
         customer={editing}
         onClose={() => setModalOpen(false)}
         onSaved={load}
+      />
+
+      <TripModal
+        isOpen={tripOpen}
+        trip={null}
+        initialCustomerIds={filtered.map((c) => c.id)}
+        onClose={() => setTripOpen(false)}
+        onSaved={(created) => navigate(`/trips/${created.id}`)}
       />
     </div>
   )
