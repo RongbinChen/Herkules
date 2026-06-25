@@ -7,13 +7,21 @@ const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 
 // Tile providers. AMap (高德) is the China-accessible default; OSM is the
 // international fallback. `crs` says which datum the tiles are drawn in.
+// Two basemaps for users to choose: Google (English labels, for international
+// viewers) and AMap/高德 (China-accessible). Both render China roadmaps in
+// GCJ-02, so the shared WGS-84→GCJ-02 conversion aligns markers in both
+// (and leaves non-China points untouched).
+//
+// NOTE: Google here uses the keyless public tile endpoint for now. When a
+// Google Maps API key is available, swap this to the official Maps JavaScript
+// API (e.g. via leaflet.gridlayer.googlemutant) for ToS compliance + reliability.
 export const PROVIDERS = {
-  esri: {
-    label: 'Esri (English)',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    subdomains: [],
-    attribution: 'Tiles &copy; Esri',
-    crs: 'wgs84',
+  google: {
+    label: 'Google Maps',
+    url: 'https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}',
+    subdomains: ['0', '1', '2', '3'],
+    attribution: '&copy; Google',
+    crs: 'gcj02',
   },
   amap: {
     label: 'AMap (高德)',
@@ -21,13 +29,6 @@ export const PROVIDERS = {
     subdomains: ['1', '2', '3', '4'],
     attribution: '&copy; AMap AutoNavi',
     crs: 'gcj02',
-  },
-  osm: {
-    label: 'OpenStreetMap',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: ['a', 'b', 'c'],
-    attribution: '&copy; OpenStreetMap contributors',
-    crs: 'wgs84',
   },
 }
 

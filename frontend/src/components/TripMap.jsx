@@ -14,9 +14,10 @@ export default function TripMap({ stops, height = 460 }) {
   const tileProviderRef = useRef(null)
   const [error, setError] = useState('')
 
-  const [provider, setProvider] = useState(
-    () => localStorage.getItem('tripMapProvider') || 'esri',
-  )
+  const [provider, setProvider] = useState(() => {
+    const stored = localStorage.getItem('tripMapProvider')
+    return PROVIDERS[stored] ? stored : 'google'
+  })
   useEffect(() => {
     localStorage.setItem('tripMapProvider', provider)
   }, [provider])
@@ -48,7 +49,7 @@ export default function TripMap({ stops, height = 460 }) {
           mapRef.current = L.map(containerRef.current, { scrollWheelZoom: true }).setView([35, 110], 4)
           layerRef.current = L.layerGroup().addTo(mapRef.current)
         }
-        const cfg = PROVIDERS[provider] || PROVIDERS.esri
+        const cfg = PROVIDERS[provider] || PROVIDERS.google
         if (tileProviderRef.current !== provider) {
           if (tileRef.current) tileRef.current.remove()
           tileRef.current = L.tileLayer(cfg.url, {

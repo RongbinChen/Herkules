@@ -183,7 +183,7 @@ export default function TripDetail() {
           {copied ? 'Copied ✓' : 'Copy link'}
         </button>
         <p className="w-full text-xs text-sky-600/80">
-          Anyone with this link can view the trip and map without logging in (English map by default; AMap available for China).
+          Anyone with this link can view the trip and map without logging in (Google Maps by default; switch to AMap for China access).
           {trip.hidePhoneOnShare ? ' Phone numbers are hidden from the public page.' : ''}
         </p>
       </div>

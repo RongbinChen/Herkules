@@ -18,9 +18,10 @@ export default function CustomerMap({ customers, onSelect }) {
   const [error, setError] = useState('')
 
   // Remember the chosen basemap across sessions; default to AMap for China.
-  const [provider, setProvider] = useState(
-    () => localStorage.getItem('customerMapProvider') || 'amap',
-  )
+  const [provider, setProvider] = useState(() => {
+    const stored = localStorage.getItem('customerMapProvider')
+    return PROVIDERS[stored] ? stored : 'amap'
+  })
   useEffect(() => {
     localStorage.setItem('customerMapProvider', provider)
   }, [provider])
