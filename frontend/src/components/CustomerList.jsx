@@ -147,13 +147,13 @@ export default function CustomerList() {
             onClick={() => setTripOpen(true)}
             disabled={filtered.length === 0}
             title="Schedule the currently filtered customers into a trip"
-            className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 disabled:opacity-50"
+            className="whitespace-nowrap rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 disabled:opacity-50"
           >
-            🗺️ Schedule trip
+            Schedule trip
           </button>
           <button
             onClick={openCreate}
-            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+            className="whitespace-nowrap rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
           >
             + New customer
           </button>
