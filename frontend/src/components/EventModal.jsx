@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfWeek, eachDayOfInterval, format, isSameDay, isSameMonth, startOfMonth, startOfWeek, subMonths } from 'date-fns'
+import { customersAPI, agentsAPI } from '../api/api'
 
 const CATEGORY_OPTIONS = [
   { value: 'WORK_SESSION', label: 'Internal Coordination' },
@@ -176,22 +177,22 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
 
   return (
     <div className="relative">
-      <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+      <span className="mb-1.5 block text-sm font-medium text-slate-700">{label}</span>
       <button
         type="button"
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         disabled={disabled}
-        className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-slate-900 outline-none transition hover:border-sky-400 focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+        className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left text-slate-900 outline-none transition hover:border-sky-400 focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
       >
         <span>{formatPickerDisplayValue(value, allDay)}</span>
         <span className="text-lg text-slate-400">▣</span>
       </button>
 
       {isOpen && !disabled && (
-        <div className="absolute right-0 top-[calc(100%+0.6rem)] z-[90] w-[min(24rem,calc(100vw-2.5rem))] max-w-[calc(100vw-2.5rem)] rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)]">
-          <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="absolute left-1/2 top-[calc(100%+0.4rem)] z-[90] w-[min(20rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:left-auto sm:right-[calc(100%+0.6rem)] sm:top-1/2 sm:w-[19rem] sm:translate-x-0 sm:-translate-y-1/2">
+          <div className="flex flex-col gap-3">
             <div className="min-w-0 flex-1">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <button
                   type="button"
                   onClick={() => setVisibleMonth((prev) => subMonths(prev, 1))}
@@ -226,7 +227,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                       type="button"
                       onClick={() => updateDay(day)}
                       className={[
-                        'h-9 rounded-xl text-sm font-medium transition',
+                        'h-8 rounded-lg text-sm font-medium transition',
                         selected ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100',
                         inMonth ? '' : 'text-slate-300',
                       ].join(' ')}
@@ -239,11 +240,11 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
             </div>
 
             {!allDay && (
-              <div className="grid grid-cols-3 gap-2 sm:w-[138px] sm:grid-cols-1">
+              <div className="grid grid-cols-3 gap-2">
                 <select
                   value={getHour12(draftDate)}
                   onChange={(event) => updateHour(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
                 >
                   {HOUR_OPTIONS.map((hour) => (
                     <option key={hour} value={hour}>{hour}</option>
@@ -252,7 +253,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                 <select
                   value={getMinute(draftDate)}
                   onChange={(event) => updateMinute(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
                 >
                   {MINUTE_OPTIONS.map((minute) => (
                     <option key={minute} value={minute}>{minute}</option>
@@ -261,7 +262,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                 <select
                   value={getMeridiem(draftDate)}
                   onChange={(event) => updateMeridiem(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
                 >
                   {MERIDIEM_OPTIONS.map((period) => (
                     <option key={period} value={period}>{period}</option>
@@ -271,7 +272,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
             )}
           </div>
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
             <button
               type="button"
               onClick={() => setDraftDate(new Date())}
@@ -302,7 +303,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
   )
 }
 
-export default function EventModal({ isOpen, onClose, onSave, onDelete, event, users, isAdmin, currentUser, readOnly = false }) {
+export default function EventModal({ isOpen, onClose, onSave, onDelete, event, users, customers = [], onCustomersChanged, agents = [], onAgentsChanged, isAdmin, currentUser, readOnly = false }) {
   const isHolidayEvent = event?.category === 'LEAVE' || event?.isSharedHoliday === true
   const [form, setForm] = useState({
     title: '',
@@ -315,7 +316,18 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
     category: 'WORK_SESSION',
     status: 'PLANNED',
     userId: '',
+    customerId: '',
+    agentId: '',
   })
+  const [dateError, setDateError] = useState('')
+  const [showNewCustomer, setShowNewCustomer] = useState(false)
+  const [newCustomer, setNewCustomer] = useState({ name: '', address: '', contactName: '', contactPhone: '' })
+  const [savingCustomer, setSavingCustomer] = useState(false)
+  const [customerError, setCustomerError] = useState('')
+  const [showNewAgent, setShowNewAgent] = useState(false)
+  const [newAgent, setNewAgent] = useState({ name: '', company: '', contactPhone: '' })
+  const [savingAgent, setSavingAgent] = useState(false)
+  const [agentError, setAgentError] = useState('')
 
   const assignableUsers = useMemo(() => {
     if (isAdmin) return users
@@ -343,6 +355,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
         category: event.category || 'WORK_SESSION',
         status: event.status || 'PLANNED',
         userId: String(event.userId || currentUser?.id || ''),
+        customerId: event.customerId ? String(event.customerId) : '',
+        agentId: event.agentId ? String(event.agentId) : '',
       })
       return
     }
@@ -364,6 +378,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
       category: 'WORK_SESSION',
       status: 'PLANNED',
       userId: String(currentUser?.id || ''),
+      customerId: '',
+      agentId: '',
     })
   }, [event, currentUser])
 
@@ -388,22 +404,90 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
   function handleSubmit(submitEvent) {
     submitEvent.preventDefault()
     if (readOnly) return
+    const startDate = new Date(normalizeDate(form.start, form.allDay))
+    const endDate = new Date(normalizeDate(form.end, form.allDay))
+    const invalid = form.allDay ? endDate < startDate : endDate <= startDate
+    if (invalid) {
+      setDateError('End must be after start')
+      return
+    }
+    setDateError('')
     onSave({
       id: event?.id,
       ...form,
-      start: new Date(normalizeDate(form.start, form.allDay)).toISOString(),
-      end: new Date(normalizeDate(form.end, form.allDay)).toISOString(),
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
       userId: Number(form.userId),
+      customerId: form.customerId ? Number(form.customerId) : null,
+      agentId: form.agentId ? Number(form.agentId) : null,
     })
+  }
+
+  const selectedCustomer = customers.find((customer) => customer.id === Number(form.customerId))
+  const selectedAgent = agents.find((agent) => agent.id === Number(form.agentId))
+
+  async function handleCreateAgent() {
+    if (!newAgent.name.trim()) {
+      setAgentError('Agent name is required')
+      return
+    }
+    setSavingAgent(true)
+    setAgentError('')
+    try {
+      const response = await agentsAPI.create({
+        name: newAgent.name.trim(),
+        company: newAgent.company.trim(),
+        contactPhone: newAgent.contactPhone.trim(),
+      })
+      if (onAgentsChanged) {
+        await onAgentsChanged()
+      }
+      setForm((prev) => ({ ...prev, agentId: String(response.data.id) }))
+      setNewAgent({ name: '', company: '', contactPhone: '' })
+      setShowNewAgent(false)
+    } catch (error) {
+      console.error('Failed to create agent', error)
+      setAgentError('Failed to create agent')
+    } finally {
+      setSavingAgent(false)
+    }
+  }
+
+  async function handleCreateCustomer() {
+    if (!newCustomer.name.trim()) {
+      setCustomerError('Customer name is required')
+      return
+    }
+    setSavingCustomer(true)
+    setCustomerError('')
+    try {
+      const response = await customersAPI.create({
+        name: newCustomer.name.trim(),
+        address: newCustomer.address.trim(),
+        contactName: newCustomer.contactName.trim(),
+        contactPhone: newCustomer.contactPhone.trim(),
+      })
+      if (onCustomersChanged) {
+        await onCustomersChanged()
+      }
+      setForm((prev) => ({ ...prev, customerId: String(response.data.id) }))
+      setNewCustomer({ name: '', address: '', contactName: '', contactPhone: '' })
+      setShowNewCustomer(false)
+    } catch (error) {
+      console.error('Failed to create customer', error)
+      setCustomerError('Failed to create customer')
+    } finally {
+      setSavingCustomer(false)
+    }
   }
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6">
-      <div className="flex h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-2xl sm:h-[90vh] sm:rounded-[28px]">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-8 sm:py-6">
+      <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-[24px]">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Activity Record</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900 sm:text-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Activity Record</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl">
               {readOnly ? 'View employee activity' : event?.id ? 'Edit employee activity' : 'Create employee activity'}
             </h2>
           </div>
@@ -412,16 +496,16 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-4 py-4 sm:space-y-6 sm:px-8 sm:py-7">
-          <div className="grid gap-5 md:grid-cols-[1.4fr,0.8fr] sm:gap-6">
-            <div className="space-y-5">
+        <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          <div className="grid gap-4 md:grid-cols-[1.4fr,0.85fr]">
+            <div className="space-y-4">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Activity title</span>
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Activity title</span>
                 <input
                   value={form.title}
                   onChange={(event) => updateField('title', event.target.value)}
                   disabled={readOnly}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   placeholder="Write customer visit, technical review, contract round..."
                   required
                 />
@@ -429,24 +513,24 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Location</span>
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Location</span>
                   <input
                     value={form.location}
                     onChange={(event) => updateField('location', event.target.value)}
                     disabled={readOnly}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                     placeholder="Office, Zoom, Warehouse A"
                   />
                 </label>
 
                 {!isHolidayEvent && (
                   <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">Assigned employee</span>
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">Assigned employee</span>
                     <select
                       value={form.userId}
                       onChange={(event) => updateField('userId', event.target.value)}
                       disabled={readOnly || !isAdmin}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                     >
                       {assignableUsers.map((user) => (
                         <option key={user.id} value={user.id}>{user.name}</option>
@@ -460,36 +544,184 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
               </div>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Notes</span>
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Notes</span>
                 <textarea
                   value={form.description}
                   onChange={(event) => updateField('description', event.target.value)}
-                  rows={5}
+                  rows={3}
                   disabled={readOnly}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   placeholder="Capture customer feedback, blockers, negotiation notes, or internal handoff details."
                 />
               </label>
-            </div>
 
-            <div className="space-y-5 rounded-[20px] bg-slate-50 p-4 sm:rounded-[24px] sm:p-5">
-              <div className="grid gap-4">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Category</span>
+              {!isHolidayEvent && (
+                <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700">Customer</span>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowNewCustomer((prev) => !prev); setCustomerError('') }}
+                        className="text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+                      >
+                        {showNewCustomer ? 'Cancel' : '+ New customer'}
+                      </button>
+                    )}
+                  </div>
+
                   <select
-                    value={form.category}
-                    onChange={(event) => updateField('category', event.target.value)}
+                    value={form.customerId}
+                    onChange={(event) => updateField('customerId', event.target.value)}
                     disabled={readOnly}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   >
-                    {CATEGORY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                    <option value="">Customer Selection</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>{customer.name}</option>
                     ))}
                   </select>
-                </label>
-              </div>
 
-              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  {selectedCustomer && (selectedCustomer.contactName || selectedCustomer.contactPhone || selectedCustomer.address) && (
+                    <div className="mt-2 space-y-0.5 text-xs text-slate-500">
+                      {selectedCustomer.contactName && <p>Contact: {selectedCustomer.contactName}</p>}
+                      {selectedCustomer.contactPhone && <p>Phone: {selectedCustomer.contactPhone}</p>}
+                      {selectedCustomer.address && <p>Address: {selectedCustomer.address}</p>}
+                    </div>
+                  )}
+
+                  {showNewCustomer && !readOnly && (
+                    <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
+                      <input
+                        value={newCustomer.name}
+                        onChange={(event) => setNewCustomer((prev) => ({ ...prev, name: event.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        placeholder="Customer name (required)"
+                      />
+                      <input
+                        value={newCustomer.address}
+                        onChange={(event) => setNewCustomer((prev) => ({ ...prev, address: event.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        placeholder="Address (for map)"
+                      />
+                      <div className="grid gap-2.5 sm:grid-cols-2">
+                        <input
+                          value={newCustomer.contactName}
+                          onChange={(event) => setNewCustomer((prev) => ({ ...prev, contactName: event.target.value }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          placeholder="Contact name"
+                        />
+                        <input
+                          value={newCustomer.contactPhone}
+                          onChange={(event) => setNewCustomer((prev) => ({ ...prev, contactPhone: event.target.value }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          placeholder="Phone"
+                        />
+                      </div>
+                      {customerError && <p className="text-xs font-medium text-red-600">{customerError}</p>}
+                      <button
+                        type="button"
+                        onClick={handleCreateCustomer}
+                        disabled={savingCustomer}
+                        className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {savingCustomer ? 'Saving...' : 'Save customer'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isHolidayEvent && (
+                <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700">Agent</span>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowNewAgent((prev) => !prev); setAgentError('') }}
+                        className="text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+                      >
+                        {showNewAgent ? 'Cancel' : '+ New agent'}
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    value={form.agentId}
+                    onChange={(event) => updateField('agentId', event.target.value)}
+                    disabled={readOnly}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  >
+                    <option value="">Agent Selection</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}{agent.company ? ` · ${agent.company}` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedAgent && (selectedAgent.company || selectedAgent.contactPhone || selectedAgent.region) && (
+                    <div className="mt-2 space-y-0.5 text-xs text-slate-500">
+                      {selectedAgent.company && <p>Company: {selectedAgent.company}</p>}
+                      {selectedAgent.contactPhone && <p>Phone: {selectedAgent.contactPhone}</p>}
+                      {selectedAgent.region && <p>Region: {selectedAgent.region}</p>}
+                    </div>
+                  )}
+
+                  {showNewAgent && !readOnly && (
+                    <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
+                      <input
+                        value={newAgent.name}
+                        onChange={(event) => setNewAgent((prev) => ({ ...prev, name: event.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        placeholder="Agent name (required)"
+                      />
+                      <div className="grid gap-2.5 sm:grid-cols-2">
+                        <input
+                          value={newAgent.company}
+                          onChange={(event) => setNewAgent((prev) => ({ ...prev, company: event.target.value }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          placeholder="Company / agency"
+                        />
+                        <input
+                          value={newAgent.contactPhone}
+                          onChange={(event) => setNewAgent((prev) => ({ ...prev, contactPhone: event.target.value }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          placeholder="Phone"
+                        />
+                      </div>
+                      {agentError && <p className="text-xs font-medium text-red-600">{agentError}</p>}
+                      <button
+                        type="button"
+                        onClick={handleCreateAgent}
+                        disabled={savingAgent}
+                        className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+                      >
+                        {savingAgent ? 'Saving...' : 'Save agent'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4 rounded-[16px] bg-slate-50 p-3.5 sm:p-4">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Category</span>
+                <select
+                  value={form.category}
+                  onChange={(event) => updateField('category', event.target.value)}
+                  disabled={readOnly}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                >
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
                 <input
                   type="checkbox"
                   checked={form.allDay}
@@ -508,7 +740,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                 <span className="text-sm font-medium text-slate-700">All-day activity</span>
               </label>
 
-              <div className="grid gap-4">
+              <div className="grid gap-3">
                 <DateTimePickerField
                   label="Start"
                   value={form.start}
@@ -522,21 +754,21 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                   value={form.end}
                   allDay={form.allDay}
                   disabled={readOnly}
-                  onApply={(nextValue) => updateField('end', nextValue)}
+                  onApply={(nextValue) => { updateField('end', nextValue); setDateError('') }}
                 />
+                {dateError && (
+                  <p className="text-xs font-medium text-red-600">{dateError}</p>
+                )}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Category color</span>
-                <div className="flex items-center gap-3">
-                  <span className="h-4 w-4 rounded-full" style={{ backgroundColor: form.color }} />
-                  <p className="text-sm text-slate-500">The event color is assigned automatically from the selected employee.</p>
-                </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
+                <span className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ backgroundColor: form.color }} />
+                <p className="text-xs text-slate-500">Color auto-assigned from the selected employee.</p>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               {event?.id && !readOnly && (
                 <button

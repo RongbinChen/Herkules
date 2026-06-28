@@ -1,8 +1,13 @@
 import express from 'express';
 import {
-  scrapeProjects, getProjectStats, searchByKeyword,
+  scrapeProjects, getProjectStats, searchByKeyword, searchAndSave, searchLocalDb,
   startScrapeJob, getScrapeJob, listScrapeJobs,
-  listSavedSearches, createSavedSearch, deleteSavedSearch, runSavedSearch
+  listSavedSearches, createSavedSearch, deleteSavedSearch, runSavedSearch,
+  runDailyJob, getRecentUpdates,
+  getProjectThread, followProject, unfollowProject, listFollows,
+  listNotifications, markNotificationRead, markAllNotificationsRead,
+  getTrends, generateTrendReport, backfillStructured,
+  listCompetitors, seedCompetitors,
 } from '../services/chinabidding.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -13,7 +18,7 @@ router.use(authenticateToken);
 
 router.get('/projects', async (req, res) => {
   try {
-    const { page = 1, limit = 20, biddingType, status, region, industry, startDate, endDate } = req.query;
+    const { page = 1, limit = 20, biddingType, status, region, industry, equipmentType, purchaser, startDate, endDate } = req.query;
     const result = await scrapeProjects({
       page: parseInt(page),
       limit: parseInt(limit),
@@ -21,6 +26,8 @@ router.get('/projects', async (req, res) => {
       status,
       region,
       industry,
+      equipmentType,
+      purchaser,
       startDate,
       endDate
     });
@@ -80,12 +87,16 @@ router.get('/scrape-jobs/:id', async (req, res) => {
 
 router.post('/search', async (req, res) => {
   try {
-    const { keyword } = req.body;
+    const { keyword, localOnly = false } = req.body;
     if (!keyword) {
       return res.status(400).json({ error: 'Keyword is required' });
     }
-    const results = await searchByKeyword(keyword);
-    res.json({ data: results, count: results.length });
+    // localOnly=true: instant DB-only search (used for pagination after initial save)
+    // localOnly=false (default): fetch from chinabidding.com, save new items to DB, return rich DB records
+    const result = localOnly
+      ? await searchLocalDb(keyword)
+      : await searchAndSave(keyword);
+    res.json(result);
   } catch (error) {
     console.error('Error searching projects:', error);
     res.status(500).json({ error: 'Failed to search projects' });
@@ -138,6 +149,153 @@ router.post('/saved-searches/:id/run', async (req, res) => {
     if (error.status === 404) return res.status(404).json({ error: 'Not found' });
     console.error('Error running saved search:', error);
     res.status(500).json({ error: 'Failed to run saved search' });
+  }
+});
+
+// Manually trigger the full daily job (all industries + keywords + saved searches)
+router.post('/run-daily', async (req, res) => {
+  try {
+    const job = await runDailyJob(req.user.userId);
+    res.status(202).json({ jobId: job.id, status: job.status, message: 'Daily scrape started' });
+  } catch (error) {
+    console.error('Error starting daily job:', error);
+    res.status(500).json({ error: 'Failed to start daily job' });
+  }
+});
+
+// Get recently added / status-changed projects
+router.get('/updates', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const updates = await getRecentUpdates(days);
+    res.json(updates);
+  } catch (error) {
+    console.error('Error fetching updates:', error);
+    res.status(500).json({ error: 'Failed to fetch updates' });
+  }
+});
+
+// ── Project thread (lifecycle timeline) ──────────────────────────────────────
+router.get('/projects/:id/thread', async (req, res) => {
+  try {
+    const result = await getProjectThread(parseInt(req.params.id));
+    res.json(result);
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: 'Not found' });
+    console.error('Error fetching thread:', error);
+    res.status(500).json({ error: 'Failed to fetch thread' });
+  }
+});
+
+// ── Follows ──────────────────────────────────────────────────────────────────
+router.get('/follows', async (req, res) => {
+  try {
+    res.json(await listFollows(req.user.userId));
+  } catch (error) {
+    console.error('Error listing follows:', error);
+    res.status(500).json({ error: 'Failed to list follows' });
+  }
+});
+
+router.post('/projects/:id/follow', async (req, res) => {
+  try {
+    const follow = await followProject(req.user.userId, parseInt(req.params.id), req.body?.note ?? null);
+    res.status(201).json(follow);
+  } catch (error) {
+    console.error('Error following project:', error);
+    res.status(500).json({ error: 'Failed to follow project' });
+  }
+});
+
+router.delete('/projects/:id/follow', async (req, res) => {
+  try {
+    await unfollowProject(req.user.userId, parseInt(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    console.error('Error unfollowing project:', error);
+    res.status(500).json({ error: 'Failed to unfollow project' });
+  }
+});
+
+// ── Notifications ────────────────────────────────────────────────────────────
+router.get('/notifications', async (req, res) => {
+  try {
+    const unreadOnly = req.query.unread === 'true';
+    res.json(await listNotifications(req.user.userId, { unreadOnly }));
+  } catch (error) {
+    console.error('Error listing notifications:', error);
+    res.status(500).json({ error: 'Failed to list notifications' });
+  }
+});
+
+router.post('/notifications/:id/read', async (req, res) => {
+  try {
+    await markNotificationRead(req.user.userId, parseInt(req.params.id));
+    res.status(204).end();
+  } catch (error) {
+    console.error('Error marking notification read:', error);
+    res.status(500).json({ error: 'Failed to mark read' });
+  }
+});
+
+router.post('/notifications/read-all', async (req, res) => {
+  try {
+    await markAllNotificationsRead(req.user.userId);
+    res.status(204).end();
+  } catch (error) {
+    console.error('Error marking all read:', error);
+    res.status(500).json({ error: 'Failed to mark all read' });
+  }
+});
+
+// ── Trends & market report ───────────────────────────────────────────────────
+router.get('/trends', async (req, res) => {
+  try {
+    const months = parseInt(req.query.months) || 12;
+    res.json(await getTrends({ months }));
+  } catch (error) {
+    console.error('Error fetching trends:', error);
+    res.status(500).json({ error: 'Failed to fetch trends' });
+  }
+});
+
+router.post('/report', async (req, res) => {
+  try {
+    res.json(await generateTrendReport());
+  } catch (error) {
+    console.error('Error generating report:', error);
+    res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
+// ── Competitors ──────────────────────────────────────────────────────────────
+router.get('/competitors', async (req, res) => {
+  try {
+    res.json(await listCompetitors());
+  } catch (error) {
+    console.error('Error listing competitors:', error);
+    res.status(500).json({ error: 'Failed to list competitors' });
+  }
+});
+
+router.post('/competitors/seed', async (req, res) => {
+  try {
+    res.json(await seedCompetitors());
+  } catch (error) {
+    console.error('Error seeding competitors:', error);
+    res.status(500).json({ error: 'Failed to seed competitors' });
+  }
+});
+
+// ── Backfill structured fields on existing records ───────────────────────────
+router.post('/backfill', async (req, res) => {
+  try {
+    // Runs in background — may take minutes with DeepSeek calls
+    backfillStructured().catch(err => console.error('[backfill] failed:', err.message));
+    res.status(202).json({ message: 'Backfill started in background' });
+  } catch (error) {
+    console.error('Error starting backfill:', error);
+    res.status(500).json({ error: 'Failed to start backfill' });
   }
 });
 

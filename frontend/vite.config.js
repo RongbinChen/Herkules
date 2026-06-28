@@ -9,7 +9,7 @@ export default defineConfig({
     allowedHosts: ['www.herkulesgroup-china.com', 'localhost'],
     proxy: {
       '/api': {
-        target: 'http://calendar-backend:3001',
+        target: 'http://localhost:3001',
       },
     },
   },

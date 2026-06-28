@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 html {
-  background: #e2e8f0;
+  background: #f8fafc; /* slate-50 — unified app background (matches module page) */
 }
 
 body {
@@ -289,6 +289,19 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fc-activity-card__customer {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.fc-activity-card__customer::before {
+  content: "\25C9";
+  margin-right: 0.28rem;
+  opacity: 0.55;
+  font-size: 0.6em;
+  vertical-align: middle;
 }
 
 .lamp-login {

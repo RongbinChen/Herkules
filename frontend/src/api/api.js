@@ -47,6 +47,33 @@ export const eventsAPI = {
   exportIcs: () => api.get('/events/export.ics', { responseType: 'blob' }),
 }
 
+export const customersAPI = {
+  getAll: () => api.get('/customers'),
+  get: (id) => api.get(`/customers/${id}`),
+  create: (data) => api.post('/customers', data),
+  update: (id, data) => api.put(`/customers/${id}`, data),
+  delete: (id) => api.delete(`/customers/${id}`),
+}
+
+export const agentsAPI = {
+  getAll: () => api.get('/agents'),
+  get: (id) => api.get(`/agents/${id}`),
+  create: (data) => api.post('/agents', data),
+  update: (id, data) => api.put(`/agents/${id}`, data),
+  delete: (id) => api.delete(`/agents/${id}`),
+}
+
+export const tripsAPI = {
+  getAll: () => api.get('/trips'),
+  get: (id) => api.get(`/trips/${id}`),
+  create: (data) => api.post('/trips', data),
+  update: (id, data) => api.put(`/trips/${id}`, data),
+  delete: (id) => api.delete(`/trips/${id}`),
+  plan: (id) => api.post(`/trips/${id}/plan`),
+  // Public — no auth required (interceptor simply omits the header when logged out).
+  getShared: (token) => api.get(`/trips/share/${token}`),
+}
+
 export const usersAPI = {
   getAll: () => api.get('/users'),
   getVisible: () => api.get('/users/visible'),

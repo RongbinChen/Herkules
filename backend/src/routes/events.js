@@ -1,10 +1,9 @@
 import express from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const dateInput = z.string().refine((value) => !Number.isNaN(Date.parse(value)), {
   message: 'Invalid date value',
@@ -22,7 +21,37 @@ const eventSchema = z.object({
   status: z.enum(['PLANNED', 'IN_PROGRESS', 'DONE', 'BLOCKED']).default('PLANNED'),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
   userId: z.number().int().optional(),
+  customerId: z.number().int().nullable().optional(),
+  agentId: z.number().int().nullable().optional(),
+}).refine((data) => {
+  const s = new Date(data.start);
+  const e = new Date(data.end);
+  return data.allDay ? e >= s : e > s;
+}, {
+  message: 'End date must be after start date',
+  path: ['end'],
 });
+
+// Verify that referenced customer/agent rows exist before writing the event,
+// so a stale id from the client returns a clear 400 instead of an opaque 500
+// from a foreign-key (P2003) violation. Returns an error string, or null if OK.
+async function validateEventRefs(data) {
+  if (data.customerId != null) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: data.customerId },
+      select: { id: true },
+    });
+    if (!customer) return 'Invalid customerId — customer does not exist';
+  }
+  if (data.agentId != null) {
+    const agent = await prisma.agent.findUnique({
+      where: { id: data.agentId },
+      select: { id: true },
+    });
+    if (!agent) return 'Invalid agentId — agent does not exist';
+  }
+  return null;
+}
 
 function escapeIcsText(value = '') {
   return String(value)
@@ -179,7 +208,11 @@ router.get('/export.ics', authenticateToken, async (req, res) => {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const events = await prisma.event.findMany({
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        customer: { select: { id: true, name: true, contactName: true, contactPhone: true } },
+        agent: { select: { id: true, name: true, company: true, contactPhone: true } },
+      },
       orderBy: { start: 'asc' },
     });
     res.json(events);
@@ -193,15 +226,28 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const data = eventSchema.parse(req.body);
+    const refError = await validateEventRefs(data);
+    if (refError) {
+      return res.status(400).json({ error: refError });
+    }
     const targetUserId = req.user.isAdmin === true && data.userId ? data.userId : req.user.userId;
+    const startDate = new Date(data.start);
+    // Store the end as-is (inclusive last day). The frontend owns the all-day
+    // exclusive-end convention (+1 on display, −1 on edit); do NOT add a day here
+    // or single-day all-day events render across two days.
+    const endDate = new Date(data.end);
     const event = await prisma.event.create({
       data: {
         ...data,
-        start: new Date(data.start),
-        end: new Date(data.end),
+        start: startDate,
+        end: endDate,
         userId: targetUserId,
       },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        customer: { select: { id: true, name: true, contactName: true, contactPhone: true } },
+        agent: { select: { id: true, name: true, company: true, contactPhone: true } },
+      },
     });
     res.status(201).json(event);
   } catch (error) {
@@ -218,6 +264,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const data = eventSchema.parse(req.body);
+    const refError = await validateEventRefs(data);
+    if (refError) {
+      return res.status(400).json({ error: refError });
+    }
     const eventId = parseInt(id, 10);
     const isAdmin = req.user.isAdmin === true;
 
@@ -229,15 +279,22 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
 
+    const updStartDate = new Date(data.start);
+    // Store end as-is (inclusive). See note in POST handler — no +1 day here.
+    const updEndDate = new Date(data.end);
     const updated = await prisma.event.update({
       where: { id: eventId },
       data: {
         ...data,
-        start: new Date(data.start),
-        end: new Date(data.end),
+        start: updStartDate,
+        end: updEndDate,
         userId: isAdmin && data.userId ? data.userId : event.userId,
       },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        customer: { select: { id: true, name: true, contactName: true, contactPhone: true } },
+        agent: { select: { id: true, name: true, company: true, contactPhone: true } },
+      },
     });
 
     res.json(updated);

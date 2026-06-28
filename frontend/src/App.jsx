@@ -6,6 +6,11 @@ import Dashboard from './components/Dashboard'
 import BidProjectList from './components/BidProjectList'
 import BidStatistics from './components/BidStatistics'
 import LampLoginPreview from './components/LampLoginPreview'
+import CustomerList from './components/CustomerList'
+import CustomerDetail from './components/CustomerDetail'
+import TripList from './components/TripList'
+import TripDetail from './components/TripDetail'
+import TripShare from './components/TripShare'
 
 function App() {
   const { token } = useAuth()
@@ -18,6 +23,12 @@ function App() {
       <Route path="/calendar" element={token ? <Calendar /> : <Navigate to="/login" />} />
       <Route path="/chinabidding" element={token ? <BidProjectList /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/stats" element={token ? <BidStatistics /> : <Navigate to="/login" />} />
+      <Route path="/customers" element={token ? <CustomerList /> : <Navigate to="/login" />} />
+      <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
+      <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />
+      <Route path="/trips/:id" element={token ? <TripDetail /> : <Navigate to="/login" />} />
+      {/* Public — no login required */}
+      <Route path="/trip/share/:token" element={<TripShare />} />
     </Routes>
   )
 }
