@@ -1,6 +1,13 @@
 // AI itinerary planner. Given a trip's customers, dates, optional flights and
 // constraints, asks DeepSeek to produce a realistic day-by-day plan plus
 // planning notes (like a human-prepared business-travel itinerary).
+import {
+  DeepSeekError,
+  deepseekErrorFromResponse,
+  deepseekNetworkError,
+  deepseekFailureMessage,
+} from './deepseekErrors.js';
+
 const API_URL = 'https://api.deepseek.com/chat/completions';
 const PRIMARY_MODEL = 'deepseek-reasoner'; // latest R1 reasoning model — best for multi-constraint planning
 const FALLBACK_MODEL = 'deepseek-chat'; // V3 — faster fallback if reasoner is unavailable
@@ -138,11 +145,14 @@ async function callModel(model, userPrompt) {
       signal: controller.signal,
     });
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`DeepSeek ${model} HTTP ${res.status}: ${body.slice(0, 200)}`);
+      throw await deepseekErrorFromResponse(res);
     }
     const data = await res.json();
     return data.choices?.[0]?.message?.content || '';
+  } catch (err) {
+    if (err instanceof DeepSeekError) throw err;
+    // Abort / network failure reaching DeepSeek.
+    throw deepseekNetworkError(err);
   } finally {
     clearTimeout(timer);
   }
@@ -150,9 +160,10 @@ async function callModel(model, userPrompt) {
 
 // Returns { itinerary: {days, notes}, model } or throws.
 export async function planItinerary(trip) {
-  if (!API_KEY) throw new Error('DEEPSEEK_API_KEY not configured');
+  if (!API_KEY) throw new DeepSeekError(deepseekFailureMessage(401), 401);
   const userPrompt = buildUserPrompt(trip);
 
+  let lastErr = null;
   for (const model of [PRIMARY_MODEL, FALLBACK_MODEL]) {
     try {
       const reply = await callModel(model, userPrompt);
@@ -170,8 +181,12 @@ export async function planItinerary(trip) {
       }
       console.warn(`[tripPlanner] ${model} returned no usable JSON, trying next`);
     } catch (err) {
+      lastErr = err;
       console.error(`[tripPlanner] ${model} failed: ${err.message}`);
     }
   }
-  throw new Error('Failed to generate itinerary from DeepSeek');
+  // Surface the real reason (out of balance / bad key / rate limit / network).
+  if (lastErr?.isDeepSeek) throw lastErr;
+  if (lastErr) throw deepseekNetworkError(lastErr);
+  throw new Error('Failed to generate itinerary: the AI returned no usable response. Please try again.');
 }
