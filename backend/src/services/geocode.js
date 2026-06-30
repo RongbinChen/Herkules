@@ -1,5 +1,9 @@
 // Geocoding via DeepSeek chat API. The model is given an address and asked to
-// return JSON coordinates. Never throws — geocoding must not block saving a customer.
+// return JSON coordinates. Returns null when the address simply can't be
+// resolved, but THROWS a DeepSeekError when the API itself is unavailable
+// (out of balance / bad key / rate limited) so the UI can show why.
+import { DeepSeekError, deepseekErrorFromResponse, deepseekNetworkError } from './deepseekErrors.js';
+
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
 export async function geocodeAddress(address) {
@@ -37,9 +41,7 @@ export async function geocodeAddress(address) {
     });
 
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      console.error('[geocode] DeepSeek API error:', res.status, body);
-      return null;
+      throw await deepseekErrorFromResponse(res);
     }
 
     const data = await res.json();
@@ -57,8 +59,14 @@ export async function geocodeAddress(address) {
 
     return { latitude, longitude };
   } catch (err) {
-    console.error('[geocode] failed:', err.message);
-    return null;
+    if (err instanceof DeepSeekError) throw err;
+    // Model returned something unparseable → treat as "address not found".
+    if (err instanceof SyntaxError) {
+      console.error('[geocode] unparseable response:', err.message);
+      return null;
+    }
+    // Abort / network failure → surface as an AI-service outage.
+    throw deepseekNetworkError(err);
   } finally {
     clearTimeout(timer);
   }

@@ -10,10 +10,15 @@ const router = express.Router();
 // Best-effort — leaves existing coords unchanged if geocoding fails.
 async function applyGeocode(data) {
   if (data.address && (data.latitude == null || data.longitude == null)) {
-    const coords = await geocodeAddress(data.address);
-    if (coords) {
-      data.latitude = coords.latitude;
-      data.longitude = coords.longitude;
+    try {
+      const coords = await geocodeAddress(data.address);
+      if (coords) {
+        data.latitude = coords.latitude;
+        data.longitude = coords.longitude;
+      }
+    } catch (err) {
+      // DeepSeek down / out of balance — don't block saving the customer.
+      console.warn('[customers] auto-geocode skipped:', err.message);
     }
   }
 }
@@ -38,11 +43,20 @@ router.post('/geocode', authenticateToken, async (req, res) => {
   if (!address || !address.trim()) {
     return res.status(400).json({ error: 'address is required' });
   }
-  const coords = await geocodeAddress(address.trim());
-  if (!coords) {
-    return res.status(404).json({ error: 'Could not determine coordinates for this address' });
+  try {
+    const coords = await geocodeAddress(address.trim());
+    if (!coords) {
+      return res.status(404).json({ error: 'Could not determine coordinates for this address' });
+    }
+    res.json(coords);
+  } catch (err) {
+    // DeepSeek unavailable (out of balance / bad key / rate limit) — surface why.
+    if (err.isDeepSeek) {
+      return res.status(502).json({ error: err.message });
+    }
+    console.error('[customers] geocode error:', err.message);
+    res.status(500).json({ error: 'Failed to geocode address' });
   }
-  res.json(coords);
 });
 
 // Get all customers

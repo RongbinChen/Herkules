@@ -87,8 +87,9 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
         longitude: res.data.longitude,
       }))
       lastGeocodedAddress.current = address.trim()
-    } catch {
-      setGeoError('Could not find coordinates for this address')
+    } catch (err) {
+      // Show the backend's reason (e.g. DeepSeek out of balance) when present.
+      setGeoError(err?.response?.data?.error || 'Could not find coordinates for this address')
     } finally {
       setGeocoding(false)
     }
