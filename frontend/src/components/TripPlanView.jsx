@@ -4,6 +4,7 @@ export default function TripPlanView({ trip }) {
   const flights = Array.isArray(trip.flights) ? trip.flights : []
   const days = trip.itinerary?.days || []
   const notes = trip.itinerary?.notes || []
+  const transports = Array.isArray(trip.itinerary?.transports) ? trip.itinerary.transports : []
 
   return (
     <div className="space-y-6">
@@ -20,6 +21,34 @@ export default function TripPlanView({ trip }) {
                   {f.time && <span className="text-slate-500">{f.time}</span>}
                 </div>
                 {f.notes && <p className="mt-1 text-xs text-slate-500">{f.notes}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {transports.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Suggested transport <span className="font-normal normal-case text-amber-600">· reference only — verify before booking</span>
+          </h3>
+          <ul className="space-y-2">
+            {transports.map((t, i) => (
+              <li key={i} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  {t.date && <span className="font-semibold text-slate-800">{t.date}</span>}
+                  <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">
+                    {t.mode === 'train' ? '🚄' : '✈️'} {t.service || (t.mode === 'train' ? 'Train' : 'Flight')}
+                  </span>
+                  {(t.from || t.to) && (
+                    <span className="text-slate-700">{[t.from, t.to].filter(Boolean).join(' → ')}</span>
+                  )}
+                  {(t.depart || t.arrive) && (
+                    <span className="text-slate-500">{[t.depart, t.arrive].filter(Boolean).join('–')}</span>
+                  )}
+                  {t.duration && <span className="text-xs text-slate-400">({t.duration})</span>}
+                </div>
+                {t.note && <p className="mt-1 text-xs text-slate-500">{t.note}</p>}
               </li>
             ))}
           </ul>

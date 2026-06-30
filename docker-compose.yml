@@ -50,6 +50,7 @@ services:
       CHINABIDDING_CAS_LOGIN_URL: ${CHINABIDDING_CAS_LOGIN_URL:-https://cas.ebnew.com/cas/login}
       CHINABIDDING_USERNAME: ${CHINABIDDING_USERNAME:-}
       CHINABIDDING_PASSWORD: ${CHINABIDDING_PASSWORD:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

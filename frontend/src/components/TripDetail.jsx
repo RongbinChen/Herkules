@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { tripsAPI } from '../api/api'
+import { sortStopsByArrival } from '../utils/trips'
 import TripMap from './TripMap'
 import TripModal from './TripModal'
 import TripPlanView from './TripPlanView'
@@ -27,13 +28,27 @@ export default function TripDetail() {
   const [savingStops, setSavingStops] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [planError, setPlanError] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+
+  // Tick a visible seconds counter while the AI is planning, so a long
+  // (20–60s) request doesn't look frozen. Uses a wall-clock baseline so the
+  // count stays accurate even if the tab is throttled in the background.
+  useEffect(() => {
+    if (!planning) return
+    setElapsed(0)
+    const started = Date.now()
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - started) / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [planning])
 
   async function load() {
     setLoading(true)
     try {
       const res = await tripsAPI.get(id)
       setTrip(res.data)
-      setStops(res.data.stops || [])
+      setStops(sortByArrival(res.data.stops || []))
       setDirty(false)
     } catch (err) {
       console.error('Failed to load trip', err)
@@ -50,18 +65,9 @@ export default function TripDetail() {
 
   const shareUrl = trip ? `${window.location.origin}/trip/share/${trip.shareToken}` : ''
 
-  // Spread arrival times evenly across the trip window, in current order — so
-  // reordering stops automatically re-sequences the suggested dates.
-  function redistribute(list) {
-    if (!trip || list.length === 0) return list
-    const start = new Date(trip.startTime).getTime()
-    const span = new Date(trip.endTime).getTime() - start
-    const n = list.length
-    return list.map((s, i) => ({
-      ...s,
-      plannedArrival: new Date(start + (span * i) / n).toISOString(),
-    }))
-  }
+  // Show stops ordered by recommended arrival; shared with the public share page
+  // (utils/trips) so both maps number the stops identically.
+  const sortByArrival = sortStopsByArrival
 
   async function copyShare() {
     try {
@@ -88,9 +94,12 @@ export default function TripDetail() {
     const j = index + dir
     if (j < 0 || j >= stops.length) return
     const next = [...stops]
-    ;[next[index], next[j]] = [next[j], next[index]]
-    // Re-sequence suggested arrival dates to follow the new order.
-    setStops(redistribute(next))
+    // Swap only the two arrival dates: the date-sorted list then shows them in
+    // the new order while keeping the AI's recommended dates (no redistribution).
+    const tmp = next[index].plannedArrival
+    next[index] = { ...next[index], plannedArrival: next[j].plannedArrival }
+    next[j] = { ...next[j], plannedArrival: tmp }
+    setStops(sortByArrival(next))
     setDirty(true)
   }
 
@@ -119,7 +128,7 @@ export default function TripDetail() {
       if (dirty) await saveStops()
       const res = await tripsAPI.plan(trip.id)
       setTrip(res.data)
-      setStops(res.data.stops || [])
+      setStops(sortByArrival(res.data.stops || []))
     } catch (err) {
       console.error('Failed to generate itinerary', err)
       const detail = err?.response?.data?.error
@@ -150,7 +159,7 @@ export default function TripDetail() {
       }
       const res = await tripsAPI.update(trip.id, payload)
       setTrip(res.data)
-      setStops(res.data.stops || [])
+      setStops(sortByArrival(res.data.stops || []))
       setDirty(false)
     } catch (err) {
       console.error('Failed to save stops', err)
@@ -335,14 +344,23 @@ export default function TripDetail() {
             disabled={planning}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
           >
-            {planning ? 'Generating… (~30s)' : trip.itinerary ? '↻ Regenerate with AI' : '✨ Generate with AI'}
+            {planning ? `Generating… ${elapsed}s` : trip.itinerary ? '↻ Regenerate with AI' : '✨ Generate with AI'}
           </button>
         </div>
         {planError && <p className="mb-3 text-sm font-medium text-red-600">{planError}</p>}
         {planning ? (
-          <p className="py-8 text-center text-sm text-slate-400">
-            DeepSeek is arranging the itinerary… this can take 20–60 seconds.
-          </p>
+          <div className="flex flex-col items-center gap-4 py-8">
+            <div className="flex items-center gap-3">
+              <svg className="h-6 w-6 animate-spin text-indigo-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <span className="text-3xl font-bold tabular-nums text-indigo-600">{elapsed}s</span>
+            </div>
+            <p className="text-sm text-slate-400">
+              DeepSeek is arranging the itinerary… usually 20–60 seconds.
+            </p>
+          </div>
         ) : trip.itinerary || (Array.isArray(trip.flights) && trip.flights.length) ? (
           <TripPlanView trip={trip} />
         ) : (

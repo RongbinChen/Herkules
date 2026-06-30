@@ -6,9 +6,8 @@ import { geocodeAddress } from '../services/geocode.js';
 
 const router = express.Router();
 
-// Fill latitude/longitude from the address when an address is given but
-// coordinates weren't entered manually, so the customer shows on the map.
-// Best-effort — leaves coords null if geocoding fails.
+// Fill latitude/longitude from the address when coords weren't manually supplied.
+// Best-effort — leaves existing coords unchanged if geocoding fails.
 async function applyGeocode(data) {
   if (data.address && (data.latitude == null || data.longitude == null)) {
     const coords = await geocodeAddress(data.address);
@@ -31,6 +30,19 @@ const customerSchema = z.object({
   status: z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'LOST']).optional(),
   tier: z.enum(['A', 'B', 'C']).optional(),
   tags: z.array(z.string()).optional(),
+});
+
+// On-demand geocode — called by the frontend "Update coordinates" button
+router.post('/geocode', authenticateToken, async (req, res) => {
+  const { address } = req.body;
+  if (!address || !address.trim()) {
+    return res.status(400).json({ error: 'address is required' });
+  }
+  const coords = await geocodeAddress(address.trim());
+  if (!coords) {
+    return res.status(404).json({ error: 'Could not determine coordinates for this address' });
+  }
+  res.json(coords);
 });
 
 // Get all customers

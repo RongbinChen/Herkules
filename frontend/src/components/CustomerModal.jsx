@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { customersAPI } from '../api/api'
 import { STATUS_ORDER, TIER_ORDER, CUSTOMER_STATUS, CUSTOMER_TIER } from '../constants/customer'
 
@@ -25,10 +25,14 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
   const [tagInput, setTagInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [geocoding, setGeocoding] = useState(false)
+  const [geoError, setGeoError] = useState('')
+  const lastGeocodedAddress = useRef('')
 
   useEffect(() => {
     if (!isOpen) return
     setError('')
+    setGeoError('')
     setTagInput('')
     if (customer) {
       setForm({
@@ -44,8 +48,10 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
         longitude: customer.longitude ?? '',
         tags: customer.tags || [],
       })
+      lastGeocodedAddress.current = customer.address || ''
     } else {
       setForm(EMPTY)
+      lastGeocodedAddress.current = ''
     }
   }, [isOpen, customer])
 
@@ -67,6 +73,32 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
 
   function removeTag(tag) {
     setForm((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== tag) }))
+  }
+
+  async function fetchCoords(address) {
+    if (!address || !address.trim()) return
+    setGeocoding(true)
+    setGeoError('')
+    try {
+      const res = await customersAPI.geocode(address.trim())
+      setForm((prev) => ({
+        ...prev,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
+      }))
+      lastGeocodedAddress.current = address.trim()
+    } catch {
+      setGeoError('Could not find coordinates for this address')
+    } finally {
+      setGeocoding(false)
+    }
+  }
+
+  function handleAddressBlur(e) {
+    const addr = e.target.value.trim()
+    if (addr && addr !== lastGeocodedAddress.current) {
+      fetchCoords(addr)
+    }
   }
 
   async function handleSubmit(event) {
@@ -108,7 +140,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6">
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6">
       <div className="flex max-h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-[24px]">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <div>
@@ -171,7 +203,13 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Address</span>
-            <input value={form.address} onChange={(e) => update('address', e.target.value)} className={inputCls} placeholder="Street, City, Province, Country" />
+            <input
+              value={form.address}
+              onChange={(e) => update('address', e.target.value)}
+              onBlur={handleAddressBlur}
+              className={inputCls}
+              placeholder="Street, City, Province, Country"
+            />
           </label>
 
           <div>
@@ -210,15 +248,60 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
             />
           </label>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Latitude <span className="text-slate-400">(for map)</span></span>
-              <input type="number" step="any" value={form.latitude} onChange={(e) => update('latitude', e.target.value)} className={inputCls} placeholder="30.59" />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Longitude <span className="text-slate-400">(for map)</span></span>
-              <input type="number" step="any" value={form.longitude} onChange={(e) => update('longitude', e.target.value)} className={inputCls} placeholder="114.30" />
-            </label>
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">
+                Coordinates <span className="text-slate-400">(for map)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => fetchCoords(form.address)}
+                disabled={geocoding || !form.address.trim()}
+                className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {geocoding ? (
+                  <>
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                    Looking up...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                    </svg>
+                    Update coordinates
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-xs text-slate-500">Latitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={form.latitude}
+                  onChange={(e) => update('latitude', e.target.value)}
+                  className={inputCls}
+                  placeholder="30.59"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs text-slate-500">Longitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={form.longitude}
+                  onChange={(e) => update('longitude', e.target.value)}
+                  className={inputCls}
+                  placeholder="114.30"
+                />
+              </label>
+            </div>
+            {geoError && <p className="mt-1.5 text-xs text-amber-600">{geoError}</p>}
           </div>
 
           {error && <p className="text-sm font-medium text-red-600">{error}</p>}
