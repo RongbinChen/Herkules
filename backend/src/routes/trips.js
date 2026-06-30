@@ -93,6 +93,20 @@ function plannedArrivalFor(index, count, start, end) {
   return new Date(start.getTime() + (span * index) / count);
 }
 
+// Parse the model's recommended arrival ("YYYY-MM-DDTHH:mm", no timezone) as
+// China local time — all customers are in China, so this displays correctly for
+// users in that timezone. Returns a Date, or null if unparseable.
+function parseAiArrival(value) {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
+  if (m) {
+    const d = new Date(`${m[1]}T${m[2]}:${m[3]}:00+08:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function shareToken() {
   return randomBytes(20).toString('hex');
 }
@@ -345,12 +359,30 @@ router.post('/:id/plan', authenticateToken, async (req, res) => {
     if (!trip) {
       return res.status(404).json({ error: 'Trip not found' });
     }
-    const { itinerary, model } = await planItinerary(trip);
-    const updated = await prisma.trip.update({
-      where: { id },
-      data: { itinerary, itineraryModel: model, itineraryAt: new Date() },
-      include: stopInclude,
-    });
+    const { itinerary, model, stopArrivals } = await planItinerary(trip);
+
+    // Write the AI's recommended arrival date/time back onto each stop so the
+    // "Visit order / times" list reflects the plan. index is 1-based, matching
+    // the customer list sent to the model (trip.stops ordered by `order`).
+    const stopUpdates = [];
+    for (const sa of stopArrivals || []) {
+      const stop = trip.stops[(Number(sa.index) || 0) - 1];
+      const when = parseAiArrival(sa.arrival);
+      if (stop && when) {
+        stopUpdates.push(
+          prisma.tripStop.update({ where: { id: stop.id }, data: { plannedArrival: when } }),
+        );
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.trip.update({
+        where: { id },
+        data: { itinerary, itineraryModel: model, itineraryAt: new Date() },
+      }),
+      ...stopUpdates,
+    ]);
+    const updated = await prisma.trip.findUnique({ where: { id }, include: stopInclude });
     res.json(updated);
   } catch (error) {
     console.error('[trips] plan error:', error.message);

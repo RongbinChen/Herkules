@@ -1,73 +1,65 @@
-// Best-effort forward geocoding via OpenStreetMap Nominatim (no API key needed,
-// matches the OSM tiles the customer map already uses). Returns { latitude,
-// longitude } or null. Never throws — geocoding must not block saving a customer.
-//
-// Nominatim usage policy: <=1 request/second and a descriptive User-Agent.
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
-const USER_AGENT = 'calendar-app/1.0 (customer-map geocoding)';
+// Geocoding via DeepSeek chat API. The model is given an address and asked to
+// return JSON coordinates. Never throws — geocoding must not block saving a customer.
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
-// A country/continent-level hit is a misleading pin (e.g. an address that only
-// resolves to "China" would drop the marker in the wrong city), so reject it
-// and prefer returning null.
-const TOO_COARSE = new Set(['country', 'continent']);
+export async function geocodeAddress(address) {
+  if (!address || !address.trim()) return null;
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    console.warn('[geocode] DEEPSEEK_API_KEY not set — skipping geocode');
+    return null;
+  }
 
-// Normalize common Chinese-address noise that confuses Nominatim.
-function normalize(address) {
-  return address
-    .replace(/\bP\.?\s*R\.?\s*China\b/gi, 'China')
-    .replace(/\bPRC\b/gi, 'China')
-    .replace(/\bProvince\b/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
+  const prompt =
+    'You are a geocoding assistant. Given the address below, respond with ONLY a JSON object ' +
+    'containing the WGS-84 latitude and longitude. No markdown, no explanation.\n' +
+    'Example response: {"latitude":30.5928,"longitude":114.3055}\n\n' +
+    `Address: ${address.trim()}`;
 
-async function queryNominatim(q) {
-  const params = new URLSearchParams({ q, format: 'json', limit: '1' });
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 15000);
+
   try {
-    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-      headers: { 'User-Agent': USER_AGENT },
+    const res = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0,
+        max_tokens: 60,
+      }),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('[geocode] DeepSeek API error:', res.status, body);
+      return null;
+    }
+
     const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const hit = data[0];
-    if (TOO_COARSE.has(hit.addresstype)) return null;
-    const latitude = Number(hit.lat);
-    const longitude = Number(hit.lon);
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) return null;
+
+    // Extract the first {...} block from the response
+    const match = text.match(/\{[^}]+\}/);
+    if (!match) return null;
+
+    const coords = JSON.parse(match[0]);
+    const latitude = Number(coords.latitude);
+    const longitude = Number(coords.longitude);
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
+
     return { latitude, longitude };
   } catch (err) {
-    console.error('[geocode] query failed:', err.message);
+    console.error('[geocode] failed:', err.message);
     return null;
   } finally {
     clearTimeout(timer);
   }
-}
-
-// Build progressively coarser queries: the full address first, then drop the
-// most-specific leading parts (building/floor/street) and fall back toward
-// "City, Province, Country", which Nominatim resolves reliably.
-function candidateQueries(address) {
-  const parts = normalize(address).split(',').map((s) => s.trim()).filter(Boolean);
-  const candidates = [];
-  for (let start = 0; start < parts.length; start++) {
-    candidates.push(parts.slice(start).join(', '));
-  }
-  return [...new Set(candidates)];
-}
-
-export async function geocodeAddress(address) {
-  if (!address || !address.trim()) return null;
-  const candidates = candidateQueries(address);
-  for (let i = 0; i < candidates.length; i++) {
-    if (i > 0) await sleep(1100); // respect Nominatim rate limit between retries
-    const coords = await queryNominatim(candidates[i]);
-    if (coords) return coords;
-  }
-  return null;
 }
