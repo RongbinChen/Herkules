@@ -115,6 +115,76 @@ router.post('/search', async (req, res) => {
 
 // ── Bid Open 子版块 ───────────────────────────────────────────────────────────
 
+// 下载标准开标记录模板（供用户按格式填写后上传）。内存生成，前端带 token 下载。
+router.get('/bidopen/template', (req, res) => {
+  import('xlsx').then((mod) => {
+    const X = mod.default || mod;
+    const aoa = [
+      ['Bid opening -  (项目名称 Project name)'],
+      [
+        'Bid opening date', 'End user', 'Bidder', 'Country', 'Price term',
+        'Currency', 'Price', 'Delivery time', 'Destination', 'IFB No.', 'Remark',
+      ],
+      ['2026-07-02', 'Shanghai Electric', 'WALDRICH SIEGEN GmbH & Co.KG', 'Germany', 'CIF', 'Euro', '7,500,000.00', '28 months', 'Shanghai', '0613-264025122902', 'ProfiTurn H 2200'],
+      ['', '', 'SMT', 'Czech', 'CIF', 'Euro', '6,699,860.00', '28 months', 'Shanghai', '', ''],
+    ];
+    const ws = X.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 20 }, { wch: 24 }];
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, 'Bid opening');
+    const buf = X.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="bid-opening-template.xlsx"');
+    res.send(buf);
+  }).catch((err) => {
+    console.error('template error:', err.message);
+    res.status(500).json({ error: 'Failed to build template' });
+  });
+});
+
+// 手动录入开标记录（前端表单直接提交结构化数据，跳过 AI 识别）
+router.post('/bidopen/manual', async (req, res) => {
+  try {
+    const { biddingNo, projectName, openDate, purchaser, bidders, summary } = req.body;
+    const cleanBidders = (Array.isArray(bidders) ? bidders : [])
+      .filter((b) => b && (b.name || '').trim())
+      .map((b) => ({
+        name: String(b.name).trim(),
+        country: b.country?.trim() || null,
+        priceTerm: b.priceTerm?.trim() || null,
+        currency: b.currency?.trim() || null,
+        price: b.price?.trim() || null,
+        deliveryTime: b.deliveryTime?.trim() || null,
+        destination: b.destination?.trim() || null,
+        note: b.note?.trim() || null,
+      }));
+    if (!projectName && !biddingNo && cleanBidders.length === 0) {
+      return res.status(400).json({ error: 'Please fill in at least a project/bidding no or one bidder' });
+    }
+    let openDateVal = null;
+    if (openDate) {
+      const d = new Date(openDate);
+      if (!Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) openDateVal = d;
+    }
+    const record = await prisma.bidOpening.create({
+      data: {
+        biddingNo: biddingNo?.trim() || null,
+        projectName: projectName?.trim() || null,
+        openDate: openDateVal,
+        purchaser: purchaser?.trim() || null,
+        bidders: cleanBidders,
+        summary: summary?.trim() || null,
+        fileName: '(manual entry)',
+        uploadedById: req.user.userId,
+      },
+    });
+    res.status(201).json(record);
+  } catch (error) {
+    console.error('Error creating manual bid opening:', error);
+    res.status(500).json({ error: 'Failed to save the record' });
+  }
+});
+
 // 上传开标记录 Excel → 提取文本 → DeepSeek 识别 → 入库
 router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
   try {

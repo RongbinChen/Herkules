@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   uploadBidOpening, listBidOpenings, deleteBidOpening,
+  createManualBidOpening, downloadBidTemplate,
   fetchBidResults, getBidResults, getEmailStatus,
   listSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch,
 } from '../api/chinabidding'
@@ -24,6 +25,86 @@ function fmtDate(v) {
   return v ? new Date(v).toLocaleDateString('zh-CN') : '—'
 }
 
+// 手动录入表单 —— 与 Excel 列一致
+const EMPTY_BIDDER = { name: '', country: '', priceTerm: '', currency: '', price: '', deliveryTime: '', destination: '', note: '' }
+
+function ManualEntryForm({ onSaved, onCancel }) {
+  const [head, setHead] = useState({ projectName: '', biddingNo: '', openDate: '', purchaser: '' })
+  const [bidders, setBidders] = useState([{ ...EMPTY_BIDDER }])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const cell = 'rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white'
+
+  function setBidder(i, field, v) {
+    setBidders((prev) => prev.map((b, idx) => (idx === i ? { ...b, [field]: v } : b)))
+  }
+  function addRow() { setBidders((prev) => [...prev, { ...EMPTY_BIDDER }]) }
+  function removeRow(i) { setBidders((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)) }
+
+  async function submit() {
+    const filled = bidders.filter((b) => b.name.trim())
+    if (!head.projectName.trim() && !head.biddingNo.trim() && filled.length === 0) {
+      return setError('请至少填写项目名称/招标编号，或一位投标人')
+    }
+    setSaving(true); setError('')
+    try {
+      const rec = await createManualBidOpening({ ...head, bidders: filled })
+      onSaved(rec)
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-semibold text-slate-800">手动录入开标记录</p>
+        <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">取消</button>
+      </div>
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <input value={head.projectName} onChange={(e) => setHead({ ...head, projectName: e.target.value })} placeholder="项目名称 Project" className={cell} />
+        <input value={head.biddingNo} onChange={(e) => setHead({ ...head, biddingNo: e.target.value })} placeholder="招标编号 IFB No." className={cell} />
+        <input type="date" value={head.openDate} onChange={(e) => setHead({ ...head, openDate: e.target.value })} className={cell} title="开标日期" />
+        <input value={head.purchaser} onChange={(e) => setHead({ ...head, purchaser: e.target.value })} placeholder="采购方 End user" className={cell} />
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-100">
+        <table className="w-full whitespace-nowrap text-sm">
+          <thead>
+            <tr className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+              <th className="px-2 py-2">#</th><th className="px-2 py-2">投标人*</th><th className="px-2 py-2">国家</th>
+              <th className="px-2 py-2">条款</th><th className="px-2 py-2">币种</th><th className="px-2 py-2">报价</th>
+              <th className="px-2 py-2">交货期</th><th className="px-2 py-2">目的地</th><th className="px-2 py-2">备注</th><th className="px-2 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {bidders.map((b, i) => (
+              <tr key={i} className="border-t border-slate-100">
+                <td className="px-2 py-1.5 text-slate-400">{i + 1}</td>
+                <td className="px-2 py-1.5"><input value={b.name} onChange={(e) => setBidder(i, 'name', e.target.value)} className={`${cell} w-40`} /></td>
+                <td className="px-2 py-1.5"><input value={b.country} onChange={(e) => setBidder(i, 'country', e.target.value)} className={`${cell} w-24`} /></td>
+                <td className="px-2 py-1.5"><input value={b.priceTerm} onChange={(e) => setBidder(i, 'priceTerm', e.target.value)} className={`${cell} w-20`} placeholder="CIF" /></td>
+                <td className="px-2 py-1.5"><input value={b.currency} onChange={(e) => setBidder(i, 'currency', e.target.value)} className={`${cell} w-20`} placeholder="Euro" /></td>
+                <td className="px-2 py-1.5"><input value={b.price} onChange={(e) => setBidder(i, 'price', e.target.value)} className={`${cell} w-32`} /></td>
+                <td className="px-2 py-1.5"><input value={b.deliveryTime} onChange={(e) => setBidder(i, 'deliveryTime', e.target.value)} className={`${cell} w-28`} /></td>
+                <td className="px-2 py-1.5"><input value={b.destination} onChange={(e) => setBidder(i, 'destination', e.target.value)} className={`${cell} w-24`} /></td>
+                <td className="px-2 py-1.5"><input value={b.note} onChange={(e) => setBidder(i, 'note', e.target.value)} className={`${cell} w-40`} /></td>
+                <td className="px-2 py-1.5"><button onClick={() => removeRow(i)} className="rounded px-1.5 py-1 text-xs text-red-500 hover:bg-red-50">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button onClick={addRow} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-sky-600 hover:bg-sky-50">+ 加一行投标人</button>
+        <div className="flex-1" />
+        <button onClick={submit} disabled={saving} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
+          {saving ? '保存中…' : '保存记录'}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}
+    </div>
+  )
+}
+
 // ── 开标记录 ──────────────────────────────────────────────────────────────────
 function OpeningTab() {
   const { user } = useAuth()
@@ -32,6 +113,11 @@ function OpeningTab() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(null)
+  const [manualOpen, setManualOpen] = useState(false)
+
+  async function handleTemplate() {
+    try { await downloadBidTemplate() } catch (err) { setError(err.message) }
+  }
 
   async function load() {
     try { setRecords(await listBidOpenings()) } catch (e) { console.error(e) }
@@ -64,15 +150,31 @@ function OpeningTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/50 p-4">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-slate-800">上传开标记录 (Excel)</p>
-          <p className="mt-0.5 text-xs text-slate-500">上传 .xlsx 开标记录，系统用 AI 自动识别招标编号、项目、开标日期与投标人报价并入库。</p>
+          <p className="font-semibold text-slate-800">添加开标记录</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            上传 .xlsx（AI 自动识别编号/项目/日期/投标人报价），或
+            <button onClick={handleTemplate} className="mx-1 font-semibold text-sky-600 hover:underline">下载模板</button>
+            按格式填写后上传，也可直接手动录入。
+          </p>
         </div>
-        <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-sky-600 hover:bg-sky-700'}`}>
-          {uploading ? '识别中…' : '选择 Excel 上传'}
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" disabled={uploading} onChange={handleFile} />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setManualOpen((v) => !v)} className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50">
+            {manualOpen ? '收起手动录入' : '✎ 手动填写'}
+          </button>
+          <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-sky-600 hover:bg-sky-700'}`}>
+            {uploading ? '识别中…' : '选择 Excel 上传'}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" disabled={uploading} onChange={handleFile} />
+          </label>
+        </div>
       </div>
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 ring-1 ring-red-200">{error}</p>}
+
+      {manualOpen && (
+        <ManualEntryForm
+          onCancel={() => setManualOpen(false)}
+          onSaved={(rec) => { setRecords((prev) => [rec, ...prev]); setExpanded(rec.id); setManualOpen(false) }}
+        />
+      )}
 
       {records.length === 0 ? (
         <p className="py-12 text-center text-sm text-slate-400">还没有开标记录，上传第一份 Excel 吧。</p>

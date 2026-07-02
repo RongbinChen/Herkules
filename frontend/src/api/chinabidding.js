@@ -225,3 +225,27 @@ export async function updateSavedSearch(id, data) {
   });
   return parseOrThrow(res, 'Failed to update subscription');
 }
+
+export async function createManualBidOpening(data) {
+  const res = await fetch(`${API_BASE}/bidopen/manual`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  return parseOrThrow(res, 'Failed to save the record');
+}
+
+// Download the Excel template (auth required → fetch as blob, then trigger save).
+export async function downloadBidTemplate() {
+  const res = await fetch(`${API_BASE}/bidopen/template`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to download template');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bid-opening-template.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
