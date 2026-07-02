@@ -15,7 +15,9 @@ import {
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
-const MODEL   = 'deepseek-chat'; // DeepSeek-V3, cheap & fast
+// deepseek-chat/deepseek-reasoner retire 2026-07-24 — deepseek-v4-flash is
+// their replacement (non-thinking mode = same fast/cheap V3-class behavior).
+const MODEL   = 'deepseek-v4-flash';
 
 // Business context: Herkules / Waldrich Siegen — roll grinders, machine tools, CNC
 const RELEVANCE_SYSTEM = `你是一名工业设备采购分析师，服务于轧辊磨床和机床制造商（Herkules集团、Waldrich Siegen）。
@@ -81,6 +83,7 @@ export async function callDeepSeek(messages, maxTokens = 200) {
       },
       body: JSON.stringify({
         model: MODEL,
+        thinking: { type: 'disabled' }, // fast, non-reasoning — matches the old deepseek-chat behavior
         messages,
         max_tokens: maxTokens,
         temperature: 0.1,

@@ -32,7 +32,8 @@ export async function geocodeAddress(address) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash', // deepseek-chat retires 2026-07-24; this is its replacement
+        thinking: { type: 'disabled' }, // simple lookup — no need for reasoning
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
         max_tokens: 60,
