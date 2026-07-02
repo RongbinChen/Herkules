@@ -167,3 +167,61 @@ export async function listCompetitors() {
   if (!res.ok) throw new Error('Failed to fetch competitors');
   return res.json();
 }
+
+// ── Bid Open 子版块 ───────────────────────────────────────────────────────────
+
+async function parseOrThrow(res, fallback) {
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || fallback);
+  return data;
+}
+
+export async function uploadBidOpening(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/bidopen/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    body: form,
+  });
+  return parseOrThrow(res, 'Failed to upload bid opening record');
+}
+
+export async function listBidOpenings() {
+  const res = await fetch(`${API_BASE}/bidopen`, { headers: authHeaders() });
+  return parseOrThrow(res, 'Failed to list bid openings');
+}
+
+export async function deleteBidOpening(id) {
+  const res = await fetch(`${API_BASE}/bidopen/${id}`, { method: 'DELETE', headers: authHeaders() });
+  return parseOrThrow(res, 'Failed to delete');
+}
+
+// 抓取 chinabidding 上该编号的评标/中标公告并返回分组结果
+export async function fetchBidResults(biddingNo) {
+  const res = await fetch(`${API_BASE}/bidopen/fetch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ biddingNo }),
+  });
+  return parseOrThrow(res, 'Failed to fetch results from chinabidding');
+}
+
+export async function getBidResults(biddingNo) {
+  const res = await fetch(`${API_BASE}/bidopen/results?biddingNo=${encodeURIComponent(biddingNo)}`, { headers: authHeaders() });
+  return parseOrThrow(res, 'Failed to query results');
+}
+
+export async function getEmailStatus() {
+  const res = await fetch(`${API_BASE}/bidopen/email-status`, { headers: authHeaders() });
+  return parseOrThrow(res, 'Failed to get email status');
+}
+
+export async function updateSavedSearch(id, data) {
+  const res = await fetch(`${API_BASE}/saved-searches/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  return parseOrThrow(res, 'Failed to update subscription');
+}

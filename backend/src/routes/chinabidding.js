@@ -2,7 +2,7 @@ import express from 'express';
 import {
   scrapeProjects, getProjectStats, searchByKeyword, searchAndSave, searchLocalDb,
   startScrapeJob, getScrapeJob, listScrapeJobs,
-  listSavedSearches, createSavedSearch, deleteSavedSearch, runSavedSearch,
+  listSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch, runSavedSearch,
   runDailyJob, getRecentUpdates,
   getProjectThread, followProject, unfollowProject, listFollows,
   listNotifications, markNotificationRead, markAllNotificationsRead,
@@ -10,8 +10,18 @@ import {
   listCompetitors, seedCompetitors,
 } from '../services/chinabidding.js';
 import { authenticateToken } from '../middleware/auth.js';
+import multer from 'multer';
+import { prisma } from '../index.js';
+import { xlsxToText, extractBidOpening } from '../services/bidOpening.js';
+import { isEmailConfigured } from '../services/mailer.js';
 
 const router = express.Router();
+
+// In-memory upload for bid-opening Excel files (parsed immediately, not kept on disk).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 // All Chinabidding endpoints require a logged-in user.
 router.use(authenticateToken);
@@ -103,6 +113,127 @@ router.post('/search', async (req, res) => {
   }
 });
 
+// ── Bid Open 子版块 ───────────────────────────────────────────────────────────
+
+// 上传开标记录 Excel → 提取文本 → DeepSeek 识别 → 入库
+router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'file is required (.xlsx)' });
+    const name = req.file.originalname || '';
+    if (!/\.(xlsx|xls)$/i.test(name)) {
+      return res.status(400).json({ error: 'Only Excel files (.xlsx / .xls) are supported' });
+    }
+    const rawText = xlsxToText(req.file.buffer);
+    if (!rawText.trim()) {
+      return res.status(400).json({ error: 'The Excel file appears to be empty' });
+    }
+    const extracted = await extractBidOpening(rawText);
+    if (!extracted) {
+      return res.status(422).json({ error: 'Could not recognize a bid-opening record in this file' });
+    }
+    const record = await prisma.bidOpening.create({
+      data: {
+        ...extracted,
+        rawText: rawText.slice(0, 10000),
+        fileName: name,
+        uploadedById: req.user.userId,
+      },
+    });
+    res.status(201).json(record);
+  } catch (error) {
+    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    console.error('Error uploading bid opening:', error);
+    res.status(500).json({ error: 'Failed to process the uploaded file' });
+  }
+});
+
+router.get('/bidopen', async (req, res) => {
+  try {
+    const records = await prisma.bidOpening.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+    res.json(records);
+  } catch (error) {
+    console.error('Error listing bid openings:', error);
+    res.status(500).json({ error: 'Failed to list bid openings' });
+  }
+});
+
+router.delete('/bidopen/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const rec = await prisma.bidOpening.findUnique({ where: { id } });
+    if (!rec) return res.status(404).json({ error: 'Not found' });
+    if (rec.uploadedById !== req.user.userId && req.user.isAdmin !== true) {
+      return res.status(403).json({ error: 'Only the uploader or an admin can delete this record' });
+    }
+    await prisma.bidOpening.delete({ where: { id } });
+    res.json({ message: 'Deleted' });
+  } catch (error) {
+    console.error('Error deleting bid opening:', error);
+    res.status(500).json({ error: 'Failed to delete' });
+  }
+});
+
+// 按招标编号抓取 chinabidding 上的评标/中标公告并入库（异步等待完成后返回结果）
+router.post('/bidopen/fetch', async (req, res) => {
+  try {
+    const { biddingNo } = req.body;
+    if (!biddingNo || !biddingNo.trim()) {
+      return res.status(400).json({ error: 'biddingNo is required' });
+    }
+    await searchByKeyword(biddingNo.trim(), { saveToDb: true });
+    const projects = await findProjectsByBiddingNo(biddingNo.trim());
+    res.json(groupByStage(projects));
+  } catch (error) {
+    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    console.error('Error fetching bid results:', error);
+    res.status(500).json({ error: 'Failed to fetch results from chinabidding' });
+  }
+});
+
+// 从本地库按编号查询（不触发抓取）
+router.get('/bidopen/results', async (req, res) => {
+  try {
+    const biddingNo = (req.query.biddingNo || '').trim();
+    if (!biddingNo) return res.status(400).json({ error: 'biddingNo is required' });
+    const projects = await findProjectsByBiddingNo(biddingNo);
+    res.json(groupByStage(projects));
+  } catch (error) {
+    console.error('Error querying bid results:', error);
+    res.status(500).json({ error: 'Failed to query results' });
+  }
+});
+
+// 邮件配置状态（前端提示用）
+router.get('/bidopen/email-status', (req, res) => {
+  res.json({ emailConfigured: isEmailConfigured() });
+});
+
+async function findProjectsByBiddingNo(biddingNo) {
+  return prisma.bidProject.findMany({
+    where: {
+      OR: [
+        { threadKey: { contains: biddingNo, mode: 'insensitive' } },
+        { projectCode: { contains: biddingNo, mode: 'insensitive' } },
+        { projectName: { contains: biddingNo, mode: 'insensitive' } },
+      ],
+    },
+    orderBy: { publishDate: 'desc' },
+    include: { competitor: { select: { name: true, watchType: true } } },
+  });
+}
+
+function groupByStage(projects) {
+  const stage = (p) => {
+    if (p.infoClass === 'Evaluation Results') return 'evaluation';
+    if (p.infoClass === 'Tender Awards') return 'award';
+    if (p.infoClass === 'Tender Changes') return 'change';
+    return 'tender';
+  };
+  const grouped = { tender: [], change: [], evaluation: [], award: [] };
+  projects.forEach((p) => grouped[stage(p)].push(p));
+  return { total: projects.length, ...grouped };
+}
+
 // ── Saved Searches ────────────────────────────────────────────────────────────
 
 router.get('/saved-searches', async (req, res) => {
@@ -117,15 +248,27 @@ router.get('/saved-searches', async (req, res) => {
 
 router.post('/saved-searches', async (req, res) => {
   try {
-    const { name, keyword, tradeClassCode, infoClassCode, autoMonitor } = req.body;
+    const { name, keyword, tradeClassCode, infoClassCode, autoMonitor, emailNotify } = req.body;
     if (!name || !keyword) {
       return res.status(400).json({ error: 'name and keyword are required' });
     }
-    const s = await createSavedSearch(req.user.userId, { name, keyword, tradeClassCode, infoClassCode, autoMonitor });
+    const s = await createSavedSearch(req.user.userId, { name, keyword, tradeClassCode, infoClassCode, autoMonitor, emailNotify });
     res.status(201).json(s);
   } catch (error) {
     console.error('Error creating saved search:', error);
     res.status(500).json({ error: 'Failed to create saved search' });
+  }
+});
+
+// 更新订阅（切换每日监控 / 邮件提醒）
+router.patch('/saved-searches/:id', async (req, res) => {
+  try {
+    const s = await updateSavedSearch(parseInt(req.params.id), req.user.userId, req.body);
+    res.json(s);
+  } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: 'Not found' });
+    console.error('Error updating saved search:', error);
+    res.status(500).json({ error: 'Failed to update saved search' });
   }
 });
 

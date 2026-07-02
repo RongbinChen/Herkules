@@ -2,6 +2,7 @@ import { prisma } from '../index.js';
 import { parseListPage, parseDetailPage } from './chinabiddingParser.js';
 import { analyzeProject, generateMarketReport } from './deepseek.js';
 import { COMPETITOR_SEED } from '../data/competitors.js';
+import { sendMail } from './mailer.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -431,12 +432,14 @@ export async function runDailyJob(triggeredBy = null) {
       const savedSearches = await prisma.savedSearch.findMany({ where: { autoMonitor: true } });
       for (const s of savedSearches) {
         console.log(`[chinabidding] saved search: ${s.name} (${s.keyword})`);
+        const runStart = new Date();
         const r = await scrapeAllPages({
           keyword: s.keyword,
           infoClassCodes: s.infoClassCode || ALL_TENDER_CODES,
           ...(s.tradeClassCode ? { tradeClassCode: s.tradeClassCode } : {}),
         });
         await prisma.savedSearch.update({ where: { id: s.id }, data: { lastRunAt: new Date() } });
+        if (r.totalNew > 0) await notifySearchOwner(s, runStart);
         totalNew += r.totalNew;
         await sleep(3000);
       }
@@ -664,6 +667,61 @@ export async function getRecentUpdates(days = 30) {
   return { newProjects, statusChanged };
 }
 
+// After a saved search runs, notify its owner about announcements saved since
+// `since` that match the keyword: in-app Notification always, email when the
+// subscription opted in (search.emailNotify) and SMTP is configured.
+async function notifySearchOwner(search, since) {
+  try {
+    const fresh = await prisma.bidProject.findMany({
+      where: {
+        createdAt: { gte: since },
+        OR: [
+          { projectName: { contains: search.keyword, mode: 'insensitive' } },
+          { threadKey: { contains: search.keyword, mode: 'insensitive' } },
+          { projectCode: { contains: search.keyword, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true, projectName: true, infoClass: true, sourceUrl: true },
+    });
+    if (fresh.length === 0) return;
+
+    await prisma.notification.create({
+      data: {
+        userId: search.userId,
+        type: 'NEW_RELEVANT',
+        projectId: fresh[0].id,
+        message: `订阅「${search.name}」有 ${fresh.length} 条新公告：${fresh[0].projectName.slice(0, 60)}${fresh.length > 1 ? ' 等' : ''}`,
+      },
+    });
+
+    if (search.emailNotify) {
+      const user = await prisma.user.findUnique({
+        where: { id: search.userId },
+        select: { email: true, name: true },
+      });
+      if (user?.email) {
+        const lines = fresh.map(
+          (p) => `• [${p.infoClass || 'Announcement'}] ${p.projectName}\n  ${p.sourceUrl}`,
+        );
+        await sendMail({
+          to: user.email,
+          subject: `[Herkules Bid Watch] ${search.name}: ${fresh.length} new announcement(s)`,
+          text:
+            `Hi ${user.name},\n\n` +
+            `Your subscription "${search.name}" (keyword: ${search.keyword}) matched ${fresh.length} new announcement(s):\n\n` +
+            `${lines.join('\n\n')}\n\n` +
+            `View in the app: https://www.herkulesgroup-china.com/chinabidding\n`,
+        });
+      }
+    }
+  } catch (err) {
+    // Notification failures must never break the scrape pipeline.
+    console.error(`[chinabidding] notifySearchOwner "${search.name}" failed: ${err.message}`);
+  }
+}
+
 // ── SavedSearch CRUD ─────────────────────────────────────────────────────────
 export async function listSavedSearches(userId) {
   return prisma.savedSearch.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
@@ -678,6 +736,7 @@ export async function createSavedSearch(userId, data) {
       tradeClassCode: data.tradeClassCode ?? null,
       infoClassCode: data.infoClassCode ?? ALL_TENDER_CODES,
       autoMonitor: data.autoMonitor ?? false,
+      emailNotify: data.emailNotify ?? false,
     },
   });
 }
@@ -686,6 +745,19 @@ export async function deleteSavedSearch(id, userId) {
   const s = await prisma.savedSearch.findUnique({ where: { id } });
   if (!s || s.userId !== userId) throw Object.assign(new Error('Not found'), { status: 404 });
   await prisma.savedSearch.delete({ where: { id } });
+}
+
+export async function updateSavedSearch(id, userId, data) {
+  const s = await prisma.savedSearch.findUnique({ where: { id } });
+  if (!s || s.userId !== userId) throw Object.assign(new Error('Not found'), { status: 404 });
+  return prisma.savedSearch.update({
+    where: { id },
+    data: {
+      ...(data.autoMonitor !== undefined ? { autoMonitor: !!data.autoMonitor } : {}),
+      ...(data.emailNotify !== undefined ? { emailNotify: !!data.emailNotify } : {}),
+      ...(data.name ? { name: data.name } : {}),
+    },
+  });
 }
 
 export async function runSavedSearch(id, userId) {
@@ -698,12 +770,14 @@ export async function runSavedSearch(id, userId) {
 
   (async () => {
     try {
+      const runStart = new Date();
       const r = await scrapeAllPages({
         keyword: s.keyword,
         infoClassCodes: s.infoClassCode || ALL_TENDER_CODES,
         ...(s.tradeClassCode ? { tradeClassCode: s.tradeClassCode } : {}),
       });
       await prisma.savedSearch.update({ where: { id }, data: { lastRunAt: new Date() } });
+      if (r.totalNew > 0) await notifySearchOwner(s, runStart);
       await prisma.scrapeJob.update({
         where: { id: job.id },
         data: { status: 'DONE', itemsFound: r.totalFound, itemsSaved: r.totalNew, finishedAt: new Date() },

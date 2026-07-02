@@ -5,6 +5,7 @@ import Calendar from './components/Calendar'
 import Dashboard from './components/Dashboard'
 import BidProjectList from './components/BidProjectList'
 import BidStatistics from './components/BidStatistics'
+import BidOpenPage from './components/BidOpenPage'
 import LampLoginPreview from './components/LampLoginPreview'
 import CustomerList from './components/CustomerList'
 import CustomerDetail from './components/CustomerDetail'
@@ -23,6 +24,7 @@ function App() {
       <Route path="/calendar" element={token ? <Calendar /> : <Navigate to="/login" />} />
       <Route path="/chinabidding" element={token ? <BidProjectList /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/stats" element={token ? <BidStatistics /> : <Navigate to="/login" />} />
+      <Route path="/chinabidding/bidopen" element={token ? <BidOpenPage /> : <Navigate to="/login" />} />
       <Route path="/customers" element={token ? <CustomerList /> : <Navigate to="/login" />} />
       <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
       <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />

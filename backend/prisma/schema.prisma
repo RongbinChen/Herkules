@@ -212,9 +212,27 @@ model SavedSearch {
   tradeClassCode String?
   infoClassCode  String    @default("e0905")
   autoMonitor    Boolean   @default(false)
+  emailNotify    Boolean   @default(false) // 发现新公告时给订阅人发邮件
   lastRunAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+// 开标记录：人工上传 Excel，DeepSeek 识别结构化字段后入库
+model BidOpening {
+  id           Int       @id @default(autoincrement())
+  biddingNo    String?   // 招标编号（识别）
+  projectName  String?
+  openDate     DateTime? // 开标日期（识别）
+  purchaser    String?   // 采购/招标单位（识别）
+  bidders      Json?     // 投标人清单 [{name, price, note}]
+  summary      String?   // 一句话摘要（识别）
+  rawText      String?   // 从 Excel 提取的原始文本（备查）
+  fileName     String?
+  uploadedById Int?
+  createdAt    DateTime  @default(now())
+
+  @@index([biddingNo])
 }
 
 enum ActivityCategory {
