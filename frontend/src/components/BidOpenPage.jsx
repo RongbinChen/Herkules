@@ -257,10 +257,10 @@ function OpeningTab() {
                   <button
                     onClick={() => openResults(r)}
                     disabled={!r.biddingNo}
-                    title={r.biddingNo ? `Find evaluation / award results for ${r.biddingNo}` : 'No bidding No. on this record'}
+                    title={r.biddingNo ? `Follow up evaluation / award results for ${r.biddingNo}` : 'No bidding No. on this record'}
                     className="rounded-md px-2 py-1 text-xs font-semibold text-violet-600 hover:bg-violet-50 disabled:opacity-40"
                   >
-                    {resultPanel?.recId === r.id ? 'Hide results' : 'Results'}
+                    {resultPanel?.recId === r.id ? 'Hide follow-up' : 'Follow-up'}
                   </button>
                   {r.shareToken && (
                     <button onClick={() => handleShare(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
