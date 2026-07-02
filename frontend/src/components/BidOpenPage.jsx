@@ -12,7 +12,6 @@ import ClampText from './ClampText'
 
 const TABS = [
   { key: 'opening', label: 'Bid Opening' },
-  { key: 'track', label: 'Evaluation / Award' },
   { key: 'watch', label: 'Subscriptions' },
 ]
 
@@ -508,110 +507,6 @@ function OpeningTab() {
   )
 }
 
-// ── Evaluation / Award results tab ───────────────────────────────────────────
-function TrackTab() {
-  const [biddingNo, setBiddingNo] = useState('')
-  const [result, setResult] = useState(null)
-  const [phase, setPhase] = useState('') // '' | 'local' | 'live'
-  const [error, setError] = useState('')
-  const [subs, setSubs] = useState([])
-
-  // Show what's being tracked (subscriptions) right here, so "Subscribe to
-  // this No." on a record is immediately visible in this tab too.
-  useEffect(() => {
-    listSavedSearches().then(setSubs).catch(() => setSubs([]))
-  }, [])
-
-  async function queryLocal(no = biddingNo) {
-    const q = (no || '').trim()
-    if (!q) return
-    setBiddingNo(q)
-    setPhase('local'); setError('')
-    try { setResult(await getBidResults(q)) } catch (err) { setError(err.message) }
-    setPhase('')
-  }
-  async function fetchLive() {
-    if (!biddingNo.trim()) return
-    setPhase('live'); setError('')
-    try { setResult(await fetchBidResults(biddingNo.trim())) } catch (err) { setError(err.message) }
-    setPhase('')
-  }
-
-  const groups = result ? ['award', 'evaluation', 'change', 'tender'].filter((k) => result[k]?.length) : []
-
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-        <input
-          value={biddingNo}
-          onChange={(e) => setBiddingNo(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && queryLocal()}
-          placeholder="Enter a bidding no, e.g. 0712-254112DG050"
-          className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white"
-        />
-        <button onClick={queryLocal} disabled={!!phase || !biddingNo.trim()} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-          {phase === 'local' ? 'Searching…' : 'Search local DB'}
-        </button>
-        <button onClick={fetchLive} disabled={!!phase || !biddingNo.trim()} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
-          {phase === 'live' ? 'Fetching… (1-2 min)' : '⟳ Fetch from chinabidding'}
-        </button>
-        <p className="w-full text-xs text-slate-400">“Search local DB” returns already-stored announcements instantly; “Fetch” searches chinabidding by number for evaluation/award announcements and stores them (slower).</p>
-        {subs.length > 0 && (
-          <div className="w-full border-t border-slate-100 pt-2">
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Tracking ({subs.length})</p>
-            <div className="flex flex-wrap gap-1.5">
-              {subs.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => queryLocal(s.keyword)}
-                  title={`${s.name} — click to check results${s.emailNotify ? ' · email on' : ''}`}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition hover:border-sky-400 hover:text-sky-700 ${biddingNo === s.keyword ? 'border-sky-400 bg-sky-50 text-sky-700' : 'border-slate-200 bg-white text-slate-600'}`}
-                >
-                  {s.keyword}
-                  {s.emailNotify && <span className="ml-1 opacity-60">✉</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 ring-1 ring-red-200">{error}</p>}
-
-      {result && (
-        result.total === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">No announcements found for this number. Try “Fetch from chinabidding”.</p>
-        ) : (
-          <div className="space-y-5">
-            {groups.map((key) => (
-              <section key={key}>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
-                  <span className={`rounded px-2 py-0.5 text-[11px] font-semibold text-white ${STAGE_META[key].cls}`}>{STAGE_META[key].label}</span>
-                  <span className="text-slate-400">{result[key].length}</span>
-                </h3>
-                <ul className="space-y-2">
-                  {result[key].map((p) => (
-                    <li key={p.id} className="rounded-xl border border-slate-200 bg-white p-3.5">
-                      <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-800 hover:text-blue-600 hover:underline">
-                        {p.projectName}
-                      </a>
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
-                        <span>Published {fmtDate(p.publishDate)}</span>
-                        {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}
-                        {p.winningPrice && <span>Winning price: {p.winningPrice}</span>}
-                        {p.purchaser && <span>Purchaser: {p.purchaser}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )
-      )}
-    </div>
-  )
-}
-
 // ── Subscriptions tab ────────────────────────────────────────────────────────
 function WatchTab() {
   const [subs, setSubs] = useState([])
@@ -717,7 +612,7 @@ export default function BidOpenPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Bid Tracking</p>
-              <p className="text-[1rem] font-medium text-slate-700">Bid opening records · Evaluation / award tracking · Subscriptions</p>
+              <p className="text-[1rem] font-medium text-slate-700">Bid opening records · Subscriptions</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => navigate('/chinabidding')} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
@@ -739,7 +634,6 @@ export default function BidOpenPage() {
         </header>
 
         {tab === 'opening' && <OpeningTab />}
-        {tab === 'track' && <TrackTab />}
         {tab === 'watch' && <WatchTab />}
       </div>
     </div>
