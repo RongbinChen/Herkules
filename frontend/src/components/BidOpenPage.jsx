@@ -191,13 +191,16 @@ function OpeningTab() {
   }
 
   const [copiedId, setCopiedId] = useState(null)
+  const [toast, setToast] = useState('')
   async function handleShare(rec) {
     if (!rec.shareToken) return
     const url = `${window.location.origin}/bidopen/share/${rec.shareToken}`
     try {
       await navigator.clipboard.writeText(url)
       setCopiedId(rec.id)
+      setToast('Share link copied — paste it into WeChat / email to share.')
       setTimeout(() => setCopiedId(null), 2000)
+      setTimeout(() => setToast(''), 3000)
     } catch {
       window.prompt('Copy this link:', url)
     }
@@ -249,7 +252,7 @@ function OpeningTab() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
-                    {expanded === r.id ? 'Collapse' : `Bidders (${(r.bidders || []).length})`}
+                    {expanded === r.id ? 'Collapse' : `Expand (${(r.bidders || []).length} bidders)`}
                   </button>
                   <button
                     onClick={() => openResults(r)}
@@ -375,6 +378,12 @@ function OpeningTab() {
           ))}
         </ul>
       )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-[1200] -translate-x-1/2 rounded-full bg-slate-800 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
+          ✓ {toast}
+        </div>
+      )}
     </div>
   )
 }
@@ -385,11 +394,20 @@ function TrackTab() {
   const [result, setResult] = useState(null)
   const [phase, setPhase] = useState('') // '' | 'local' | 'live'
   const [error, setError] = useState('')
+  const [subs, setSubs] = useState([])
 
-  async function queryLocal() {
-    if (!biddingNo.trim()) return
+  // Show what's being tracked (subscriptions) right here, so "Subscribe to
+  // this No." on a record is immediately visible in this tab too.
+  useEffect(() => {
+    listSavedSearches().then(setSubs).catch(() => setSubs([]))
+  }, [])
+
+  async function queryLocal(no = biddingNo) {
+    const q = (no || '').trim()
+    if (!q) return
+    setBiddingNo(q)
     setPhase('local'); setError('')
-    try { setResult(await getBidResults(biddingNo.trim())) } catch (err) { setError(err.message) }
+    try { setResult(await getBidResults(q)) } catch (err) { setError(err.message) }
     setPhase('')
   }
   async function fetchLive() {
@@ -418,6 +436,24 @@ function TrackTab() {
           {phase === 'live' ? 'Fetching… (1-2 min)' : '⟳ Fetch from chinabidding'}
         </button>
         <p className="w-full text-xs text-slate-400">“Search local DB” returns already-stored announcements instantly; “Fetch” searches chinabidding by number for evaluation/award announcements and stores them (slower).</p>
+        {subs.length > 0 && (
+          <div className="w-full border-t border-slate-100 pt-2">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Tracking ({subs.length})</p>
+            <div className="flex flex-wrap gap-1.5">
+              {subs.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => queryLocal(s.keyword)}
+                  title={`${s.name} — click to check results${s.emailNotify ? ' · email on' : ''}`}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition hover:border-sky-400 hover:text-sky-700 ${biddingNo === s.keyword ? 'border-sky-400 bg-sky-50 text-sky-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                >
+                  {s.keyword}
+                  {s.emailNotify && <span className="ml-1 opacity-60">✉</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 ring-1 ring-red-200">{error}</p>}
 
