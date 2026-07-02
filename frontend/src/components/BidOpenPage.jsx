@@ -232,7 +232,7 @@ function OpeningTab() {
         <div className="min-w-0 sm:flex-1">
           <p className="font-semibold text-slate-800">Add a bid-opening record</p>
           <p className="mt-0.5 text-xs text-slate-500">
-            Upload an .xlsx (AI auto-extracts bidding no / project / date / bidders & prices), or
+            Upload an Excel (.xlsx) or a photo/scan (.jpg/.png) — AI auto-extracts bidding no / project / date / bidders & prices, or
             <button onClick={handleTemplate} className="mx-1 font-semibold text-sky-600 hover:underline">download the template</button>
             to fill in and upload, or enter it manually.
           </p>
@@ -242,8 +242,8 @@ function OpeningTab() {
             {manualOpen ? 'Close manual entry' : '✎ Enter manually'}
           </button>
           <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-sky-600 hover:bg-sky-700'}`}>
-            {uploading ? 'Recognizing…' : 'Upload Excel'}
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" disabled={uploading} onChange={handleFile} />
+            {uploading ? 'Recognizing…' : 'Upload Excel / Image'}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.jpg,.jpeg,.png,.webp,image/*" className="hidden" disabled={uploading} onChange={handleFile} />
           </label>
         </div>
       </div>
