@@ -12,7 +12,7 @@ import {
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import { prisma } from '../index.js';
-import { xlsxToText, extractBidOpening } from '../services/bidOpening.js';
+import { xlsxToText, extractBidOpenings } from '../services/bidOpening.js';
 import { isEmailConfigured } from '../services/mailer.js';
 import { randomBytes } from 'crypto';
 
@@ -220,20 +220,27 @@ router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
     if (!rawText.trim()) {
       return res.status(400).json({ error: 'The Excel file appears to be empty' });
     }
-    const extracted = await extractBidOpening(rawText);
-    if (!extracted) {
+    const extracted = await extractBidOpenings(rawText);
+    if (extracted.length === 0) {
       return res.status(422).json({ error: 'Could not recognize a bid-opening record in this file' });
     }
-    const record = await prisma.bidOpening.create({
-      data: {
-        ...extracted,
-        rawText: rawText.slice(0, 10000),
-        fileName: name,
-        shareToken: shareToken(),
-        uploadedById: req.user.userId,
-      },
-    });
-    res.status(201).json(record);
+    // A single file may contain several IFB Nos → create one record per No.
+    const created = [];
+    for (const rec of extracted) {
+      created.push(
+        await prisma.bidOpening.create({
+          data: {
+            ...rec,
+            rawText: rawText.slice(0, 10000),
+            fileName: name,
+            shareToken: shareToken(),
+            uploadedById: req.user.userId,
+          },
+        }),
+      );
+    }
+    // Return an array; frontend prepends all. (Kept 201 for created.)
+    res.status(201).json(created);
   } catch (error) {
     if (error.isDeepSeek) return res.status(502).json({ error: error.message });
     console.error('Error uploading bid opening:', error);

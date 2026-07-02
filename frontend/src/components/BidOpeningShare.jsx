@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import ClampText from './ClampText'
 
 const API_BASE = '/api/chinabidding'
 
@@ -45,7 +46,35 @@ export default function BidOpeningShare() {
           </p>
         </header>
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        {/* Mobile: stacked bidder cards */}
+        <div className="space-y-3 sm:hidden">
+          {bidders.map((b, i) => (
+            <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 font-semibold text-slate-800">
+                  <span className="mr-1.5 text-slate-400">{i + 1}.</span>{b.name}
+                </p>
+                {b.country && (
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{b.country}</span>
+                )}
+              </div>
+              <p className="mt-1.5 text-lg font-bold text-sky-700">
+                {[b.priceTerm, b.currency, b.price].filter(Boolean).join(' ') || '—'}
+              </p>
+              <div className="mt-1.5 space-y-0.5 text-xs text-slate-500">
+                {b.deliveryTime && <p>🚚 <ClampText text={b.deliveryTime} max={40} /></p>}
+                {b.destination && <p>📍 {b.destination}</p>}
+                {b.note && <p className="text-slate-400"><ClampText text={b.note} max={40} /></p>}
+              </div>
+            </div>
+          ))}
+          {bidders.length === 0 && (
+            <p className="rounded-2xl border border-slate-200 bg-white py-8 text-center text-sm text-slate-400">No bidders recorded.</p>
+          )}
+        </div>
+
+        {/* Desktop: full table */}
+        <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block">
           <table className="w-full whitespace-nowrap text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
@@ -67,9 +96,9 @@ export default function BidOpeningShare() {
                   <td className="px-3 py-2.5 text-slate-600">{b.country || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-600">{[b.priceTerm, b.currency].filter(Boolean).join(' ') || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-700">{b.price || '—'}</td>
-                  <td className="px-3 py-2.5 whitespace-normal text-slate-600">{b.deliveryTime || '—'}</td>
+                  <td className="px-3 py-2.5 whitespace-normal text-slate-600"><ClampText text={b.deliveryTime} max={28} /></td>
                   <td className="px-3 py-2.5 text-slate-600">{b.destination || '—'}</td>
-                  <td className="px-3 py-2.5 whitespace-normal text-slate-500">{b.note || '—'}</td>
+                  <td className="px-3 py-2.5 whitespace-normal text-slate-500"><ClampText text={b.note} max={24} /></td>
                 </tr>
               ))}
               {bidders.length === 0 && (
