@@ -100,19 +100,30 @@ function OpeningTab() {
               {r.summary && <p className="mt-2 text-sm text-slate-600">{r.summary}</p>}
               {expanded === r.id && (r.bidders || []).length > 0 && (
                 <div className="mt-3 overflow-x-auto rounded-xl border border-slate-100">
-                  <table className="w-full text-sm">
+                  <table className="w-full whitespace-nowrap text-sm">
                     <thead>
                       <tr className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                        <th className="px-3 py-2">#</th><th className="px-3 py-2">投标人</th><th className="px-3 py-2">报价</th><th className="px-3 py-2">备注</th>
+                        <th className="px-3 py-2">#</th>
+                        <th className="px-3 py-2">投标人 Bidder</th>
+                        <th className="px-3 py-2">国家 Country</th>
+                        <th className="px-3 py-2">价格条款 Term</th>
+                        <th className="px-3 py-2">报价 Price</th>
+                        <th className="px-3 py-2">交货期 Delivery</th>
+                        <th className="px-3 py-2">目的地 Dest.</th>
+                        <th className="px-3 py-2">备注 Remark</th>
                       </tr>
                     </thead>
                     <tbody>
                       {r.bidders.map((b, i) => (
-                        <tr key={i} className="border-t border-slate-100">
+                        <tr key={i} className="border-t border-slate-100 align-top">
                           <td className="px-3 py-2 text-slate-400">{i + 1}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{b.name}</td>
+                          <td className="px-3 py-2 text-slate-600">{b.country || '—'}</td>
+                          <td className="px-3 py-2 text-slate-600">{[b.priceTerm, b.currency].filter(Boolean).join(' ') || '—'}</td>
                           <td className="px-3 py-2 text-slate-700">{b.price || '—'}</td>
-                          <td className="px-3 py-2 text-slate-500">{b.note || ''}</td>
+                          <td className="px-3 py-2 whitespace-normal text-slate-600">{b.deliveryTime || '—'}</td>
+                          <td className="px-3 py-2 text-slate-600">{b.destination || '—'}</td>
+                          <td className="px-3 py-2 whitespace-normal text-slate-500">{b.note || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
