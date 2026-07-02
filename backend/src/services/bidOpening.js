@@ -25,19 +25,21 @@ export function xlsxToText(buffer) {
   return parts.join('\n\n');
 }
 
-const EXTRACT_SYSTEM = `你是投标数据录入助手。下面是一份"开标记录"（从 Excel 提取的文本，行内以 | 分列）。请提取结构化信息。
+const EXTRACT_SYSTEM = `你是投标数据录入助手。下面是一份"开标记录"（从 Excel 提取的文本，行内以 | 分列）。开标记录常见两种版式：
+(a) 表单式：字段以"标签: 值"或"标签 | 值"逐行给出；
+(b) 宽表格式：第一行是独立标题（不属于表头也不是数据行，如 "Bid opening - Shanghai Electric"、"开标记录 - 某项目"），第二行是表头（如 Bid opening date / End user / Bidder / Country / Price / IFB No. / Remark 等），随后每行是一个投标人的数据；同一开标批次的日期、编号、采购方等字段可能只填在首个数据行，后续行留空（表示与首行相同）。
 
-只输出 JSON，不要解释、不要 markdown 代码块：
+请提取结构化信息，只输出 JSON，不要解释、不要 markdown 代码块：
 {
-  "biddingNo": "招标编号/项目编号（如 0712-254112DG050），找不到则 null",
-  "projectName": "项目名称，找不到则 null",
+  "biddingNo": "招标编号（列名可能是 IFB No. / Tender No. / Bid No. / 标包编号 / 项目编号），找不到则 null",
+  "projectName": "项目名称。若原文没有明确的\"项目名称\"标签，但首行是独立标题（不是表头/数据行），请用该标题作为项目名称——去掉 'Bid opening'/'开标记录'/'开标'/'Bid opening result' 等通用前缀词与连字符/冒号后剩余的部分；若去除后为空，则使用完整标题原文。确实无任何可用信息才填 null",
   "openDate": "开标日期 YYYY-MM-DD，找不到则 null",
-  "purchaser": "招标/采购单位，找不到则 null",
-  "bidders": [ { "name": "投标人名称", "price": "投标报价(原样字符串，含币种)", "note": "备注(如是否有效标)，可 null" } ],
+  "purchaser": "招标/采购/业主单位（列名可能是 Purchaser / Owner / Tenderee / End user / 招标单位 / 采购单位），找不到则 null",
+  "bidders": [ { "name": "投标人名称", "price": "投标报价(原样字符串，含币种/单位)", "note": "备注(如设备型号、是否有效标等)，可 null" } ],
   "summary": "一句话中文摘要（项目 + 几家投标 + 报价区间）"
 }
 
-要求：bidders 覆盖记录中出现的所有投标人；报价保留原文（含币种/万元等）；不确定的字段用 null，不要编造。`;
+要求：宽表格式下，将每一数据行都视为一个投标人，bidders 必须覆盖所有数据行；日期/编号/采购方等公共字段若后续行留空，取首个非空值；报价保留原文（含币种/单位）；不确定的字段用 null，不要编造。`;
 
 // Returns the extracted record { biddingNo, projectName, openDate, purchaser,
 // bidders, summary }. Throws DeepSeekError when the AI service is unavailable.
