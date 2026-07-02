@@ -132,9 +132,14 @@ function OpeningTab() {
     setUploading(true)
     setError('')
     try {
-      const rec = await uploadBidOpening(file)
-      setRecords((prev) => [rec, ...prev])
-      setExpanded(rec.id)
+      const created = await uploadBidOpening(file) // array — one per IFB No.
+      const recs = Array.isArray(created) ? created : [created]
+      setRecords((prev) => [...recs, ...prev])
+      if (recs[0]) setExpanded(recs[0].id)
+      if (recs.length > 1) {
+        setToast(`Imported ${recs.length} records (split by bidding No.)`)
+        setTimeout(() => setToast(''), 3500)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
