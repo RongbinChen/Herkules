@@ -9,9 +9,9 @@ import {
 import { useAuth } from '../context/AuthContext'
 
 const TABS = [
-  { key: 'opening', label: '开标记录 Opening' },
-  { key: 'track', label: '评标/中标追踪 Results' },
-  { key: 'watch', label: '订阅提醒 Subscriptions' },
+  { key: 'opening', label: 'Bid Opening' },
+  { key: 'track', label: 'Evaluation / Award' },
+  { key: 'watch', label: 'Subscriptions' },
 ]
 
 const STAGE_META = {
@@ -22,10 +22,10 @@ const STAGE_META = {
 }
 
 function fmtDate(v) {
-  return v ? new Date(v).toLocaleDateString('zh-CN') : '—'
+  return v ? new Date(v).toLocaleDateString('en-US') : '—'
 }
 
-// 手动录入表单 —— 与 Excel 列一致
+// Manual entry form — same columns as the Excel template
 const EMPTY_BIDDER = { name: '', country: '', priceTerm: '', currency: '', price: '', deliveryTime: '', destination: '', note: '' }
 
 function ManualEntryForm({ onSaved, onCancel }) {
@@ -45,7 +45,7 @@ function ManualEntryForm({ onSaved, onCancel }) {
   async function submit() {
     const filled = bidders.filter((b) => b.name.trim())
     if (!head.projectName.trim() && !head.biddingNo.trim() && filled.length === 0) {
-      return setError('请至少填写项目名称/招标编号，或一位投标人')
+      return setError('Enter at least a project name / bidding no, or one bidder')
     }
     setSaving(true); setError('')
     try {
@@ -57,22 +57,22 @@ function ManualEntryForm({ onSaved, onCancel }) {
   return (
     <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <p className="font-semibold text-slate-800">手动录入开标记录</p>
-        <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">取消</button>
+        <p className="font-semibold text-slate-800">Enter a bid-opening record</p>
+        <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>
       </div>
       <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <input value={head.projectName} onChange={(e) => setHead({ ...head, projectName: e.target.value })} placeholder="项目名称 Project" className={cell} />
-        <input value={head.biddingNo} onChange={(e) => setHead({ ...head, biddingNo: e.target.value })} placeholder="招标编号 IFB No." className={cell} />
-        <input type="date" value={head.openDate} onChange={(e) => setHead({ ...head, openDate: e.target.value })} className={cell} title="开标日期" />
-        <input value={head.purchaser} onChange={(e) => setHead({ ...head, purchaser: e.target.value })} placeholder="采购方 End user" className={cell} />
+        <input value={head.projectName} onChange={(e) => setHead({ ...head, projectName: e.target.value })} placeholder="Project name" className={cell} />
+        <input value={head.biddingNo} onChange={(e) => setHead({ ...head, biddingNo: e.target.value })} placeholder="Bidding / IFB No." className={cell} />
+        <input type="date" value={head.openDate} onChange={(e) => setHead({ ...head, openDate: e.target.value })} className={cell} title="Bid opening date" />
+        <input value={head.purchaser} onChange={(e) => setHead({ ...head, purchaser: e.target.value })} placeholder="End user / Purchaser" className={cell} />
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-100">
         <table className="w-full whitespace-nowrap text-sm">
           <thead>
             <tr className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-              <th className="px-2 py-2">#</th><th className="px-2 py-2">投标人*</th><th className="px-2 py-2">国家</th>
-              <th className="px-2 py-2">条款</th><th className="px-2 py-2">币种</th><th className="px-2 py-2">报价</th>
-              <th className="px-2 py-2">交货期</th><th className="px-2 py-2">目的地</th><th className="px-2 py-2">备注</th><th className="px-2 py-2"></th>
+              <th className="px-2 py-2">#</th><th className="px-2 py-2">Bidder*</th><th className="px-2 py-2">Country</th>
+              <th className="px-2 py-2">Term</th><th className="px-2 py-2">Currency</th><th className="px-2 py-2">Price</th>
+              <th className="px-2 py-2">Delivery</th><th className="px-2 py-2">Destination</th><th className="px-2 py-2">Remark</th><th className="px-2 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -94,10 +94,10 @@ function ManualEntryForm({ onSaved, onCancel }) {
         </table>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button onClick={addRow} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-sky-600 hover:bg-sky-50">+ 加一行投标人</button>
+        <button onClick={addRow} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-sky-600 hover:bg-sky-50">+ Add bidder</button>
         <div className="flex-1" />
         <button onClick={submit} disabled={saving} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
-          {saving ? '保存中…' : '保存记录'}
+          {saving ? 'Saving…' : 'Save record'}
         </button>
       </div>
       {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}
@@ -105,7 +105,7 @@ function ManualEntryForm({ onSaved, onCancel }) {
   )
 }
 
-// ── 开标记录 ──────────────────────────────────────────────────────────────────
+// ── Bid Opening tab ──────────────────────────────────────────────────────────
 function OpeningTab() {
   const { user } = useAuth()
   const fileRef = useRef(null)
@@ -142,7 +142,7 @@ function OpeningTab() {
   }
 
   async function handleDelete(rec) {
-    if (!window.confirm(`删除开标记录「${rec.projectName || rec.fileName}」？`)) return
+    if (!window.confirm(`Delete bid-opening record "${rec.projectName || rec.fileName}"?`)) return
     try { await deleteBidOpening(rec.id); load() } catch (err) { window.alert(err.message) }
   }
 
@@ -150,19 +150,19 @@ function OpeningTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/50 p-4">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-slate-800">添加开标记录</p>
+          <p className="font-semibold text-slate-800">Add a bid-opening record</p>
           <p className="mt-0.5 text-xs text-slate-500">
-            上传 .xlsx（AI 自动识别编号/项目/日期/投标人报价），或
-            <button onClick={handleTemplate} className="mx-1 font-semibold text-sky-600 hover:underline">下载模板</button>
-            按格式填写后上传，也可直接手动录入。
+            Upload an .xlsx (AI auto-extracts bidding no / project / date / bidders & prices), or
+            <button onClick={handleTemplate} className="mx-1 font-semibold text-sky-600 hover:underline">download the template</button>
+            to fill in and upload, or enter it manually.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setManualOpen((v) => !v)} className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50">
-            {manualOpen ? '收起手动录入' : '✎ 手动填写'}
+            {manualOpen ? 'Close manual entry' : '✎ Enter manually'}
           </button>
           <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-sky-600 hover:bg-sky-700'}`}>
-            {uploading ? '识别中…' : '选择 Excel 上传'}
+            {uploading ? 'Recognizing…' : 'Upload Excel'}
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" disabled={uploading} onChange={handleFile} />
           </label>
         </div>
@@ -177,25 +177,25 @@ function OpeningTab() {
       )}
 
       {records.length === 0 ? (
-        <p className="py-12 text-center text-sm text-slate-400">还没有开标记录，上传第一份 Excel 吧。</p>
+        <p className="py-12 text-center text-sm text-slate-400">No bid-opening records yet. Upload your first Excel.</p>
       ) : (
         <ul className="space-y-3">
           {records.map((r) => (
             <li key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-800">{r.projectName || '(未识别项目名)'}</p>
+                  <p className="font-semibold text-slate-800">{r.projectName || '(project name not recognized)'}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    编号 <span className="font-mono">{r.biddingNo || '—'}</span> · 开标 {fmtDate(r.openDate)}
-                    {r.purchaser ? ` · ${r.purchaser}` : ''} · 文件 {r.fileName}
+                    No. <span className="font-mono">{r.biddingNo || '—'}</span> · Opened {fmtDate(r.openDate)}
+                    {r.purchaser ? ` · ${r.purchaser}` : ''} · File {r.fileName}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
-                    {expanded === r.id ? '收起' : `投标人 (${(r.bidders || []).length})`}
+                    {expanded === r.id ? 'Collapse' : `Bidders (${(r.bidders || []).length})`}
                   </button>
                   {(r.uploadedById === user?.id || user?.isAdmin) && (
-                    <button onClick={() => handleDelete(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">删除</button>
+                    <button onClick={() => handleDelete(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">Delete</button>
                   )}
                 </div>
               </div>
@@ -206,13 +206,13 @@ function OpeningTab() {
                     <thead>
                       <tr className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                         <th className="px-3 py-2">#</th>
-                        <th className="px-3 py-2">投标人 Bidder</th>
-                        <th className="px-3 py-2">国家 Country</th>
-                        <th className="px-3 py-2">价格条款 Term</th>
-                        <th className="px-3 py-2">报价 Price</th>
-                        <th className="px-3 py-2">交货期 Delivery</th>
-                        <th className="px-3 py-2">目的地 Dest.</th>
-                        <th className="px-3 py-2">备注 Remark</th>
+                        <th className="px-3 py-2">Bidder</th>
+                        <th className="px-3 py-2">Country</th>
+                        <th className="px-3 py-2">Price term</th>
+                        <th className="px-3 py-2">Price</th>
+                        <th className="px-3 py-2">Delivery time</th>
+                        <th className="px-3 py-2">Destination</th>
+                        <th className="px-3 py-2">Remark</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -240,7 +240,7 @@ function OpeningTab() {
   )
 }
 
-// ── 评标/中标追踪 ──────────────────────────────────────────────────────────────
+// ── Evaluation / Award results tab ───────────────────────────────────────────
 function TrackTab() {
   const [biddingNo, setBiddingNo] = useState('')
   const [result, setResult] = useState(null)
@@ -269,29 +269,29 @@ function TrackTab() {
           value={biddingNo}
           onChange={(e) => setBiddingNo(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && queryLocal()}
-          placeholder="输入招标编号，如 0712-254112DG050"
+          placeholder="Enter a bidding no, e.g. 0712-254112DG050"
           className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white"
         />
         <button onClick={queryLocal} disabled={!!phase || !biddingNo.trim()} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-          {phase === 'local' ? '查询中…' : '查本地库'}
+          {phase === 'local' ? 'Searching…' : 'Search local DB'}
         </button>
         <button onClick={fetchLive} disabled={!!phase || !biddingNo.trim()} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
-          {phase === 'live' ? '抓取中…(约1-2分钟)' : '⟳ 从 chinabidding 抓取'}
+          {phase === 'live' ? 'Fetching… (1-2 min)' : '⟳ Fetch from chinabidding'}
         </button>
-        <p className="w-full text-xs text-slate-400">「查本地库」即时返回已入库公告；「抓取」按编号搜索 chinabidding 的评标结果/中标公告并入库（较慢）。</p>
+        <p className="w-full text-xs text-slate-400">“Search local DB” returns already-stored announcements instantly; “Fetch” searches chinabidding by number for evaluation/award announcements and stores them (slower).</p>
       </div>
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 ring-1 ring-red-200">{error}</p>}
 
       {result && (
         result.total === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">未找到该编号的公告。可尝试「从 chinabidding 抓取」。</p>
+          <p className="py-10 text-center text-sm text-slate-400">No announcements found for this number. Try “Fetch from chinabidding”.</p>
         ) : (
           <div className="space-y-5">
             {groups.map((key) => (
               <section key={key}>
                 <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                   <span className={`rounded px-2 py-0.5 text-[11px] font-semibold text-white ${STAGE_META[key].cls}`}>{STAGE_META[key].label}</span>
-                  <span className="text-slate-400">{result[key].length} 条</span>
+                  <span className="text-slate-400">{result[key].length}</span>
                 </h3>
                 <ul className="space-y-2">
                   {result[key].map((p) => (
@@ -300,10 +300,10 @@ function TrackTab() {
                         {p.projectName}
                       </a>
                       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
-                        <span>发布 {fmtDate(p.publishDate)}</span>
-                        {p.winner && <span>中标方：<b className="text-slate-700">{p.winner}</b>{p.competitor ? `（${p.competitor.name}）` : ''}</span>}
-                        {p.winningPrice && <span>中标价：{p.winningPrice}</span>}
-                        {p.purchaser && <span>采购方：{p.purchaser}</span>}
+                        <span>Published {fmtDate(p.publishDate)}</span>
+                        {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}
+                        {p.winningPrice && <span>Winning price: {p.winningPrice}</span>}
+                        {p.purchaser && <span>Purchaser: {p.purchaser}</span>}
                       </div>
                     </li>
                   ))}
@@ -317,7 +317,7 @@ function TrackTab() {
   )
 }
 
-// ── 订阅提醒 ──────────────────────────────────────────────────────────────────
+// ── Subscriptions tab ────────────────────────────────────────────────────────
 function WatchTab() {
   const [subs, setSubs] = useState([])
   const [emailConfigured, setEmailConfigured] = useState(null)
@@ -336,7 +336,7 @@ function WatchTab() {
   }, [])
 
   async function handleCreate() {
-    if (!keyword.trim()) return setError('请填写招标编号或关键字')
+    if (!keyword.trim()) return setError('Enter a bidding no or keyword')
     setSaving(true); setError('')
     try {
       await createSavedSearch({ name: name.trim() || keyword.trim(), keyword: keyword.trim(), autoMonitor: true, emailNotify })
@@ -353,7 +353,7 @@ function WatchTab() {
   }
 
   async function handleDelete(sub) {
-    if (!window.confirm(`删除订阅「${sub.name}」？`)) return
+    if (!window.confirm(`Delete subscription "${sub.name}"?`)) return
     try { await deleteSavedSearch(sub.id); load() } catch (err) { window.alert(err.message) }
   }
 
@@ -361,47 +361,47 @@ function WatchTab() {
     <div>
       {emailConfigured === false && (
         <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
-          ⚠️ 邮件发送尚未配置（需在服务器 .env 填写 SMTP_HOST/SMTP_USER/SMTP_PASS）。配置前仅有站内铃铛通知，邮件不会发送。
+          ⚠️ Email sending is not configured yet (set SMTP_HOST/SMTP_USER/SMTP_PASS in the server .env). Until then, only in-app bell notifications are sent, not emails.
         </p>
       )}
       <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="mb-2 font-semibold text-slate-800">新增订阅</p>
+        <p className="mb-2 font-semibold text-slate-800">New subscription</p>
         <div className="flex flex-wrap items-center gap-2">
-          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="招标编号或关键字，如 0712-254112DG050 / roll grinder"
+          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Bidding no or keyword, e.g. 0712-254112DG050 / roll grinder"
             className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white" />
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="订阅名称(可选)"
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)"
             className="w-44 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white" />
           <label className="flex items-center gap-1.5 text-sm text-slate-600">
             <input type="checkbox" checked={emailNotify} onChange={(e) => setEmailNotify(e.target.checked)} className="h-4 w-4 accent-sky-600" />
-            邮件提醒
+            Email
           </label>
           <button onClick={handleCreate} disabled={saving} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
-            {saving ? '保存中…' : '+ 订阅'}
+            {saving ? 'Saving…' : '+ Subscribe'}
           </button>
         </div>
-        <p className="mt-1.5 text-xs text-slate-400">每日 08:00 自动按订阅抓取 chinabidding（含评标结果/中标公告）；发现新公告即发站内通知{'、'}勾选邮件则同时发邮件。</p>
+        <p className="mt-1.5 text-xs text-slate-400">Runs daily at 08:00, scraping chinabidding per subscription (incl. evaluation/award announcements). New matches trigger an in-app notification, plus email when enabled.</p>
         {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}
       </div>
 
       {subs.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-400">还没有订阅。</p>
+        <p className="py-10 text-center text-sm text-slate-400">No subscriptions yet.</p>
       ) : (
         <ul className="space-y-2">
           {subs.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-slate-800">{s.name}</p>
-                <p className="text-xs text-slate-400">关键字/编号：<span className="font-mono">{s.keyword}</span>{s.lastRunAt ? ` · 上次运行 ${new Date(s.lastRunAt).toLocaleString('zh-CN')}` : ' · 尚未运行'}</p>
+                <p className="text-xs text-slate-400">Keyword / No.: <span className="font-mono">{s.keyword}</span>{s.lastRunAt ? ` · last run ${new Date(s.lastRunAt).toLocaleString('en-US')}` : ' · not run yet'}</p>
               </div>
               <label className="flex items-center gap-1.5 text-xs text-slate-600">
                 <input type="checkbox" checked={s.autoMonitor} onChange={() => toggle(s, 'autoMonitor')} className="h-4 w-4 accent-sky-600" />
-                每日监控
+                Daily watch
               </label>
               <label className="flex items-center gap-1.5 text-xs text-slate-600">
                 <input type="checkbox" checked={s.emailNotify} onChange={() => toggle(s, 'emailNotify')} className="h-4 w-4 accent-sky-600" />
-                邮件提醒
+                Email
               </label>
-              <button onClick={() => handleDelete(s)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">删除</button>
+              <button onClick={() => handleDelete(s)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">Delete</button>
             </li>
           ))}
         </ul>
@@ -410,7 +410,7 @@ function WatchTab() {
   )
 }
 
-// ── 页面骨架 ──────────────────────────────────────────────────────────────────
+// ── Page shell ───────────────────────────────────────────────────────────────
 export default function BidOpenPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('opening')
@@ -422,7 +422,7 @@ export default function BidOpenPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Bid Tracking</p>
-              <p className="text-[1rem] font-medium text-slate-700">开标记录 · 评标/中标结果追踪 · 订阅提醒</p>
+              <p className="text-[1rem] font-medium text-slate-700">Bid opening records · Evaluation / award tracking · Subscriptions</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => navigate('/chinabidding')} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
