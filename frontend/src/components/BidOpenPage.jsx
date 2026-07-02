@@ -8,6 +8,7 @@ import {
 } from '../api/chinabidding'
 import { useAuth } from '../context/AuthContext'
 import { drawBidPoster } from '../utils/bidPoster'
+import ClampText from './ClampText'
 
 const TABS = [
   { key: 'opening', label: 'Bid Opening' },
@@ -309,9 +310,9 @@ function OpeningTab() {
                           <td className="px-3 py-2 text-slate-600">{b.country || '—'}</td>
                           <td className="px-3 py-2 text-slate-600">{[b.priceTerm, b.currency].filter(Boolean).join(' ') || '—'}</td>
                           <td className="px-3 py-2 text-slate-700">{b.price || '—'}</td>
-                          <td className="px-3 py-2 whitespace-normal text-slate-600">{b.deliveryTime || '—'}</td>
+                          <td className="px-3 py-2 whitespace-normal text-slate-600"><ClampText text={b.deliveryTime} max={28} /></td>
                           <td className="px-3 py-2 text-slate-600">{b.destination || '—'}</td>
-                          <td className="px-3 py-2 whitespace-normal text-slate-500">{b.note || '—'}</td>
+                          <td className="px-3 py-2 whitespace-normal text-slate-500"><ClampText text={b.note} max={24} /></td>
                         </tr>
                       ))}
                     </tbody>

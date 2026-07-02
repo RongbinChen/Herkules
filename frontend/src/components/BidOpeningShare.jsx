@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import ClampText from './ClampText'
 
 const API_BASE = '/api/chinabidding'
 
@@ -61,9 +62,9 @@ export default function BidOpeningShare() {
                 {[b.priceTerm, b.currency, b.price].filter(Boolean).join(' ') || '—'}
               </p>
               <div className="mt-1.5 space-y-0.5 text-xs text-slate-500">
-                {b.deliveryTime && <p>🚚 {b.deliveryTime}</p>}
+                {b.deliveryTime && <p>🚚 <ClampText text={b.deliveryTime} max={40} /></p>}
                 {b.destination && <p>📍 {b.destination}</p>}
-                {b.note && <p className="text-slate-400">{b.note}</p>}
+                {b.note && <p className="text-slate-400"><ClampText text={b.note} max={40} /></p>}
               </div>
             </div>
           ))}
@@ -95,9 +96,9 @@ export default function BidOpeningShare() {
                   <td className="px-3 py-2.5 text-slate-600">{b.country || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-600">{[b.priceTerm, b.currency].filter(Boolean).join(' ') || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-700">{b.price || '—'}</td>
-                  <td className="px-3 py-2.5 whitespace-normal text-slate-600">{b.deliveryTime || '—'}</td>
+                  <td className="px-3 py-2.5 whitespace-normal text-slate-600"><ClampText text={b.deliveryTime} max={28} /></td>
                   <td className="px-3 py-2.5 text-slate-600">{b.destination || '—'}</td>
-                  <td className="px-3 py-2.5 whitespace-normal text-slate-500">{b.note || '—'}</td>
+                  <td className="px-3 py-2.5 whitespace-normal text-slate-500"><ClampText text={b.note} max={24} /></td>
                 </tr>
               ))}
               {bidders.length === 0 && (
