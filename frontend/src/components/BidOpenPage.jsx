@@ -308,7 +308,7 @@ export default function BidOpenPage() {
         <header className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Bid Open</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Bid Tracking</p>
               <p className="text-[1rem] font-medium text-slate-700">开标记录 · 评标/中标结果追踪 · 订阅提醒</p>
             </div>
             <div className="flex items-center gap-2">
