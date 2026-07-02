@@ -229,6 +229,7 @@ model BidOpening {
   summary      String?   // 一句话摘要（识别）
   rawText      String?   // 从 Excel 提取的原始文本（备查）
   fileName     String?
+  shareToken   String?   @unique // 公开分享令牌（免登录查看）
   uploadedById Int?
   createdAt    DateTime  @default(now())
 

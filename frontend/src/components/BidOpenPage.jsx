@@ -146,6 +146,19 @@ function OpeningTab() {
     try { await deleteBidOpening(rec.id); load() } catch (err) { window.alert(err.message) }
   }
 
+  const [copiedId, setCopiedId] = useState(null)
+  async function handleShare(rec) {
+    if (!rec.shareToken) return
+    const url = `${window.location.origin}/bidopen/share/${rec.shareToken}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedId(rec.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      window.prompt('Copy this link:', url)
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/50 p-4">
@@ -194,12 +207,16 @@ function OpeningTab() {
                   <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
                     {expanded === r.id ? 'Collapse' : `Bidders (${(r.bidders || []).length})`}
                   </button>
+                  {r.shareToken && (
+                    <button onClick={() => handleShare(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
+                      {copiedId === r.id ? 'Copied ✓' : 'Share'}
+                    </button>
+                  )}
                   {(r.uploadedById === user?.id || user?.isAdmin) && (
                     <button onClick={() => handleDelete(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">Delete</button>
                   )}
                 </div>
               </div>
-              {r.summary && <p className="mt-2 text-sm text-slate-600">{r.summary}</p>}
               {expanded === r.id && (r.bidders || []).length > 0 && (
                 <div className="mt-3 overflow-x-auto rounded-xl border border-slate-100">
                   <table className="w-full whitespace-nowrap text-sm">

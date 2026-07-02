@@ -14,6 +14,7 @@ import multer from 'multer';
 import { prisma } from '../index.js';
 import { xlsxToText, extractBidOpening } from '../services/bidOpening.js';
 import { isEmailConfigured } from '../services/mailer.js';
+import { randomBytes } from 'crypto';
 
 const router = express.Router();
 
@@ -23,7 +24,28 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// All Chinabidding endpoints require a logged-in user.
+const shareToken = () => randomBytes(20).toString('hex');
+
+// ── PUBLIC: shared bid-opening record (no login) ─────────────────────────────
+// Defined BEFORE the auth middleware so anyone with the token can view it.
+router.get('/bidopen/share/:token', async (req, res) => {
+  try {
+    const rec = await prisma.bidOpening.findUnique({
+      where: { shareToken: req.params.token },
+      select: {
+        projectName: true, biddingNo: true, openDate: true, purchaser: true,
+        bidders: true, fileName: true, createdAt: true,
+      },
+    });
+    if (!rec) return res.status(404).json({ error: 'Record not found' });
+    res.json(rec);
+  } catch (error) {
+    console.error('Error loading shared bid opening:', error);
+    res.status(500).json({ error: 'Failed to load shared record' });
+  }
+});
+
+// All Chinabidding endpoints below require a logged-in user.
 router.use(authenticateToken);
 
 router.get('/projects', async (req, res) => {
@@ -175,6 +197,7 @@ router.post('/bidopen/manual', async (req, res) => {
         bidders: cleanBidders,
         summary: summary?.trim() || null,
         fileName: '(manual entry)',
+        shareToken: shareToken(),
         uploadedById: req.user.userId,
       },
     });
@@ -206,6 +229,7 @@ router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
         ...extracted,
         rawText: rawText.slice(0, 10000),
         fileName: name,
+        shareToken: shareToken(),
         uploadedById: req.user.userId,
       },
     });

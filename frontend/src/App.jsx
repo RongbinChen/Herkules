@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard'
 import BidProjectList from './components/BidProjectList'
 import BidStatistics from './components/BidStatistics'
 import BidOpenPage from './components/BidOpenPage'
+import BidOpeningShare from './components/BidOpeningShare'
 import LampLoginPreview from './components/LampLoginPreview'
 import CustomerList from './components/CustomerList'
 import CustomerDetail from './components/CustomerDetail'
@@ -31,6 +32,7 @@ function App() {
       <Route path="/trips/:id" element={token ? <TripDetail /> : <Navigate to="/login" />} />
       {/* Public — no login required */}
       <Route path="/trip/share/:token" element={<TripShare />} />
+      <Route path="/bidopen/share/:token" element={<BidOpeningShare />} />
     </Routes>
   )
 }
