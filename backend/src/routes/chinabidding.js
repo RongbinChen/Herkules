@@ -12,7 +12,7 @@ import {
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import { prisma } from '../index.js';
-import { xlsxToText, extractBidOpenings } from '../services/bidOpening.js';
+import { xlsxToText, extractBidOpenings, translateBidOpening } from '../services/bidOpening.js';
 import { extractBidOpeningsFromImage, isGeminiConfigured } from '../services/gemini.js';
 import { isEmailConfigured } from '../services/mailer.js';
 import { randomBytes } from 'crypto';
@@ -263,6 +263,30 @@ router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
     if (error.isDeepSeek || error.isGemini) return res.status(502).json({ error: error.message });
     console.error('Error uploading bid opening:', error);
     res.status(500).json({ error: 'Failed to process the uploaded file' });
+  }
+});
+
+// 翻译某条开标记录的文本字段(默认英文)，结果缓存到 translations.<lang>
+router.post('/bidopen/:id/translate', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const lang = (req.body?.lang || 'en').toLowerCase();
+    const rec = await prisma.bidOpening.findUnique({ where: { id } });
+    if (!rec) return res.status(404).json({ error: 'Not found' });
+
+    const cache = rec.translations || {};
+    if (cache[lang]) return res.json({ lang, translation: cache[lang], cached: true });
+
+    const translation = await translateBidOpening(rec, lang);
+    const updated = await prisma.bidOpening.update({
+      where: { id },
+      data: { translations: { ...cache, [lang]: translation } },
+    });
+    res.json({ lang, translation, record: updated });
+  } catch (error) {
+    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    console.error('Error translating bid opening:', error);
+    res.status(500).json({ error: 'Failed to translate the record' });
   }
 });
 

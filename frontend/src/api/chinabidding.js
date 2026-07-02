@@ -249,3 +249,12 @@ export async function downloadBidTemplate() {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+export async function translateBidOpening(id, lang = 'en') {
+  const res = await fetch(`${API_BASE}/bidopen/${id}/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ lang }),
+  })
+  return parseOrThrow(res, 'Failed to translate')
+}

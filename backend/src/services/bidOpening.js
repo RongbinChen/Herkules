@@ -78,6 +78,61 @@ export function recordsFromParsed(parsed) {
   return raw.map(normalizeRecord).filter((r) => r.biddingNo || r.projectName || r.bidders.length);
 }
 
+const LANG_NAMES = { en: 'English', zh: '中文（简体）' };
+
+// Translate a bid-opening record's free-text fields into the target language via
+// DeepSeek. Company names, prices, bidding No. and dates are kept as-is; only
+// descriptive fields (project name, purchaser, country, price term, currency,
+// delivery time, destination, remark) are translated. Returns a partial
+// { projectName, purchaser, bidders:[{country,priceTerm,currency,deliveryTime,
+// destination,note}] } — index-aligned to record.bidders. Throws on AI failure.
+export async function translateBidOpening(record, lang = 'en') {
+  const target = LANG_NAMES[lang] || 'English';
+  const payload = {
+    projectName: record.projectName || null,
+    purchaser: record.purchaser || null,
+    bidders: (record.bidders || []).map((b) => ({
+      country: b.country || null,
+      priceTerm: b.priceTerm || null,
+      currency: b.currency || null,
+      deliveryTime: b.deliveryTime || null,
+      destination: b.destination || null,
+      note: b.note || null,
+    })),
+  };
+  const sys =
+    `你是专业翻译。把下面 JSON 里的字段值翻译成${target}，并严格返回结构完全相同的 JSON（键不变、bidders 数组顺序与长度不变）。规则：\n` +
+    `- projectName（项目名）、purchaser（采购/招标单位名）、deliveryTime、note、destination 等要翻译成${target}；采购单位若有通用英文名则用英文名，否则直译。\n` +
+    `- 投标人公司名(bidders[].name 不在本次输入内)、设备型号、招标编号、数字金额、日期保持原文不译。\n` +
+    `- 常见词用标准译法：德国→Germany、捷克→Czech、意大利→Italy、西班牙→Spain、欧元→Euro、美元→USD、人民币→CNY；CIF/FOB/EXW 等贸易术语保持原样。\n` +
+    `- 已是目标语言的值保持不变；为 null 的值仍返回 null。\n` +
+    `只输出 JSON，不要解释、不要 markdown 代码块。`;
+  const reply = await callDeepSeek(
+    [
+      { role: 'system', content: sys },
+      { role: 'user', content: JSON.stringify(payload) },
+    ],
+    2000,
+  );
+  const t = extractJson(reply) || {};
+  const bidders = Array.isArray(t.bidders) ? t.bidders : [];
+  return {
+    projectName: t.projectName ?? null,
+    purchaser: t.purchaser ?? null,
+    bidders: payload.bidders.map((_, i) => {
+      const tb = bidders[i] || {};
+      return {
+        country: tb.country ?? null,
+        priceTerm: tb.priceTerm ?? null,
+        currency: tb.currency ?? null,
+        deliveryTime: tb.deliveryTime ?? null,
+        destination: tb.destination ?? null,
+        note: tb.note ?? null,
+      };
+    }),
+  };
+}
+
 function normalizeRecord(r) {
   // Sanity-check the year — guards against the model echoing back a raw Excel
   // date serial (e.g. "46232") which Date.parse would read as year 46232.
