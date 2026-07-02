@@ -7,6 +7,7 @@ import {
   listSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch,
 } from '../api/chinabidding'
 import { useAuth } from '../context/AuthContext'
+import { drawBidPoster } from '../utils/bidPoster'
 
 const TABS = [
   { key: 'opening', label: 'Bid Opening' },
@@ -190,26 +191,39 @@ function OpeningTab() {
     }
   }
 
-  const [copiedId, setCopiedId] = useState(null)
   const [toast, setToast] = useState('')
+  // Share modal: link + generated poster image (long-press to send in WeChat).
+  const [shareModal, setShareModal] = useState(null) // { rec, url, img, copied }
+
   async function handleShare(rec) {
     if (!rec.shareToken) return
     const url = `${window.location.origin}/bidopen/share/${rec.shareToken}`
+    setShareModal({ rec, url, img: null, copied: false })
     try {
-      await navigator.clipboard.writeText(url)
-      setCopiedId(rec.id)
-      setToast('Share link copied — paste it into WeChat / email to share.')
-      setTimeout(() => setCopiedId(null), 2000)
+      const img = await drawBidPoster(rec, url)
+      setShareModal((m) => (m && m.rec.id === rec.id ? { ...m, img } : m))
+    } catch (err) {
+      console.error('poster failed', err)
+    }
+  }
+
+  async function copyShareLink() {
+    if (!shareModal) return
+    try {
+      await navigator.clipboard.writeText(shareModal.url)
+      setShareModal((m) => ({ ...m, copied: true }))
+      setToast('Share link copied to clipboard.')
       setTimeout(() => setToast(''), 3000)
+      setTimeout(() => setShareModal((m) => (m ? { ...m, copied: false } : m)), 2000)
     } catch {
-      window.prompt('Copy this link:', url)
+      window.prompt('Copy this link:', shareModal.url)
     }
   }
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/50 p-4">
-        <div className="min-w-0 flex-1">
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/50 p-4 sm:flex-row sm:items-center">
+        <div className="min-w-0 sm:flex-1">
           <p className="font-semibold text-slate-800">Add a bid-opening record</p>
           <p className="mt-0.5 text-xs text-slate-500">
             Upload an .xlsx (AI auto-extracts bidding no / project / date / bidders & prices), or
@@ -217,7 +231,7 @@ function OpeningTab() {
             to fill in and upload, or enter it manually.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button onClick={() => setManualOpen((v) => !v)} className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50">
             {manualOpen ? 'Close manual entry' : '✎ Enter manually'}
           </button>
@@ -264,7 +278,7 @@ function OpeningTab() {
                   </button>
                   {r.shareToken && (
                     <button onClick={() => handleShare(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
-                      {copiedId === r.id ? 'Copied ✓' : 'Share'}
+                      Share
                     </button>
                   )}
                   {(r.uploadedById === user?.id || user?.isAdmin) && (
@@ -377,6 +391,49 @@ function OpeningTab() {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Share modal: copyable link + poster image for WeChat */}
+      {shareModal && (
+        <div className="fixed inset-0 z-[1150] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" onClick={() => setShareModal(null)}>
+          <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <p className="font-semibold text-slate-800">Share this record</p>
+              <button onClick={() => setShareModal(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <span className="text-xl leading-none">&times;</span>
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Link (no login required)</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={shareModal.url} onFocus={(e) => e.target.select()}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 outline-none" />
+                  <button onClick={copyShareLink} className="shrink-0 rounded-lg bg-sky-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-sky-700">
+                    {shareModal.copied ? 'Copied ✓' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Poster for WeChat</p>
+                {shareModal.img ? (
+                  <>
+                    <img src={shareModal.img} alt="Share poster" className="w-full rounded-xl border border-slate-200" />
+                    <p className="mt-2 text-xs text-slate-500">
+                      📱 Long-press the image to save / send it in WeChat — recipients can scan the QR code to open the full record.
+                    </p>
+                    <a href={shareModal.img} download={`bid-opening-${shareModal.rec.biddingNo || shareModal.rec.id}.png`}
+                      className="mt-2 inline-block rounded-lg border border-slate-200 px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                      ⬇ Download image
+                    </a>
+                  </>
+                ) : (
+                  <p className="py-8 text-center text-sm text-slate-400">Generating poster…</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {toast && (
