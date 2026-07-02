@@ -252,7 +252,7 @@ function BidProjectList() {
             <div className="min-w-0">
               <div className="space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Tender Intelligence</p>
-                <p className="text-[1rem] font-medium leading-6 text-slate-700 sm:text-[1.08rem]">
+                <p className="text-sm font-medium leading-6 text-slate-700 sm:text-[1.08rem]">
                   Track and analyse China bidding projects for sales opportunities and competitor activity.
                 </p>
               </div>
@@ -261,7 +261,7 @@ function BidProjectList() {
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 xl:justify-end">
               <button
                 onClick={() => navigate('/')}
-                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
@@ -270,16 +270,22 @@ function BidProjectList() {
               </button>
               <button
                 onClick={() => navigate('/chinabidding/stats')}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
               >
                 Statistics
+              </button>
+              <button
+                onClick={() => navigate('/chinabidding/bidopen')}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
+              >
+                Bid Tracking
               </button>
 
               {/* Notification bell */}
               <div className="relative">
                 <button
                   onClick={() => setShowNotif(v => !v)}
-                  className="relative flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                  className="relative flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-4-5.7V5a2 2 0 10-4 0v.3A6 6 0 006 11v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -334,7 +340,7 @@ function BidProjectList() {
                 <button
                   onClick={handleRunDaily}
                   disabled={dailyRunning}
-                  className="rounded-full bg-blue-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-full bg-blue-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300 sm:px-5 sm:py-2 sm:text-sm"
                 >
                   {dailyRunning ? '⟳ Running…' : '⟳ Refresh Data'}
                 </button>
@@ -353,16 +359,16 @@ function BidProjectList() {
           <div className="rounded-2xl border border-amber-200 bg-amber-50 shadow-sm overflow-hidden">
             <button
               onClick={() => setShowUpdates(v => !v)}
-              className="flex w-full items-center justify-between px-5 py-3.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 transition"
+              className="flex w-full items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-100 transition sm:px-5 sm:py-3.5"
             >
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="text-base">🔔</span>
-                Updates in the last 7 days
+                <span className="whitespace-nowrap">Updates in the last 7 days</span>
                 {updates.newProjects.length > 0 && (
-                  <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white">{updates.newProjects.length} NEW</span>
+                  <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white whitespace-nowrap">{updates.newProjects.length} NEW</span>
                 )}
                 {updates.statusChanged.length > 0 && (
-                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{updates.statusChanged.length} UPDATED</span>
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white whitespace-nowrap">{updates.statusChanged.length} UPDATED</span>
                 )}
               </span>
               <svg className={`h-4 w-4 text-amber-600 transition-transform ${showUpdates ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -622,7 +628,7 @@ function BidProjectList() {
             <>
               <ul className="divide-y divide-slate-100">
                 {projects.map((project) => (
-                  <li key={project.id} className="group px-5 py-4 transition hover:bg-slate-50 sm:px-6">
+                  <li key={project.id} className="group px-4 py-4 transition hover:bg-slate-50 sm:px-6">
                     {/* Row 1: star + title + type badge + date */}
                     <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-x-4">
                       <div className="flex min-w-0 flex-1 items-start gap-2">
