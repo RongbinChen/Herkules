@@ -146,6 +146,34 @@ function OpeningTab() {
     try { await deleteBidOpening(rec.id); load() } catch (err) { window.alert(err.message) }
   }
 
+  // Inline evaluation/award results for a record, keyed by its bidding No.
+  const [resultPanel, setResultPanel] = useState(null) // { recId, data, phase, error }
+
+  async function openResults(rec) {
+    if (resultPanel?.recId === rec.id) { setResultPanel(null); return } // toggle off
+    if (!rec.biddingNo) {
+      setResultPanel({ recId: rec.id, data: null, phase: '', error: 'This record has no bidding No.' })
+      return
+    }
+    setResultPanel({ recId: rec.id, data: null, phase: 'local', error: '' })
+    try {
+      const data = await getBidResults(rec.biddingNo)
+      setResultPanel({ recId: rec.id, data, phase: '', error: '' })
+    } catch (err) {
+      setResultPanel({ recId: rec.id, data: null, phase: '', error: err.message })
+    }
+  }
+
+  async function fetchResultsLive(rec) {
+    setResultPanel((p) => ({ ...p, recId: rec.id, phase: 'live', error: '' }))
+    try {
+      const data = await fetchBidResults(rec.biddingNo)
+      setResultPanel({ recId: rec.id, data, phase: '', error: '' })
+    } catch (err) {
+      setResultPanel((p) => ({ ...(p || {}), recId: rec.id, phase: '', error: err.message }))
+    }
+  }
+
   const [copiedId, setCopiedId] = useState(null)
   async function handleShare(rec) {
     if (!rec.shareToken) return
@@ -207,6 +235,14 @@ function OpeningTab() {
                   <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
                     {expanded === r.id ? 'Collapse' : `Bidders (${(r.bidders || []).length})`}
                   </button>
+                  <button
+                    onClick={() => openResults(r)}
+                    disabled={!r.biddingNo}
+                    title={r.biddingNo ? `Find evaluation / award results for ${r.biddingNo}` : 'No bidding No. on this record'}
+                    className="rounded-md px-2 py-1 text-xs font-semibold text-violet-600 hover:bg-violet-50 disabled:opacity-40"
+                  >
+                    {resultPanel?.recId === r.id ? 'Hide results' : 'Results'}
+                  </button>
                   {r.shareToken && (
                     <button onClick={() => handleShare(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
                       {copiedId === r.id ? 'Copied ✓' : 'Share'}
@@ -247,6 +283,51 @@ function OpeningTab() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {resultPanel?.recId === r.id && (
+                <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-700">Evaluation / Award results for <span className="font-mono">{r.biddingNo}</span></p>
+                    <button
+                      onClick={() => fetchResultsLive(r)}
+                      disabled={!r.biddingNo || resultPanel.phase === 'live'}
+                      className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {resultPanel.phase === 'live' ? 'Fetching… (1-2 min)' : '⟳ Fetch from chinabidding'}
+                    </button>
+                  </div>
+                  {resultPanel.error && <p className="text-sm font-medium text-red-600">{resultPanel.error}</p>}
+                  {resultPanel.phase === 'local' && <p className="py-4 text-center text-sm text-slate-400">Searching…</p>}
+                  {resultPanel.data && (
+                    resultPanel.data.total === 0 ? (
+                      <p className="py-4 text-center text-sm text-slate-500">No evaluation/award announcements in the local DB yet. Try “Fetch from chinabidding”.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {['award', 'evaluation', 'change', 'tender'].filter((k) => resultPanel.data[k]?.length).map((key) => (
+                          <div key={key}>
+                            <h4 className="mb-1 flex items-center gap-2 text-xs font-bold text-slate-600">
+                              <span className={`rounded px-2 py-0.5 text-[11px] font-semibold text-white ${STAGE_META[key].cls}`}>{STAGE_META[key].label}</span>
+                              <span className="text-slate-400">{resultPanel.data[key].length}</span>
+                            </h4>
+                            <ul className="space-y-1.5">
+                              {resultPanel.data[key].map((p) => (
+                                <li key={p.id} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                                  <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-800 hover:text-blue-600 hover:underline">{p.projectName}</a>
+                                  <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                                    <span>Published {fmtDate(p.publishDate)}</span>
+                                    {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}
+                                    {p.winningPrice && <span>Winning price: {p.winningPrice}</span>}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </li>
