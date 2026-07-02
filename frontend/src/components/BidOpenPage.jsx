@@ -115,18 +115,29 @@ function OpeningTab() {
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(null)
   const [manualOpen, setManualOpen] = useState(false)
-  const [langById, setLangById] = useState({}) // { [recId]: 'en' } — which cards show English
+  const [displayLang, setDisplayLang] = useState({}) // { [recId]: 'zh' | 'en' } — currently shown language
   const [translatingId, setTranslatingId] = useState(null)
 
+  // Detect a record's original language from its text (CJK present → Chinese).
+  function origLangOf(rec) {
+    const text = [
+      rec.projectName, rec.purchaser,
+      ...(rec.bidders || []).flatMap((b) => [b.country, b.priceTerm, b.currency, b.deliveryTime, b.destination, b.note]),
+    ].filter(Boolean).join(' ')
+    return /[一-鿿]/.test(text) ? 'zh' : 'en'
+  }
+  const LANG_LABEL = { zh: '中文', en: 'EN' }
+
   async function toggleLang(rec) {
-    const cur = langById[rec.id] || 'orig'
-    if (cur === 'en') { setLangById((m) => ({ ...m, [rec.id]: 'orig' })); return }
-    // switch to English — translate if we don't have it cached yet
-    if (!rec.translations?.en) {
+    const orig = origLangOf(rec)
+    const cur = displayLang[rec.id] || orig
+    const next = cur === 'zh' ? 'en' : 'zh'
+    // Switching to the non-original language needs a (cached) translation.
+    if (next !== orig && !rec.translations?.[next]) {
       setTranslatingId(rec.id)
       try {
-        const { translation } = await translateBidOpening(rec.id, 'en')
-        setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, translations: { ...(r.translations || {}), en: translation } } : r)))
+        const { translation } = await translateBidOpening(rec.id, next)
+        setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, translations: { ...(r.translations || {}), [next]: translation } } : r)))
       } catch (err) {
         setError(err.message)
         setTranslatingId(null)
@@ -134,17 +145,19 @@ function OpeningTab() {
       }
       setTranslatingId(null)
     }
-    setLangById((m) => ({ ...m, [rec.id]: 'en' }))
+    setDisplayLang((m) => ({ ...m, [rec.id]: next }))
   }
 
   // Field accessor honoring the card's current language (falls back to original).
   function fieldsFor(rec) {
-    const en = (langById[rec.id] === 'en' && rec.translations?.en) || null
+    const orig = origLangOf(rec)
+    const cur = displayLang[rec.id] || orig
+    const t = (cur !== orig && rec.translations?.[cur]) || null
     return {
-      projectName: en?.projectName || rec.projectName,
-      purchaser: en?.purchaser || rec.purchaser,
+      projectName: t?.projectName || rec.projectName,
+      purchaser: t?.purchaser || rec.purchaser,
       bidder: (b, i) => {
-        const tb = en?.bidders?.[i]
+        const tb = t?.bidders?.[i]
         return {
           ...b,
           country: tb?.country ?? b.country,
@@ -303,7 +316,8 @@ function OpeningTab() {
         <ul className="space-y-3">
           {records.map((r) => {
             const F = fieldsFor(r)
-            const showEn = langById[r.id] === 'en'
+            const curLang = displayLang[r.id] || origLangOf(r)
+            const nextLangLabel = curLang === 'zh' ? LANG_LABEL.en : LANG_LABEL.zh
             return (
             <li key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-col gap-2">
@@ -318,10 +332,10 @@ function OpeningTab() {
                   <button
                     onClick={() => toggleLang(r)}
                     disabled={translatingId === r.id}
-                    title="Translate / switch language (DeepSeek)"
+                    title={`Switch to ${nextLangLabel} (DeepSeek translation)`}
                     className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                   >
-                    {translatingId === r.id ? '⏳' : `🌐 ${showEn ? '中文' : 'EN'}`}
+                    {translatingId === r.id ? '⏳' : `🌐 ${nextLangLabel}`}
                   </button>
                   <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
                     {expanded === r.id ? 'Collapse' : `Expand (${(r.bidders || []).length} bidders)`}
