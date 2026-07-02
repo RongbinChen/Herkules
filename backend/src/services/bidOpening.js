@@ -7,11 +7,16 @@ import { DeepSeekError, deepseekNetworkError } from './deepseekErrors.js';
 
 // Flatten every sheet of the workbook into readable text (rows joined by
 // " | ") so tabular bid records survive the conversion.
+//
+// cellDates:true + raw:false makes date-formatted cells come through as
+// human-readable strings (e.g. "2026-06-20") instead of Excel's internal
+// serial-day numbers (e.g. 46232) — without this, a date cell reads as a bare
+// number with no date meaning, which the model can misinterpret as a year.
 export function xlsxToText(buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const parts = [];
   for (const name of wb.SheetNames) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: false });
     const lines = rows
       .map((r) => r.map((c) => String(c).trim()).filter(Boolean).join(' | '))
       .filter(Boolean);
@@ -53,8 +58,16 @@ export async function extractBidOpening(text) {
   }
   const parsed = extractJson(reply);
   if (!parsed) return null;
-  const openDate =
-    parsed.openDate && !Number.isNaN(Date.parse(parsed.openDate)) ? new Date(parsed.openDate) : null;
+  // Sanity-check the year — guards against the model echoing back a raw
+  // Excel date serial (e.g. "46232") which Date.parse would otherwise happily
+  // read as year 46232 and blow up the DB write.
+  let openDate = null;
+  if (parsed.openDate) {
+    const d = new Date(parsed.openDate);
+    if (!Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) {
+      openDate = d;
+    }
+  }
   return {
     biddingNo: parsed.biddingNo || null,
     projectName: parsed.projectName || null,
