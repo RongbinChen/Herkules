@@ -168,9 +168,25 @@ function OpeningTab() {
     setResultPanel((p) => ({ ...p, recId: rec.id, phase: 'live', error: '' }))
     try {
       const data = await fetchBidResults(rec.biddingNo)
-      setResultPanel({ recId: rec.id, data, phase: '', error: '' })
+      setResultPanel({ recId: rec.id, data, phase: '', error: '', fetched: true })
     } catch (err) {
       setResultPanel((p) => ({ ...(p || {}), recId: rec.id, phase: '', error: err.message }))
+    }
+  }
+
+  // One-click watch: subscribe to this bidding No so the daily scrape notifies
+  // (in-app + email) as soon as evaluation/award announcements are published.
+  async function subscribeNo(rec) {
+    try {
+      await createSavedSearch({
+        name: `No. ${rec.biddingNo}`,
+        keyword: rec.biddingNo,
+        autoMonitor: true,
+        emailNotify: true,
+      })
+      setResultPanel((p) => ({ ...p, subscribed: true }))
+    } catch (err) {
+      setResultPanel((p) => ({ ...p, error: err.message }))
     }
   }
 
@@ -300,34 +316,59 @@ function OpeningTab() {
                   </div>
                   {resultPanel.error && <p className="text-sm font-medium text-red-600">{resultPanel.error}</p>}
                   {resultPanel.phase === 'local' && <p className="py-4 text-center text-sm text-slate-400">Searching…</p>}
-                  {resultPanel.data && (
-                    resultPanel.data.total === 0 ? (
-                      <p className="py-4 text-center text-sm text-slate-500">No evaluation/award announcements in the local DB yet. Try “Fetch from chinabidding”.</p>
-                    ) : (
+                  {resultPanel.data && (() => {
+                    const d = resultPanel.data
+                    const hasResults = (d.evaluation?.length || 0) + (d.award?.length || 0) > 0
+                    const others = [...(d.change || []), ...(d.tender || [])]
+                    const Item = ({ p }) => (
+                      <li className="rounded-lg border border-slate-200 bg-white p-2.5">
+                        <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-800 hover:text-blue-600 hover:underline">{p.projectName}</a>
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                          <span>Published {fmtDate(p.publishDate)}</span>
+                          {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}
+                          {p.winningPrice && <span>Winning price: {p.winningPrice}</span>}
+                        </div>
+                      </li>
+                    )
+                    return (
                       <div className="space-y-3">
-                        {['award', 'evaluation', 'change', 'tender'].filter((k) => resultPanel.data[k]?.length).map((key) => (
-                          <div key={key}>
-                            <h4 className="mb-1 flex items-center gap-2 text-xs font-bold text-slate-600">
-                              <span className={`rounded px-2 py-0.5 text-[11px] font-semibold text-white ${STAGE_META[key].cls}`}>{STAGE_META[key].label}</span>
-                              <span className="text-slate-400">{resultPanel.data[key].length}</span>
-                            </h4>
-                            <ul className="space-y-1.5">
-                              {resultPanel.data[key].map((p) => (
-                                <li key={p.id} className="rounded-lg border border-slate-200 bg-white p-2.5">
-                                  <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-800 hover:text-blue-600 hover:underline">{p.projectName}</a>
-                                  <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
-                                    <span>Published {fmtDate(p.publishDate)}</span>
-                                    {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}
-                                    {p.winningPrice && <span>Winning price: {p.winningPrice}</span>}
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
+                        {hasResults ? (
+                          ['award', 'evaluation'].filter((k) => d[k]?.length).map((key) => (
+                            <div key={key}>
+                              <h4 className="mb-1 flex items-center gap-2 text-xs font-bold text-slate-600">
+                                <span className={`rounded px-2 py-0.5 text-[11px] font-semibold text-white ${STAGE_META[key].cls}`}>{STAGE_META[key].label}</span>
+                                <span className="text-slate-400">{d[key].length}</span>
+                              </h4>
+                              <ul className="space-y-1.5">{d[key].map((p) => <Item key={p.id} p={p} />)}</ul>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                            <p className="font-medium">
+                              No evaluation / award results published for this No. yet
+                              {resultPanel.fetched ? ' (checked chinabidding just now).' : '.'}
+                            </p>
+                            <p className="mt-1 text-xs text-amber-700">
+                              Results usually appear on chinabidding days or weeks after bid opening.
+                              {resultPanel.subscribed ? (
+                                <span className="ml-1 font-semibold text-emerald-700">Subscribed ✓ — you'll be notified when they're published.</span>
+                              ) : (
+                                <button onClick={() => subscribeNo(r)} className="ml-1 font-semibold text-sky-700 underline hover:text-sky-900">
+                                  Subscribe to this No.
+                                </button>
+                              )}
+                            </p>
                           </div>
-                        ))}
+                        )}
+                        {others.length > 0 && (
+                          <div>
+                            <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Other announcements for this No.</h4>
+                            <ul className="space-y-1.5 opacity-80">{others.map((p) => <Item key={p.id} p={p} />)}</ul>
+                          </div>
+                        )}
                       </div>
                     )
-                  )}
+                  })()}
                 </div>
               )}
             </li>

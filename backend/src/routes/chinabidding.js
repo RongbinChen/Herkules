@@ -320,7 +320,8 @@ function groupByStage(projects) {
   const stage = (p) => {
     if (p.infoClass === 'Evaluation Results') return 'evaluation';
     if (p.infoClass === 'Tender Awards') return 'award';
-    if (p.infoClass === 'Tender Changes') return 'change';
+    // the site labels this category "Tenders Changes" (sic)
+    if (p.infoClass === 'Tender Changes' || p.infoClass === 'Tenders Changes') return 'change';
     return 'tender';
   };
   const grouped = { tender: [], change: [], evaluation: [], award: [] };
