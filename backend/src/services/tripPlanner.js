@@ -9,8 +9,11 @@ import {
 } from './deepseekErrors.js';
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
-const PRIMARY_MODEL = 'deepseek-reasoner'; // latest R1 reasoning model — best for multi-constraint planning
-const FALLBACK_MODEL = 'deepseek-chat'; // V3 — faster fallback if reasoner is unavailable
+// deepseek-chat/deepseek-reasoner retire 2026-07-24. Replacements:
+// v4-pro (thinking mode) = best for multi-constraint planning, replaces reasoner/R1.
+// v4-flash (non-thinking) = faster fallback, replaces chat/V3.
+const PRIMARY_MODEL = 'deepseek-v4-pro';
+const FALLBACK_MODEL = 'deepseek-v4-flash';
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 
 const SYSTEM = `你是一位资深的企业差旅行程规划师。给定客户拜访清单（含城市/地址/经纬度/优先级/建议时长/备注）、出差起止日期、可选航班、以及额外约束，请安排一份**实际可行**的逐日行程。
@@ -138,9 +141,13 @@ async function callModel(model, userPrompt) {
           { role: 'user', content: userPrompt },
         ],
         max_tokens: 6000,
-        // deepseek-chat (V3) supports JSON mode for guaranteed-parseable output;
-        // deepseek-reasoner (R1) does not, so only set it for chat.
-        ...(model === 'deepseek-chat' ? { response_format: { type: 'json_object' } } : {}),
+        // v4-pro needs thinking explicitly on (best multi-constraint reasoning);
+        // v4-flash stays non-thinking for a fast, cheap fallback. Both models
+        // support JSON mode now (unlike the old reasoner), so it's always on
+        // for guaranteed-parseable output.
+        thinking: { type: model === PRIMARY_MODEL ? 'enabled' : 'disabled' },
+        ...(model === PRIMARY_MODEL ? { reasoning_effort: 'high' } : {}),
+        response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
     });
