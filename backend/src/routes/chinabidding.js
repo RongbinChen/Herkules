@@ -12,7 +12,8 @@ import {
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import { prisma } from '../index.js';
-import { xlsxToText, extractBidOpenings } from '../services/bidOpening.js';
+import { xlsxToText, extractBidOpenings, translateBidOpening } from '../services/bidOpening.js';
+import { extractBidOpeningsFromImage, isGeminiConfigured } from '../services/gemini.js';
 import { isEmailConfigured } from '../services/mailer.js';
 import { randomBytes } from 'crypto';
 
@@ -21,7 +22,7 @@ const router = express.Router();
 // In-memory upload for bid-opening Excel files (parsed immediately, not kept on disk).
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 }, // room for phone photos
 });
 
 const shareToken = () => randomBytes(20).toString('hex');
@@ -208,20 +209,37 @@ router.post('/bidopen/manual', async (req, res) => {
   }
 });
 
-// 上传开标记录 Excel → 提取文本 → DeepSeek 识别 → 入库
+// 上传开标记录 → Excel 走 DeepSeek 文本识别 / 图片走 Gemini 视觉识别 → 入库
+const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
+const EXCEL_RE = /\.(xlsx|xls)$/i;
+const MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
 router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'file is required (.xlsx)' });
+    if (!req.file) return res.status(400).json({ error: 'file is required (.xlsx / image)' });
     const name = req.file.originalname || '';
-    if (!/\.(xlsx|xls)$/i.test(name)) {
-      return res.status(400).json({ error: 'Only Excel files (.xlsx / .xls) are supported' });
+    const isImage = IMAGE_RE.test(name);
+    const isExcel = EXCEL_RE.test(name);
+    if (!isImage && !isExcel) {
+      return res.status(400).json({ error: 'Supported: Excel (.xlsx/.xls) or image (.jpg/.png/.webp)' });
     }
-    const rawText = xlsxToText(req.file.buffer);
-    if (!rawText.trim()) {
-      return res.status(400).json({ error: 'The Excel file appears to be empty' });
+
+    let extracted;
+    let rawText = null;
+    if (isExcel) {
+      rawText = xlsxToText(req.file.buffer);
+      if (!rawText.trim()) return res.status(400).json({ error: 'The Excel file appears to be empty' });
+      extracted = await extractBidOpenings(rawText);
+    } else {
+      if (!isGeminiConfigured()) {
+        return res.status(503).json({ error: 'Image recognition is not configured (GEMINI_API_KEY missing on the server).' });
+      }
+      const ext = name.split('.').pop().toLowerCase();
+      const mime = req.file.mimetype || MIME_BY_EXT[ext] || 'image/jpeg';
+      extracted = await extractBidOpeningsFromImage(req.file.buffer, mime);
     }
-    const extracted = await extractBidOpenings(rawText);
-    if (extracted.length === 0) {
+
+    if (!extracted || extracted.length === 0) {
       return res.status(422).json({ error: 'Could not recognize a bid-opening record in this file' });
     }
     // A single file may contain several IFB Nos → create one record per No.
@@ -231,7 +249,7 @@ router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
         await prisma.bidOpening.create({
           data: {
             ...rec,
-            rawText: rawText.slice(0, 10000),
+            rawText: rawText ? rawText.slice(0, 10000) : null,
             fileName: name,
             shareToken: shareToken(),
             uploadedById: req.user.userId,
@@ -239,12 +257,36 @@ router.post('/bidopen/upload', upload.single('file'), async (req, res) => {
         }),
       );
     }
-    // Return an array; frontend prepends all. (Kept 201 for created.)
     res.status(201).json(created);
   } catch (error) {
-    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    // Surface classified AI-service reasons (quota/key) from DeepSeek or Gemini.
+    if (error.isDeepSeek || error.isGemini) return res.status(502).json({ error: error.message });
     console.error('Error uploading bid opening:', error);
     res.status(500).json({ error: 'Failed to process the uploaded file' });
+  }
+});
+
+// 翻译某条开标记录的文本字段(默认英文)，结果缓存到 translations.<lang>
+router.post('/bidopen/:id/translate', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const lang = (req.body?.lang || 'en').toLowerCase();
+    const rec = await prisma.bidOpening.findUnique({ where: { id } });
+    if (!rec) return res.status(404).json({ error: 'Not found' });
+
+    const cache = rec.translations || {};
+    if (cache[lang]) return res.json({ lang, translation: cache[lang], cached: true });
+
+    const translation = await translateBidOpening(rec, lang);
+    const updated = await prisma.bidOpening.update({
+      where: { id },
+      data: { translations: { ...cache, [lang]: translation } },
+    });
+    res.json({ lang, translation, record: updated });
+  } catch (error) {
+    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    console.error('Error translating bid opening:', error);
+    res.status(500).json({ error: 'Failed to translate the record' });
   }
 });
 

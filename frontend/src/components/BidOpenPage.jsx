@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   uploadBidOpening, listBidOpenings, deleteBidOpening,
-  createManualBidOpening, downloadBidTemplate,
+  createManualBidOpening, downloadBidTemplate, translateBidOpening,
   fetchBidResults, getBidResults, getEmailStatus,
   listSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch,
 } from '../api/chinabidding'
@@ -12,7 +12,6 @@ import ClampText from './ClampText'
 
 const TABS = [
   { key: 'opening', label: 'Bid Opening' },
-  { key: 'track', label: 'Evaluation / Award' },
   { key: 'watch', label: 'Subscriptions' },
 ]
 
@@ -116,6 +115,61 @@ function OpeningTab() {
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(null)
   const [manualOpen, setManualOpen] = useState(false)
+  const [displayLang, setDisplayLang] = useState({}) // { [recId]: 'zh' | 'en' } — currently shown language
+  const [translatingId, setTranslatingId] = useState(null)
+
+  // Detect a record's original language from its text (CJK present → Chinese).
+  function origLangOf(rec) {
+    const text = [
+      rec.projectName, rec.purchaser,
+      ...(rec.bidders || []).flatMap((b) => [b.country, b.priceTerm, b.currency, b.deliveryTime, b.destination, b.note]),
+    ].filter(Boolean).join(' ')
+    return /[一-鿿]/.test(text) ? 'zh' : 'en'
+  }
+  const LANG_LABEL = { zh: '中文', en: 'EN' }
+
+  async function toggleLang(rec) {
+    const orig = origLangOf(rec)
+    const cur = displayLang[rec.id] || orig
+    const next = cur === 'zh' ? 'en' : 'zh'
+    // Switching to the non-original language needs a (cached) translation.
+    if (next !== orig && !rec.translations?.[next]) {
+      setTranslatingId(rec.id)
+      try {
+        const { translation } = await translateBidOpening(rec.id, next)
+        setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, translations: { ...(r.translations || {}), [next]: translation } } : r)))
+      } catch (err) {
+        setError(err.message)
+        setTranslatingId(null)
+        return
+      }
+      setTranslatingId(null)
+    }
+    setDisplayLang((m) => ({ ...m, [rec.id]: next }))
+  }
+
+  // Field accessor honoring the card's current language (falls back to original).
+  function fieldsFor(rec) {
+    const orig = origLangOf(rec)
+    const cur = displayLang[rec.id] || orig
+    const t = (cur !== orig && rec.translations?.[cur]) || null
+    return {
+      projectName: t?.projectName || rec.projectName,
+      purchaser: t?.purchaser || rec.purchaser,
+      bidder: (b, i) => {
+        const tb = t?.bidders?.[i]
+        return {
+          ...b,
+          country: tb?.country ?? b.country,
+          priceTerm: tb?.priceTerm ?? b.priceTerm,
+          currency: tb?.currency ?? b.currency,
+          deliveryTime: tb?.deliveryTime ?? b.deliveryTime,
+          destination: tb?.destination ?? b.destination,
+          note: tb?.note ?? b.note,
+        }
+      },
+    }
+  }
 
   async function handleTemplate() {
     try { await downloadBidTemplate() } catch (err) { setError(err.message) }
@@ -232,7 +286,7 @@ function OpeningTab() {
         <div className="min-w-0 sm:flex-1">
           <p className="font-semibold text-slate-800">Add a bid-opening record</p>
           <p className="mt-0.5 text-xs text-slate-500">
-            Upload an .xlsx (AI auto-extracts bidding no / project / date / bidders & prices), or
+            Upload an Excel (.xlsx) or a photo/scan (.jpg/.png) — AI auto-extracts bidding no / project / date / bidders & prices, or
             <button onClick={handleTemplate} className="mx-1 font-semibold text-sky-600 hover:underline">download the template</button>
             to fill in and upload, or enter it manually.
           </p>
@@ -242,8 +296,8 @@ function OpeningTab() {
             {manualOpen ? 'Close manual entry' : '✎ Enter manually'}
           </button>
           <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-sky-600 hover:bg-sky-700'}`}>
-            {uploading ? 'Recognizing…' : 'Upload Excel'}
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" disabled={uploading} onChange={handleFile} />
+            {uploading ? 'Recognizing…' : 'Upload Excel / Image'}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.jpg,.jpeg,.png,.webp,image/*" className="hidden" disabled={uploading} onChange={handleFile} />
           </label>
         </div>
       </div>
@@ -260,17 +314,29 @@ function OpeningTab() {
         <p className="py-12 text-center text-sm text-slate-400">No bid-opening records yet. Upload your first Excel.</p>
       ) : (
         <ul className="space-y-3">
-          {records.map((r) => (
+          {records.map((r) => {
+            const F = fieldsFor(r)
+            const curLang = displayLang[r.id] || origLangOf(r)
+            const nextLangLabel = curLang === 'zh' ? LANG_LABEL.en : LANG_LABEL.zh
+            return (
             <li key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex flex-col gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-800">{r.projectName || '(project name not recognized)'}</p>
+                  <p className="font-semibold text-slate-800">{F.projectName || '(project name not recognized)'}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     No. <span className="font-mono">{r.biddingNo || '—'}</span> · Opened {fmtDate(r.openDate)}
-                    {r.purchaser ? ` · ${r.purchaser}` : ''} · File {r.fileName}
+                    {F.purchaser ? ` · ${F.purchaser}` : ''} · File {r.fileName}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => toggleLang(r)}
+                    disabled={translatingId === r.id}
+                    title={`Switch to ${nextLangLabel} (DeepSeek translation)`}
+                    className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {translatingId === r.id ? '⏳' : `🌐 ${nextLangLabel}`}
+                  </button>
                   <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
                     {expanded === r.id ? 'Collapse' : `Expand (${(r.bidders || []).length} bidders)`}
                   </button>
@@ -308,7 +374,9 @@ function OpeningTab() {
                       </tr>
                     </thead>
                     <tbody>
-                      {r.bidders.map((b, i) => (
+                      {r.bidders.map((b0, i) => {
+                        const b = F.bidder(b0, i)
+                        return (
                         <tr key={i} className="border-t border-slate-100 align-top">
                           <td className="px-3 py-2 text-slate-400">{i + 1}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{b.name}</td>
@@ -319,7 +387,8 @@ function OpeningTab() {
                           <td className="px-3 py-2 text-slate-600">{b.destination || '—'}</td>
                           <td className="px-3 py-2 whitespace-normal text-slate-500"><ClampText text={b.note} max={24} /></td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -395,7 +464,8 @@ function OpeningTab() {
                 </div>
               )}
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
 
@@ -446,110 +516,6 @@ function OpeningTab() {
         <div className="fixed bottom-6 left-1/2 z-[1200] -translate-x-1/2 rounded-full bg-slate-800 px-5 py-2.5 text-sm font-medium text-white shadow-lg">
           ✓ {toast}
         </div>
-      )}
-    </div>
-  )
-}
-
-// ── Evaluation / Award results tab ───────────────────────────────────────────
-function TrackTab() {
-  const [biddingNo, setBiddingNo] = useState('')
-  const [result, setResult] = useState(null)
-  const [phase, setPhase] = useState('') // '' | 'local' | 'live'
-  const [error, setError] = useState('')
-  const [subs, setSubs] = useState([])
-
-  // Show what's being tracked (subscriptions) right here, so "Subscribe to
-  // this No." on a record is immediately visible in this tab too.
-  useEffect(() => {
-    listSavedSearches().then(setSubs).catch(() => setSubs([]))
-  }, [])
-
-  async function queryLocal(no = biddingNo) {
-    const q = (no || '').trim()
-    if (!q) return
-    setBiddingNo(q)
-    setPhase('local'); setError('')
-    try { setResult(await getBidResults(q)) } catch (err) { setError(err.message) }
-    setPhase('')
-  }
-  async function fetchLive() {
-    if (!biddingNo.trim()) return
-    setPhase('live'); setError('')
-    try { setResult(await fetchBidResults(biddingNo.trim())) } catch (err) { setError(err.message) }
-    setPhase('')
-  }
-
-  const groups = result ? ['award', 'evaluation', 'change', 'tender'].filter((k) => result[k]?.length) : []
-
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-        <input
-          value={biddingNo}
-          onChange={(e) => setBiddingNo(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && queryLocal()}
-          placeholder="Enter a bidding no, e.g. 0712-254112DG050"
-          className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white"
-        />
-        <button onClick={queryLocal} disabled={!!phase || !biddingNo.trim()} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-          {phase === 'local' ? 'Searching…' : 'Search local DB'}
-        </button>
-        <button onClick={fetchLive} disabled={!!phase || !biddingNo.trim()} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
-          {phase === 'live' ? 'Fetching… (1-2 min)' : '⟳ Fetch from chinabidding'}
-        </button>
-        <p className="w-full text-xs text-slate-400">“Search local DB” returns already-stored announcements instantly; “Fetch” searches chinabidding by number for evaluation/award announcements and stores them (slower).</p>
-        {subs.length > 0 && (
-          <div className="w-full border-t border-slate-100 pt-2">
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Tracking ({subs.length})</p>
-            <div className="flex flex-wrap gap-1.5">
-              {subs.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => queryLocal(s.keyword)}
-                  title={`${s.name} — click to check results${s.emailNotify ? ' · email on' : ''}`}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition hover:border-sky-400 hover:text-sky-700 ${biddingNo === s.keyword ? 'border-sky-400 bg-sky-50 text-sky-700' : 'border-slate-200 bg-white text-slate-600'}`}
-                >
-                  {s.keyword}
-                  {s.emailNotify && <span className="ml-1 opacity-60">✉</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 ring-1 ring-red-200">{error}</p>}
-
-      {result && (
-        result.total === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">No announcements found for this number. Try “Fetch from chinabidding”.</p>
-        ) : (
-          <div className="space-y-5">
-            {groups.map((key) => (
-              <section key={key}>
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
-                  <span className={`rounded px-2 py-0.5 text-[11px] font-semibold text-white ${STAGE_META[key].cls}`}>{STAGE_META[key].label}</span>
-                  <span className="text-slate-400">{result[key].length}</span>
-                </h3>
-                <ul className="space-y-2">
-                  {result[key].map((p) => (
-                    <li key={p.id} className="rounded-xl border border-slate-200 bg-white p-3.5">
-                      <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-800 hover:text-blue-600 hover:underline">
-                        {p.projectName}
-                      </a>
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
-                        <span>Published {fmtDate(p.publishDate)}</span>
-                        {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}
-                        {p.winningPrice && <span>Winning price: {p.winningPrice}</span>}
-                        {p.purchaser && <span>Purchaser: {p.purchaser}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )
       )}
     </div>
   )
@@ -660,7 +626,7 @@ export default function BidOpenPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Bid Tracking</p>
-              <p className="text-[1rem] font-medium text-slate-700">Bid opening records · Evaluation / award tracking · Subscriptions</p>
+              <p className="text-[1rem] font-medium text-slate-700">Bid opening records · Subscriptions</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => navigate('/chinabidding')} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
@@ -682,7 +648,6 @@ export default function BidOpenPage() {
         </header>
 
         {tab === 'opening' && <OpeningTab />}
-        {tab === 'track' && <TrackTab />}
         {tab === 'watch' && <WatchTab />}
       </div>
     </div>
