@@ -478,11 +478,13 @@ export async function listScrapeJobs(limit = 20) {
 }
 
 export async function scrapeProjects(filters = {}) {
-  const { page = 1, limit = 20, biddingType, status, region, industry, equipmentType, purchaser, startDate, endDate } = filters;
+  const { page = 1, limit = 20, biddingType, status, region, industry, equipmentType, purchaser, startDate, endDate, recent } = filters;
 
   const where = {};
   if (biddingType) where.biddingType = biddingType;
   if (status) where.status = status;
+  const recentDays = parseInt(recent, 10);
+  if (recentDays > 0) where.createdAt = { gte: new Date(Date.now() - recentDays * 24 * 60 * 60 * 1000) };
   if (region) where.region = { contains: region, mode: 'insensitive' };
   if (industry) where.industry = { contains: industry, mode: 'insensitive' };
   if (equipmentType) where.equipmentType = equipmentType;
