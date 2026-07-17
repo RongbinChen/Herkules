@@ -13,7 +13,7 @@ import {
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import { prisma } from '../index.js';
-import { xlsxToText, extractBidOpenings, translateBidOpening } from '../services/bidOpening.js';
+import { xlsxToText, extractBidOpenings, translateBidOpening, parseOpenDate } from '../services/bidOpening.js';
 import { extractBidOpeningsFromImage, isGeminiConfigured } from '../services/gemini.js';
 import { isEmailConfigured } from '../services/mailer.js';
 import { randomBytes } from 'crypto';
@@ -186,11 +186,7 @@ router.post('/bidopen/manual', async (req, res) => {
     if (!projectName && !biddingNo && cleanBidders.length === 0) {
       return res.status(400).json({ error: 'Please fill in at least a project/bidding no or one bidder' });
     }
-    let openDateVal = null;
-    if (openDate) {
-      const d = new Date(openDate);
-      if (!Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) openDateVal = d;
-    }
+    const openDateVal = parseOpenDate(openDate);
     const record = await prisma.bidOpening.create({
       data: {
         biddingNo: biddingNo?.trim() || null,
