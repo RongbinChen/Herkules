@@ -282,6 +282,12 @@ function BidProjectList() {
               >
                 Bid Tracking
               </button>
+              <button
+                onClick={() => navigate('/chinabidding/tracking')}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
+              >
+                项目跟踪
+              </button>
 
               {/* Notification bell */}
               <div className="relative">

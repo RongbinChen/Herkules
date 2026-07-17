@@ -113,6 +113,21 @@ export async function getProjectThread(projectId) {
   return res.json();
 }
 
+// Project lifecycle tracking: aggregated threads + our manual tracking layer.
+export async function listProjectThreads(params = {}) {
+  const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''));
+  const query = new URLSearchParams(clean).toString();
+  const res = await fetch(`${API_BASE}/threads${query ? `?${query}` : ''}`, { headers: authHeaders() });
+  return parseOrThrow(res, 'Failed to fetch project threads');
+}
+
+export async function saveBidTracking(threadKey, data) {
+  const res = await fetch(`${API_BASE}/threads/${encodeURIComponent(threadKey)}/tracking`, {
+    method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(data),
+  });
+  return parseOrThrow(res, 'Failed to save tracking');
+}
+
 export async function listFollows() {
   const res = await fetch(`${API_BASE}/follows`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch follows');

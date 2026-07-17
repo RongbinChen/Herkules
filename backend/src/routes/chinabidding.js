@@ -5,6 +5,7 @@ import {
   listSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch, runSavedSearch,
   runDailyJob, getRecentUpdates,
   getProjectThread, followProject, unfollowProject, listFollows,
+  listProjectThreads, upsertBidTracking,
   listNotifications, markNotificationRead, markAllNotificationsRead,
   getTrends, generateTrendReport, backfillStructured,
   listCompetitors, seedCompetitors,
@@ -472,6 +473,36 @@ router.get('/projects/:id/thread', async (req, res) => {
     if (error.status === 404) return res.status(404).json({ error: 'Not found' });
     console.error('Error fetching thread:', error);
     res.status(500).json({ error: 'Failed to fetch thread' });
+  }
+});
+
+// ── Project lifecycle tracking ────────────────────────────────────────────────
+// Aggregated project threads: auto-derived stage + team's manual tracking layer.
+router.get('/threads', async (req, res) => {
+  try {
+    const { ourStatus, stage, q } = req.query;
+    const threads = await listProjectThreads(req.user.userId, {
+      ourStatus: ourStatus || null,
+      stage: stage || null,
+      q: q || null,
+    });
+    res.json(threads);
+  } catch (error) {
+    console.error('Error listing project threads:', error);
+    res.status(500).json({ error: 'Failed to list project threads' });
+  }
+});
+
+// Upsert the team's manual bid tracking for one project thread.
+router.put('/threads/:key/tracking', async (req, res) => {
+  try {
+    const threadKey = decodeURIComponent(req.params.key);
+    const tracking = await upsertBidTracking(threadKey, req.body || {}, req.user.userId);
+    res.json(tracking);
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    console.error('Error saving bid tracking:', error);
+    res.status(500).json({ error: 'Failed to save bid tracking' });
   }
 });
 

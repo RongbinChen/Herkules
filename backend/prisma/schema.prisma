@@ -143,10 +143,11 @@ model BidProject {
   deadline    DateTime?
   budget      String?
   status      BidStatus @default(PUBLISHED)
-  sourceUrl        String
+  sourceUrl        String    @unique
   rawContent       String?
   summary          String?
   lastStatusChange DateTime?
+  bidStage         BidStage? // 生命周期阶段（由 infoClass 派生：招标→变更→评标→中标）
   // ── Structured fields (DeepSeek extraction) ──
   purchaser     String? // 采购单位
   winner        String? // 中标方（中标公告）
@@ -283,6 +284,41 @@ enum BidStatus {
 enum BidType {
   NEW
   PAST
+}
+
+// 公告推导的项目生命周期阶段（自动，来自抓取的 infoClass）
+enum BidStage {
+  TENDER     // 招标公告 New Tenders
+  CHANGE     // 变更公告 Tenders Changes
+  EVALUATION // 评标结果 Evaluation Results
+  AWARD      // 中标公告 Tender Awards
+}
+
+// 我方投标跟踪状态（手工，销售团队视角）
+enum OurBidStatus {
+  WATCHING    // 关注中
+  PREPARING   // 准备投标
+  SUBMITTED   // 已投标
+  SHORTLISTED // 入围
+  WON         // 中标
+  LOST        // 落标
+  ABANDONED   // 放弃
+}
+
+// 我方对某个真实项目（按 threadKey 归并）的手工投标跟踪
+model BidTracking {
+  id          Int          @id @default(autoincrement())
+  threadKey   String       @unique // 一个真实项目一条跟踪记录（= BidProject.threadKey）
+  ourStatus   OurBidStatus @default(WATCHING)
+  ourPrice    String? // 我方报价
+  competitors String? // 我方了解到的竞争对手（自由文本）
+  outcome     String? // 结果/结论备注
+  note        String? // 跟进备注
+  updatedById Int? // 最后更新人
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([ourStatus])
 }
 
 enum ScrapeJobStatus {
