@@ -16,3 +16,11 @@ export const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+// Requires an authenticated admin. Must be used after authenticateToken.
+export const requireAdmin = (req, res, next) => {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ error: 'Admin privileges required' });
+  }
+  next();
+};

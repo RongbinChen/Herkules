@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
+import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -12,6 +13,7 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(1),
+  isAdmin: z.boolean().optional(),
 });
 
 const loginSchema = z.object({
@@ -19,10 +21,11 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
-// Register
-router.post('/register', async (req, res) => {
+// Create user — admin only. Public self-registration is disabled: only an
+// authenticated admin may provision new accounts for this internal CRM.
+router.post('/register', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { email, password, name } = registerSchema.parse(req.body);
+    const { email, password, name, isAdmin } = registerSchema.parse(req.body);
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
@@ -31,14 +34,11 @@ router.post('/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword, name },
+      data: { email, password: hashedPassword, name, isAdmin: isAdmin ?? false },
     });
 
-    const token = jwt.sign({ userId: user.id, email: user.email, isAdmin: user.isAdmin }, process.env.JWT_SECRET, {
-      expiresIn: JWT_EXPIRES_IN,
-    });
-
-    res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin } });
+    // No token returned: the admin stays logged in as themselves.
+    res.status(201).json({ user: { id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin } });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors });
