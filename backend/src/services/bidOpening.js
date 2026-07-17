@@ -133,14 +133,30 @@ export async function translateBidOpening(record, lang = 'en') {
   };
 }
 
-function normalizeRecord(r) {
-  // Sanity-check the year — guards against the model echoing back a raw Excel
-  // date serial (e.g. "46232") which Date.parse would read as year 46232.
-  let openDate = null;
-  if (r.openDate) {
-    const d = new Date(r.openDate);
-    if (!Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) openDate = d;
+// Parse an open-date that may arrive as an ISO/locale string OR a bare Excel
+// serial day-number (when a date cell wasn't date-formatted, e.g. "46205" for
+// 2026-07-02). Converting the serial preserves the real date instead of nulling
+// it; New Date("46205") would otherwise read it as the year 46205 and crash the
+// Prisma insert. Returns a Date, or null when unrecognizable / out of range.
+export function parseOpenDate(v) {
+  if (v == null || v === '') return null;
+  const s = String(v).trim();
+  // 5-digit Excel serial. Years 2000–2100 span serials ~36526–73415.
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Number(s);
+    if (serial >= 36526 && serial <= 73415) {
+      const d = new Date(Math.round((serial - 25569) * 86400000)); // 25569 = Excel→Unix epoch offset (days)
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null; // out-of-range 5-digit number is not a date
   }
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getFullYear() <= 2100) return d;
+  return null;
+}
+
+function normalizeRecord(r) {
+  const openDate = parseOpenDate(r.openDate);
   const bidders = (Array.isArray(r.bidders) ? r.bidders : []).map((b) => ({
     name: b.name || '',
     country: b.country ?? null,

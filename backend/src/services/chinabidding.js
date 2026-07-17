@@ -3,6 +3,7 @@ import { parseListPage, parseDetailPage } from './chinabiddingParser.js';
 import { analyzeProject, generateMarketReport } from './deepseek.js';
 import { COMPETITOR_SEED } from '../data/competitors.js';
 import { sendMail } from './mailer.js';
+import { solveSession, SCRAPER_UA } from './browserSolver.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -25,61 +26,44 @@ const ALL_TENDER_CODES = 'e0905 e0906 e0907 e0908';
 
 const SEARCH_URL = `${BASE_URL}/info/search.htm`;
 
-// ── CAS session cache ────────────────────────────────────────────────────────
+// ── Session cache (headless-solved cookies + bound UA) ───────────────────────
+// The anti-bot challenge (HTTP 521) is solved by a real headless browser via
+// browserSolver; the resulting cookies are reused by fetch until they expire.
 const SESSION_TTL_MS = 20 * 60 * 1000;
-let sessionCache = { cookies: null, expiresAt: 0 };
+let sessionCache = { cookies: null, userAgent: SCRAPER_UA, expiresAt: 0 };
+let solving = null; // in-flight solve promise, so concurrent scrapers share one browser launch
 
 function invalidateSession() {
-  sessionCache = { cookies: null, expiresAt: 0 };
+  sessionCache = { cookies: null, userAgent: SCRAPER_UA, expiresAt: 0 };
 }
 
-async function loginAndGetCookies() {
-  if (!USERNAME || !PASSWORD) {
-    throw new Error('Chinabidding credentials not configured.');
-  }
-  const serviceUrl = encodeURIComponent('https://www.chinabidding.com/en/login/loginEn.htm');
-
-  const r1 = await fetch(CAS_LOGIN_URL + '?service=' + serviceUrl, { redirect: 'manual' });
-  const c1 = (r1.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-  const lt = (await r1.text()).match(/name="lt" value="([^"]+)"/)?.[1];
-
-  const r2 = await fetch(CAS_LOGIN_URL + '?service=' + serviceUrl, {
-    method: 'POST', redirect: 'manual',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: c1 },
-    body: new URLSearchParams({ username: USERNAME, password: PASSWORD, lt, _eventId: 'submit', authorize: 'true' }).toString(),
-  });
-  const c2 = (r2.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-  const loc2 = r2.headers.get('Location');
-
-  if (loc2) {
-    const r3 = await fetch(loc2, { redirect: 'manual', headers: { Cookie: c2 } });
-    const c3 = (r3.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-    const loc3 = r3.headers.get('Location');
-    if (loc3) {
-      const r4 = await fetch(loc3, { redirect: 'manual', headers: { Cookie: c3 } });
-      const c4 = (r4.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-      return [c4, c3, c2].join('; ');
-    }
-    return c3 || c2;
-  }
-  return c2;
+// True when a response is the anti-bot JS challenge instead of real content.
+function isAntiBotChallenge(status, text) {
+  return status === 521 || /window\.onload=setTimeout\("[a-z]+\(\d+\)/i.test(text || '');
 }
 
-async function getCookies(forceRefresh = false) {
+async function getSession(forceRefresh = false) {
   const now = Date.now();
   if (!forceRefresh && sessionCache.cookies && now < sessionCache.expiresAt) {
-    return sessionCache.cookies;
+    return sessionCache;
   }
-  const cookies = await loginAndGetCookies();
-  if (cookies) sessionCache = { cookies, expiresAt: now + SESSION_TTL_MS };
-  return cookies;
+  // Collapse concurrent refreshes into a single browser launch.
+  if (!solving) {
+    solving = solveSession()
+      .then((s) => {
+        sessionCache = { ...s, expiresAt: Date.now() + SESSION_TTL_MS };
+        return sessionCache;
+      })
+      .finally(() => { solving = null; });
+  }
+  return solving;
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 async function fetchWithAuth(url, postBody = null, retryCount = 0) {
-  const cookies = await getCookies(retryCount > 0);
+  const session = await getSession(retryCount > 0);
   const opts = {
-    headers: { 'User-Agent': 'Mozilla/5.0 Chrome/120', Accept: 'text/html', Cookie: cookies },
+    headers: { 'User-Agent': session.userAgent, Accept: 'text/html', Cookie: session.cookies },
   };
   if (postBody) {
     opts.method = 'POST';
@@ -88,10 +72,14 @@ async function fetchWithAuth(url, postBody = null, retryCount = 0) {
   }
   const res = await fetch(url, opts);
   const text = await res.text();
-  if ((res.status === 403 || text.includes('403 Forbidden')) && retryCount < 3) {
+  // Re-solve on anti-bot challenge or 403 (expired/blocked clearance).
+  if ((isAntiBotChallenge(res.status, text) || res.status === 403 || text.includes('403 Forbidden')) && retryCount < 2) {
     invalidateSession();
-    await sleep(3000);
+    await sleep(2000);
     return fetchWithAuth(url, postBody, retryCount + 1);
+  }
+  if (isAntiBotChallenge(res.status, text)) {
+    throw Object.assign(new Error('chinabidding anti-bot challenge could not be cleared'), { isAntiBot: true });
   }
   return text;
 }
@@ -110,6 +98,20 @@ export function extractThreadKey(projectName = '') {
   const m = projectName.match(/\b(\d{4}-[A-Za-z0-9]{6,})\b/);
   return m ? m[1] : null;
 }
+
+// Map chinabidding.com's announcement type (infoClass) to a lifecycle stage.
+// Tolerant of the two spellings seen in the wild ("Tenders Changes" / "Tender Changes").
+export function infoClassToStage(infoClass = '') {
+  const s = String(infoClass || '').toLowerCase();
+  if (s.includes('award')) return 'AWARD';
+  if (s.includes('evaluation')) return 'EVALUATION';
+  if (s.includes('change')) return 'CHANGE';
+  if (s.includes('tender')) return 'TENDER'; // "New Tenders"
+  return null;
+}
+
+// Furthest stage reached, for aggregating a project thread's current stage.
+export const STAGE_ORDER = { TENDER: 0, CHANGE: 1, EVALUATION: 2, AWARD: 3 };
 
 // ── Competitor matching ──────────────────────────────────────────────────────
 let competitorCache = { list: null, loadedAt: 0 };
@@ -217,12 +219,14 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   }
 
   project.infoClass = item.tenderTypeLabel || null;
+  project.bidStage = infoClassToStage(project.infoClass);
   project.threadKey = extractThreadKey(project.projectName) || project.projectCode || null;
   // Derive status from the announcement type so status changes are detectable,
   // instead of hard-coding PUBLISHED for every announcement.
   project.status = project.biddingType === 'PAST' ? 'CLOSED' : 'PUBLISHED';
 
-  const existing = await prisma.bidProject.findFirst({ where: { sourceUrl: project.sourceUrl } });
+  // sourceUrl is now @unique — a single findUnique is race-safe for the read.
+  const existing = await prisma.bidProject.findUnique({ where: { sourceUrl: project.sourceUrl } });
 
   if (existing) {
     const statusChanged = project.status && existing.status !== project.status;
@@ -236,6 +240,7 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
         budget: project.budget ?? existing.budget,
         rawContent: project.rawContent ?? existing.rawContent,
         infoClass: project.infoClass ?? existing.infoClass,
+        bidStage: project.bidStage ?? existing.bidStage,
         threadKey: existing.threadKey ?? project.threadKey,
         ...(project.status ? { status: project.status } : {}),
         ...(statusChanged ? { lastStatusChange: new Date() } : {}),
@@ -274,7 +279,14 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
 
   let created;
   try {
-    created = await prisma.bidProject.create({ data: createData });
+    // upsert on the unique sourceUrl: if a concurrent scrape created this row
+    // between our findUnique above and here, update it with our analyzed data
+    // instead of throwing — race-safe dedup.
+    created = await prisma.bidProject.upsert({
+      where: { sourceUrl: project.sourceUrl },
+      create: createData,
+      update: createData,
+    });
   } catch (err) {
     // projectCode is @unique; a different sourceUrl can derive a colliding code
     // (or an old projectCode-keyed row predates the sourceUrl dedup). Update that
@@ -395,6 +407,26 @@ export async function runDailyJob(triggeredBy = null) {
   (async () => {
     try {
       let totalNew = 0;
+
+      // Health probe: verify the scraper can reach real content before the run.
+      // If the anti-bot challenge can't be cleared, alert the team and bail —
+      // don't silently "succeed" with 0 results like the pre-2026-07 pipeline did.
+      try {
+        await fetchWithAuth(SEARCH_URL, new URLSearchParams({ fullText: 'grinding', infoClassCodes: ALL_TENDER_CODES, pageNo: '1' }).toString());
+      } catch (probeErr) {
+        if (probeErr.isAntiBot) {
+          console.error('[chinabidding] daily job aborted: anti-bot challenge not cleared');
+          await notifyAllUsers('STATUS_CHANGE', null,
+            '⚠️ 系统告警：ChinaBidding 抓取被反爬拦截，今日任务未执行。请检查 headless 解算/凭据（详见 docs/ARCHITECTURE_REVIEW.md 与抓取运维说明）。');
+          await prisma.scrapeJob.update({
+            where: { id: job.id },
+            data: { status: 'FAILED', error: 'anti-bot challenge not cleared', finishedAt: new Date() },
+          });
+          dailyJobRunning = false;
+          return;
+        }
+        throw probeErr;
+      }
 
       // Industry-based scrapes
       for (const { tradeClassCode, label } of INDUSTRY_JOBS) {
@@ -811,6 +843,101 @@ export async function getProjectThread(projectId) {
     orderBy: { publishDate: 'asc' },
   });
   return { project, thread };
+}
+
+// ── Project threads: lifecycle tracking (aggregate a real project's stages) ────
+// Groups every announcement by threadKey into one "project thread" and derives
+// the current lifecycle stage (furthest reached), winner, and timeline. Attaches
+// the team's manual BidTracking record and whether the user follows the thread.
+const OUR_BID_STATUSES = ['WATCHING', 'PREPARING', 'SUBMITTED', 'SHORTLISTED', 'WON', 'LOST', 'ABANDONED'];
+
+export async function listProjectThreads(userId, { ourStatus = null, stage = null, q = null } = {}) {
+  const projects = await prisma.bidProject.findMany({
+    orderBy: { publishDate: 'asc' },
+    select: {
+      id: true, projectName: true, projectCode: true, region: true, equipmentType: true,
+      purchaser: true, winner: true, winningPrice: true, budget: true, deadline: true,
+      infoClass: true, bidStage: true, status: true, sourceUrl: true, publishDate: true,
+      threadKey: true, updatedAt: true,
+    },
+  });
+
+  const groups = new Map();
+  for (const p of projects) {
+    const key = p.threadKey || `p:${p.id}`; // ungrouped announcements stand alone
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+
+  const keys = [...groups.keys()];
+  const [trackings, follows] = await Promise.all([
+    prisma.bidTracking.findMany({ where: { threadKey: { in: keys } } }),
+    prisma.projectFollow.findMany({ where: { userId }, select: { projectId: true } }),
+  ]);
+  const trackingByKey = new Map(trackings.map((t) => [t.threadKey, t]));
+  const followedIds = new Set(follows.map((f) => f.projectId));
+
+  const ms = (d) => (d ? new Date(d).getTime() : 0);
+
+  let threads = keys.map((key) => {
+    const anns = groups.get(key);
+    let currentStage = null;
+    let currentOrder = -1;
+    for (const a of anns) {
+      const ord = a.bidStage ? (STAGE_ORDER[a.bidStage] ?? -1) : -1;
+      if (ord > currentOrder) { currentOrder = ord; currentStage = a.bidStage; }
+    }
+    const rep = anns[anns.length - 1]; // latest announcement is representative
+    const winnerAnn = anns.find((a) => a.winner);
+    return {
+      threadKey: key,
+      projectName: rep.projectName,
+      projectCode: rep.projectCode,
+      region: rep.region,
+      equipmentType: rep.equipmentType,
+      purchaser: rep.purchaser || anns.find((a) => a.purchaser)?.purchaser || null,
+      budget: rep.budget || anns.find((a) => a.budget)?.budget || null,
+      deadline: rep.deadline,
+      currentStage,
+      winner: winnerAnn?.winner || null,
+      winningPrice: winnerAnn?.winningPrice || null,
+      firstPublish: anns[0].publishDate,
+      lastUpdate: anns.reduce((m, a) => (ms(a.updatedAt) > ms(m) ? a.updatedAt : m), anns[0].updatedAt),
+      following: anns.some((a) => followedIds.has(a.id)),
+      tracking: trackingByKey.get(key) || null,
+      announcements: anns.map((a) => ({
+        id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
+        publishDate: a.publishDate, sourceUrl: a.sourceUrl,
+        winner: a.winner, winningPrice: a.winningPrice,
+      })),
+    };
+  });
+
+  threads.sort((a, b) => ms(b.lastUpdate) - ms(a.lastUpdate));
+
+  if (stage) threads = threads.filter((t) => t.currentStage === stage);
+  if (ourStatus) threads = threads.filter((t) => (t.tracking?.ourStatus || null) === ourStatus);
+  if (q) {
+    const needle = String(q).toLowerCase();
+    threads = threads.filter((t) =>
+      [t.projectName, t.purchaser, t.winner, t.threadKey, t.equipmentType]
+        .filter(Boolean).some((s) => String(s).toLowerCase().includes(needle)));
+  }
+  return threads;
+}
+
+export async function upsertBidTracking(threadKey, data = {}, userId = null) {
+  if (data.ourStatus && !OUR_BID_STATUSES.includes(data.ourStatus)) {
+    throw Object.assign(new Error('Invalid ourStatus'), { status: 400 });
+  }
+  const allowed = ['ourStatus', 'ourPrice', 'competitors', 'outcome', 'note'];
+  const clean = {};
+  for (const k of allowed) if (data[k] !== undefined) clean[k] = data[k] === '' ? null : data[k];
+  return prisma.bidTracking.upsert({
+    where: { threadKey },
+    create: { threadKey, ...clean, updatedById: userId },
+    update: { ...clean, updatedById: userId },
+  });
 }
 
 // ── Project follows ──────────────────────────────────────────────────────────

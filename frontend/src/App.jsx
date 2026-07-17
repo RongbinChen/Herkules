@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard'
 import BidProjectList from './components/BidProjectList'
 import BidStatistics from './components/BidStatistics'
 import BidOpenPage from './components/BidOpenPage'
+import BidTrackingBoard from './components/BidTrackingBoard'
 import BidOpeningShare from './components/BidOpeningShare'
 import LampLoginPreview from './components/LampLoginPreview'
 import CustomerList from './components/CustomerList'
@@ -27,6 +28,7 @@ function App() {
       <Route path="/chinabidding" element={token ? <BidProjectList /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/stats" element={token ? <BidStatistics /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/bidopen" element={token ? <BidOpenPage /> : <Navigate to="/login" />} />
+      <Route path="/chinabidding/tracking" element={token ? <BidTrackingBoard /> : <Navigate to="/login" />} />
       <Route path="/customers" element={token ? <CustomerList /> : <Navigate to="/login" />} />
       <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
       <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />
