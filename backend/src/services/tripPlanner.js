@@ -126,7 +126,7 @@ function extractJson(text) {
 
 async function callModel(model, userPrompt) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120000); // reasoner can take a while
+  const timer = setTimeout(() => controller.abort(), 150000); // v4-pro thinking can take 60–120s
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -140,13 +140,16 @@ async function callModel(model, userPrompt) {
           { role: 'system', content: SYSTEM },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 6000,
+        // Headroom so v4-pro's thinking tokens don't crowd out the JSON output
+        // (reasoning + a full days/stops/transports plan can be large).
+        max_tokens: 8000,
         // v4-pro needs thinking explicitly on (best multi-constraint reasoning);
         // v4-flash stays non-thinking for a fast, cheap fallback. Both models
         // support JSON mode now (unlike the old reasoner), so it's always on
-        // for guaranteed-parseable output.
+        // for guaranteed-parseable output. 'medium' effort keeps v4-pro well
+        // under the timeout while still planning well.
         thinking: { type: model === PRIMARY_MODEL ? 'enabled' : 'disabled' },
-        ...(model === PRIMARY_MODEL ? { reasoning_effort: 'high' } : {}),
+        ...(model === PRIMARY_MODEL ? { reasoning_effort: 'medium' } : {}),
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,

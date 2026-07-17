@@ -32,3 +32,6 @@ proxy/*.bak.*
 /app-screenshot.png
 /calendar-login.png
 /project-handoff-for-claude-code.txt
+
+# Imported data sources — archived locally, not committed (large binaries)
+/docs/data/
