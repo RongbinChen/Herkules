@@ -66,7 +66,9 @@ function BidProjectList() {
   const monthParam = searchParams.get('month') || '';
   const monthRange = monthParam ? monthToRange(monthParam) : { startDate: '', endDate: '' };
   const [filters, setFilters] = useState({
-    biddingType: '', status: '',
+    biddingType: searchParams.get('biddingType') || '',
+    status: searchParams.get('status') || '',
+    recent: searchParams.get('recent') || '',
     equipmentType: searchParams.get('equipmentType') || '',
     purchaser: searchParams.get('purchaser') || '',
     region: searchParams.get('region') || '',
@@ -579,6 +581,7 @@ function BidProjectList() {
                 { key: 'equipmentType', label: '设备类型', value: filters.equipmentType, params: ['equipmentType'] },
                 { key: 'purchaser',     label: '采购方',   value: filters.purchaser,     params: ['purchaser'] },
                 { key: 'region',        label: '地区',     value: filters.region,        params: ['region'] },
+                { key: 'recent',        label: '最近',     value: filters.recent ? `${filters.recent} 天内新增` : '', params: ['recent'] },
                 { key: 'period',        label: '月份',     value: periodLabel,           params: ['month'], clears: { startDate: '', endDate: '' } },
               ].filter(c => c.value).map(c => (
                 <span key={c.key} className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">

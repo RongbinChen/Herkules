@@ -2,11 +2,19 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getStatistics, getTrends, generateReport } from '../api/chinabidding';
 
-function StatCard({ label, value, accent = false }) {
+function StatCard({ label, value, accent = false, onClick = null }) {
+  const clickable = typeof onClick === 'function';
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+    <div
+      onClick={onClick || undefined}
+      title={clickable ? 'View list' : undefined}
+      className={`group rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm ${clickable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md' : ''}`}
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{label}</p>
-      <p className={`mt-2 text-3xl font-bold ${accent ? 'text-blue-600' : 'text-slate-900'}`}>{value}</p>
+      <p className={`mt-2 flex items-center gap-1 text-3xl font-bold ${accent ? 'text-blue-600' : 'text-slate-900'}`}>
+        {value}
+        {clickable && <span className="text-base text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500">→</span>}
+      </p>
     </div>
   );
 }
@@ -185,12 +193,12 @@ function BidStatistics() {
 
         {!stats ? loading : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <StatCard label="Total Projects" value={stats.total} accent />
-            <StatCard label="New This Week" value={stats.recentCount} />
-            <StatCard label="New Tenders" value={stats.newProjects} />
-            <StatCard label="Past Tenders" value={stats.pastProjects} />
-            <StatCard label="Published" value={stats.publishedCount} />
-            <StatCard label="Closed" value={stats.closedCount} />
+            <StatCard label="Total Projects" value={stats.total} accent onClick={() => navigate('/chinabidding')} />
+            <StatCard label="New This Week" value={stats.recentCount} onClick={() => navigate('/chinabidding?recent=7')} />
+            <StatCard label="New Tenders" value={stats.newProjects} onClick={() => navigate('/chinabidding?biddingType=NEW')} />
+            <StatCard label="Past Tenders" value={stats.pastProjects} onClick={() => navigate('/chinabidding?biddingType=PAST')} />
+            <StatCard label="Published" value={stats.publishedCount} onClick={() => navigate('/chinabidding?status=PUBLISHED')} />
+            <StatCard label="Closed" value={stats.closedCount} onClick={() => navigate('/chinabidding?status=CLOSED')} />
           </div>
         )}
 
