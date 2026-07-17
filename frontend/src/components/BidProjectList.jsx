@@ -37,6 +37,16 @@ const CATEGORY_BADGE = {
   'Tender Awards':      'bg-emerald-600 text-white',
 };
 
+// Announcement-stage filter tabs (map to BidProject.bidStage), mirroring the
+// chinabidding "Tenders" filter bar: All / New Tenders / Changes / Evaluation / Awards.
+const STAGE_TABS = [
+  { key: '',           label: 'All' },
+  { key: 'TENDER',     label: 'New Tenders' },
+  { key: 'CHANGE',     label: 'Tender Changes' },
+  { key: 'EVALUATION', label: 'Evaluation Results' },
+  { key: 'AWARD',      label: 'Tender Awards' },
+];
+
 // Resolve a project's Chinabidding category from infoClass, falling back to the
 // binary biddingType when infoClass is unknown.
 function categoryOf(project) {
@@ -67,6 +77,7 @@ function BidProjectList() {
   const monthRange = monthParam ? monthToRange(monthParam) : { startDate: '', endDate: '' };
   const [filters, setFilters] = useState({
     biddingType: searchParams.get('biddingType') || '',
+    bidStage: searchParams.get('bidStage') || '',
     status: searchParams.get('status') || '',
     recent: searchParams.get('recent') || '',
     equipmentType: searchParams.get('equipmentType') || '',
@@ -555,6 +566,34 @@ function BidProjectList() {
             </div>
 
             <div className="h-px bg-slate-100 sm:h-6 sm:w-px" />
+
+            {/* Announcement-stage tabs (chinabidding categories) */}
+            <div className="flex w-full flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-xs font-semibold text-slate-400">公告类型</span>
+              {STAGE_TABS.map(t => {
+                const active = filters.bidStage === t.key;
+                return (
+                  <button
+                    key={t.key || 'all'}
+                    onClick={() => {
+                      const override = { bidStage: t.key };
+                      setFilters(f => ({ ...f, ...override }));
+                      if (t.key) searchParams.set('bidStage', t.key);
+                      else searchParams.delete('bidStage');
+                      setSearchParams(searchParams, { replace: true });
+                      fetchProjects(1, override);
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                      active ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="h-px w-full bg-slate-100" />
 
             {/* Type & status filters */}
             <div className="flex flex-wrap gap-2 items-center">

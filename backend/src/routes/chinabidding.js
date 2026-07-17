@@ -52,11 +52,12 @@ router.use(authenticateToken);
 
 router.get('/projects', async (req, res) => {
   try {
-    const { page = 1, limit = 20, biddingType, status, region, industry, equipmentType, purchaser, startDate, endDate, recent } = req.query;
+    const { page = 1, limit = 20, biddingType, bidStage, status, region, industry, equipmentType, purchaser, startDate, endDate, recent } = req.query;
     const result = await scrapeProjects({
       page: parseInt(page),
       limit: parseInt(limit),
       biddingType,
+      bidStage,
       status,
       region,
       industry,
