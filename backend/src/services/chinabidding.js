@@ -3,6 +3,7 @@ import { parseListPage, parseDetailPage } from './chinabiddingParser.js';
 import { analyzeProject, generateMarketReport } from './deepseek.js';
 import { COMPETITOR_SEED } from '../data/competitors.js';
 import { sendMail } from './mailer.js';
+import { solveSession, SCRAPER_UA } from './browserSolver.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -25,61 +26,44 @@ const ALL_TENDER_CODES = 'e0905 e0906 e0907 e0908';
 
 const SEARCH_URL = `${BASE_URL}/info/search.htm`;
 
-// ── CAS session cache ────────────────────────────────────────────────────────
+// ── Session cache (headless-solved cookies + bound UA) ───────────────────────
+// The anti-bot challenge (HTTP 521) is solved by a real headless browser via
+// browserSolver; the resulting cookies are reused by fetch until they expire.
 const SESSION_TTL_MS = 20 * 60 * 1000;
-let sessionCache = { cookies: null, expiresAt: 0 };
+let sessionCache = { cookies: null, userAgent: SCRAPER_UA, expiresAt: 0 };
+let solving = null; // in-flight solve promise, so concurrent scrapers share one browser launch
 
 function invalidateSession() {
-  sessionCache = { cookies: null, expiresAt: 0 };
+  sessionCache = { cookies: null, userAgent: SCRAPER_UA, expiresAt: 0 };
 }
 
-async function loginAndGetCookies() {
-  if (!USERNAME || !PASSWORD) {
-    throw new Error('Chinabidding credentials not configured.');
-  }
-  const serviceUrl = encodeURIComponent('https://www.chinabidding.com/en/login/loginEn.htm');
-
-  const r1 = await fetch(CAS_LOGIN_URL + '?service=' + serviceUrl, { redirect: 'manual' });
-  const c1 = (r1.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-  const lt = (await r1.text()).match(/name="lt" value="([^"]+)"/)?.[1];
-
-  const r2 = await fetch(CAS_LOGIN_URL + '?service=' + serviceUrl, {
-    method: 'POST', redirect: 'manual',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: c1 },
-    body: new URLSearchParams({ username: USERNAME, password: PASSWORD, lt, _eventId: 'submit', authorize: 'true' }).toString(),
-  });
-  const c2 = (r2.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-  const loc2 = r2.headers.get('Location');
-
-  if (loc2) {
-    const r3 = await fetch(loc2, { redirect: 'manual', headers: { Cookie: c2 } });
-    const c3 = (r3.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-    const loc3 = r3.headers.get('Location');
-    if (loc3) {
-      const r4 = await fetch(loc3, { redirect: 'manual', headers: { Cookie: c3 } });
-      const c4 = (r4.headers.getSetCookie?.() || []).map(c => c.split(';')[0]).join('; ');
-      return [c4, c3, c2].join('; ');
-    }
-    return c3 || c2;
-  }
-  return c2;
+// True when a response is the anti-bot JS challenge instead of real content.
+function isAntiBotChallenge(status, text) {
+  return status === 521 || /window\.onload=setTimeout\("[a-z]+\(\d+\)/i.test(text || '');
 }
 
-async function getCookies(forceRefresh = false) {
+async function getSession(forceRefresh = false) {
   const now = Date.now();
   if (!forceRefresh && sessionCache.cookies && now < sessionCache.expiresAt) {
-    return sessionCache.cookies;
+    return sessionCache;
   }
-  const cookies = await loginAndGetCookies();
-  if (cookies) sessionCache = { cookies, expiresAt: now + SESSION_TTL_MS };
-  return cookies;
+  // Collapse concurrent refreshes into a single browser launch.
+  if (!solving) {
+    solving = solveSession()
+      .then((s) => {
+        sessionCache = { ...s, expiresAt: Date.now() + SESSION_TTL_MS };
+        return sessionCache;
+      })
+      .finally(() => { solving = null; });
+  }
+  return solving;
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 async function fetchWithAuth(url, postBody = null, retryCount = 0) {
-  const cookies = await getCookies(retryCount > 0);
+  const session = await getSession(retryCount > 0);
   const opts = {
-    headers: { 'User-Agent': 'Mozilla/5.0 Chrome/120', Accept: 'text/html', Cookie: cookies },
+    headers: { 'User-Agent': session.userAgent, Accept: 'text/html', Cookie: session.cookies },
   };
   if (postBody) {
     opts.method = 'POST';
@@ -88,10 +72,14 @@ async function fetchWithAuth(url, postBody = null, retryCount = 0) {
   }
   const res = await fetch(url, opts);
   const text = await res.text();
-  if ((res.status === 403 || text.includes('403 Forbidden')) && retryCount < 3) {
+  // Re-solve on anti-bot challenge or 403 (expired/blocked clearance).
+  if ((isAntiBotChallenge(res.status, text) || res.status === 403 || text.includes('403 Forbidden')) && retryCount < 2) {
     invalidateSession();
-    await sleep(3000);
+    await sleep(2000);
     return fetchWithAuth(url, postBody, retryCount + 1);
+  }
+  if (isAntiBotChallenge(res.status, text)) {
+    throw Object.assign(new Error('chinabidding anti-bot challenge could not be cleared'), { isAntiBot: true });
   }
   return text;
 }
@@ -419,6 +407,26 @@ export async function runDailyJob(triggeredBy = null) {
   (async () => {
     try {
       let totalNew = 0;
+
+      // Health probe: verify the scraper can reach real content before the run.
+      // If the anti-bot challenge can't be cleared, alert the team and bail —
+      // don't silently "succeed" with 0 results like the pre-2026-07 pipeline did.
+      try {
+        await fetchWithAuth(SEARCH_URL, new URLSearchParams({ fullText: 'grinding', infoClassCodes: ALL_TENDER_CODES, pageNo: '1' }).toString());
+      } catch (probeErr) {
+        if (probeErr.isAntiBot) {
+          console.error('[chinabidding] daily job aborted: anti-bot challenge not cleared');
+          await notifyAllUsers('STATUS_CHANGE', null,
+            '⚠️ 系统告警：ChinaBidding 抓取被反爬拦截，今日任务未执行。请检查 headless 解算/凭据（详见 docs/ARCHITECTURE_REVIEW.md 与抓取运维说明）。');
+          await prisma.scrapeJob.update({
+            where: { id: job.id },
+            data: { status: 'FAILED', error: 'anti-bot challenge not cleared', finishedAt: new Date() },
+          });
+          dailyJobRunning = false;
+          return;
+        }
+        throw probeErr;
+      }
 
       // Industry-based scrapes
       for (const { tradeClassCode, label } of INDUSTRY_JOBS) {
