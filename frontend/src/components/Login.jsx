@@ -5,10 +5,8 @@ import { authAPI } from '../api/api'
 const HERKULES_GROUP_LOGO_URL = 'https://hgms.herkulesgroup.info/template-extension/hgms/herkulesgroup.png'
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
@@ -19,11 +17,7 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const data = isLogin ? { email, password } : { email, password, name }
-      const res = isLogin
-        ? await authAPI.login(data)
-        : await authAPI.register(data)
-
+      const res = await authAPI.login({ email, password })
       login(res.data.token, res.data.user)
     } catch (err) {
       setError(err.response?.data?.error || 'An error occurred')
@@ -47,9 +41,7 @@ export default function Login() {
           Calendar App
         </h1>
 
-        <h2 className="text-xl mb-4 text-center">
-          {isLogin ? 'Login' : 'Register'}
-        </h2>
+        <h2 className="text-xl mb-4 text-center">Login</h2>
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -58,16 +50,6 @@ export default function Login() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <input
-              type="text"
-              placeholder="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              required
-            />
-          )}
           <input
             type="text"
             placeholder="Email or username"
@@ -90,18 +72,12 @@ export default function Login() {
             disabled={loading}
             className="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
           >
-            {loading ? 'Please wait...' : isLogin ? 'Login' : 'Register'}
+            {loading ? 'Please wait...' : 'Login'}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-gray-600">
-          {isLogin ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-blue-500 hover:underline"
-          >
-            {isLogin ? 'Register' : 'Login'}
-          </button>
+        <p className="mt-4 text-center text-sm text-gray-500">
+          Accounts are provisioned by an administrator.
         </p>
       </div>
     </div>

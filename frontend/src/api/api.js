@@ -35,6 +35,8 @@ api.interceptors.request.use((config) => {
 })
 
 export const authAPI = {
+  // Admin-only: provisions a new account (requires an admin token). Public
+  // self-registration is disabled server-side.
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
 }
@@ -54,6 +56,9 @@ export const customersAPI = {
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),
   geocode: (address) => api.post('/customers/geocode', { address }),
+  createShare: (data) => api.post('/customers/share', data),
+  // Public — no auth required (interceptor omits the header when logged out).
+  getShared: (token) => api.get(`/customers/share/${token}`),
 }
 
 export const agentsAPI = {
