@@ -510,10 +510,11 @@ export async function listScrapeJobs(limit = 20) {
 }
 
 export async function scrapeProjects(filters = {}) {
-  const { page = 1, limit = 20, biddingType, status, region, industry, equipmentType, purchaser, startDate, endDate, recent } = filters;
+  const { page = 1, limit = 20, biddingType, bidStage, status, region, industry, equipmentType, purchaser, startDate, endDate, recent } = filters;
 
   const where = {};
   if (biddingType) where.biddingType = biddingType;
+  if (bidStage) where.bidStage = bidStage; // 公告阶段：TENDER/CHANGE/EVALUATION/AWARD
   if (status) where.status = status;
   const recentDays = parseInt(recent, 10);
   if (recentDays > 0) where.createdAt = { gte: new Date(Date.now() - recentDays * 24 * 60 * 60 * 1000) };
