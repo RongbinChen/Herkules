@@ -13,6 +13,7 @@ import CustomerDetail from './components/CustomerDetail'
 import TripList from './components/TripList'
 import TripDetail from './components/TripDetail'
 import TripShare from './components/TripShare'
+import CustomerShare from './components/CustomerShare'
 
 function App() {
   const { token } = useAuth()
@@ -32,6 +33,7 @@ function App() {
       <Route path="/trips/:id" element={token ? <TripDetail /> : <Navigate to="/login" />} />
       {/* Public — no login required */}
       <Route path="/trip/share/:token" element={<TripShare />} />
+      <Route path="/customers/share/:token" element={<CustomerShare />} />
       <Route path="/bidopen/share/:token" element={<BidOpeningShare />} />
     </Routes>
   )

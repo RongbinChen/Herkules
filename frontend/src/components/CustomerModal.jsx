@@ -1,26 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { customersAPI } from '../api/api'
 import { STATUS_ORDER, TIER_ORDER, CUSTOMER_STATUS, CUSTOMER_TIER } from '../constants/customer'
+import { PROVINCES, detectProvince } from '../utils/province'
+
+const PROVINCE_SET = new Set(PROVINCES.map((p) => p.toLowerCase()))
 
 const EMPTY = {
   name: '',
   status: 'LEAD',
   tier: 'C',
-  contactName: '',
-  contactPhone: '',
-  email: '',
   address: '',
   notes: '',
   latitude: '',
   longitude: '',
+  province: '',
   tags: [],
+  contacts: [{ name: '', title: '', phone: '', email: '' }],
 }
 
 const inputCls =
   'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white'
 
 // Create / edit customer. `customer` null → create mode.
-export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
+export default function CustomerModal({ isOpen, customer, onClose, onSaved, existingCustomers = [] }) {
   const [form, setForm] = useState(EMPTY)
   const [tagInput, setTagInput] = useState('')
   const [saving, setSaving] = useState(false)
@@ -28,6 +30,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
   const [geocoding, setGeocoding] = useState(false)
   const [geoError, setGeoError] = useState('')
   const lastGeocodedAddress = useRef('')
+  const provinceEdited = useRef(false)
 
   useEffect(() => {
     if (!isOpen) return
@@ -35,27 +38,50 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
     setGeoError('')
     setTagInput('')
     if (customer) {
+      const savedContacts =
+        Array.isArray(customer.contacts) && customer.contacts.length
+          ? customer.contacts
+          : customer.contactName || customer.contactPhone || customer.email
+            ? [{ name: customer.contactName || '', title: '', phone: customer.contactPhone || '', email: customer.email || '' }]
+            : [{ name: '', title: '', phone: '', email: '' }]
+      const provinceTag =
+        (customer.tags || []).find((t) => PROVINCE_SET.has(String(t).trim().toLowerCase())) || ''
       setForm({
         name: customer.name || '',
         status: customer.status || 'LEAD',
         tier: customer.tier || 'C',
-        contactName: customer.contactName || '',
-        contactPhone: customer.contactPhone || '',
-        email: customer.email || '',
         address: customer.address || '',
         notes: customer.notes || '',
         latitude: customer.latitude ?? '',
         longitude: customer.longitude ?? '',
+        province: provinceTag,
         tags: customer.tags || [],
+        contacts: savedContacts.map((c) => ({
+          name: c.name || '',
+          title: c.title || '',
+          phone: c.phone || '',
+          email: c.email || '',
+        })),
       })
       lastGeocodedAddress.current = customer.address || ''
+      provinceEdited.current = !!provinceTag
     } else {
       setForm(EMPTY)
       lastGeocodedAddress.current = ''
+      provinceEdited.current = false
     }
   }, [isOpen, customer])
 
   if (!isOpen) return null
+
+  // Warn (don't block) if a same-named customer already exists — create mode
+  // only. Normalizes away case/punctuation so "ABB Co." ≈ "ABB Co".
+  const dupNorm = (s) =>
+    String(s || '').trim().toLowerCase().replace(/[^a-z0-9一-龥]/g, '')
+  const duplicate =
+    !customer && form.name.trim()
+      ? existingCustomers.find((c) => dupNorm(c.name) === dupNorm(form.name))
+      : null
 
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -73,6 +99,22 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
 
   function removeTag(tag) {
     setForm((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== tag) }))
+  }
+
+  function addContact() {
+    setForm((prev) => ({
+      ...prev,
+      contacts: [...prev.contacts, { name: '', title: '', phone: '', email: '' }],
+    }))
+  }
+  function updateContact(i, field, value) {
+    setForm((prev) => ({
+      ...prev,
+      contacts: prev.contacts.map((c, idx) => (idx === i ? { ...c, [field]: value } : c)),
+    }))
+  }
+  function removeContact(i) {
+    setForm((prev) => ({ ...prev, contacts: prev.contacts.filter((_, idx) => idx !== i) }))
   }
 
   async function fetchCoords(address) {
@@ -100,6 +142,11 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
     if (addr && addr !== lastGeocodedAddress.current) {
       fetchCoords(addr)
     }
+    // Auto-fill province from the address unless the user set it manually.
+    if (addr && !provinceEdited.current) {
+      const p = detectProvince(addr)
+      if (p) setForm((prev) => ({ ...prev, province: p }))
+    }
   }
 
   async function handleSubmit(event) {
@@ -110,16 +157,25 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
     }
     setSaving(true)
     setError('')
+    const nonProvinceTags = form.tags.filter(
+      (t) => !PROVINCE_SET.has(String(t).trim().toLowerCase()),
+    )
+    const contacts = form.contacts
+      .map((c) => ({
+        name: c.name.trim(),
+        title: c.title.trim(),
+        phone: c.phone.trim(),
+        email: c.email.trim(),
+      }))
+      .filter((c) => c.name || c.phone || c.email || c.title)
     const payload = {
       name: form.name.trim(),
       status: form.status,
       tier: form.tier,
-      contactName: form.contactName.trim(),
-      contactPhone: form.contactPhone.trim(),
-      email: form.email.trim(),
       address: form.address.trim(),
       notes: form.notes.trim(),
-      tags: form.tags,
+      tags: form.province ? [...nonProvinceTags, form.province] : nonProvinceTags,
+      contacts,
       latitude: form.latitude === '' ? null : Number(form.latitude),
       longitude: form.longitude === '' ? null : Number(form.longitude),
     }
@@ -165,6 +221,12 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
               placeholder="e.g. Wuhan Heavy Industry Casting & Forging Co., Ltd."
               required
             />
+            {duplicate && (
+              <p className="mt-1.5 text-xs font-medium text-amber-600">
+                ⚠ A customer named “{duplicate.name}” already exists. You can still create it if
+                this is a different entity.
+              </p>
+            )}
           </label>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -186,21 +248,44 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
             </label>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Contact name</span>
-              <input value={form.contactName} onChange={(e) => update('contactName', e.target.value)} className={inputCls} placeholder="Mr. Zhang" />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Contact phone</span>
-              <input value={form.contactPhone} onChange={(e) => update('contactPhone', e.target.value)} className={inputCls} placeholder="138..." />
-            </label>
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Contacts</span>
+              <button
+                type="button"
+                onClick={addContact}
+                className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+              >
+                + Add contact
+              </button>
+            </div>
+            <div className="space-y-3">
+              {form.contacts.map((c, i) => (
+                <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">
+                      {i === 0 ? 'Primary contact' : `Contact ${i + 1}`}
+                    </span>
+                    {form.contacts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeContact(i)}
+                        className="text-xs font-medium text-red-500 transition hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input value={c.name} onChange={(e) => updateContact(i, 'name', e.target.value)} className={inputCls} placeholder="Name (e.g. Mr. Zhang)" />
+                    <input value={c.title} onChange={(e) => updateContact(i, 'title', e.target.value)} className={inputCls} placeholder="Title (e.g. Purchasing Mgr)" />
+                    <input value={c.phone} onChange={(e) => updateContact(i, 'phone', e.target.value)} className={inputCls} placeholder="Phone 138..." />
+                    <input type="email" value={c.email} onChange={(e) => updateContact(i, 'email', e.target.value)} className={inputCls} placeholder="name@company.com" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Email</span>
-            <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} className={inputCls} placeholder="name@company.com" />
-          </label>
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Address</span>
@@ -211,6 +296,25 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved }) {
               className={inputCls}
               placeholder="Street, City, Province, Country"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">
+              Province <span className="text-slate-400">(auto-detected from address, editable)</span>
+            </span>
+            <select
+              value={form.province}
+              onChange={(e) => {
+                provinceEdited.current = true
+                update('province', e.target.value)
+              }}
+              className={inputCls}
+            >
+              <option value="">— Select province —</option>
+              {PROVINCES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
           </label>
 
           <div>
