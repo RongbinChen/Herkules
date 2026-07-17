@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { randomBytes } from 'crypto';
 import { geocodeAddress } from '../services/geocode.js';
 
 const router = express.Router();
@@ -35,7 +36,29 @@ const customerSchema = z.object({
   status: z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'LOST']).optional(),
   tier: z.enum(['A', 'B', 'C']).optional(),
   tags: z.array(z.string()).optional(),
+  contacts: z
+    .array(
+      z.object({
+        name: z.string().optional(),
+        phone: z.string().optional(),
+        title: z.string().optional(),
+        email: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
+
+// Keep the flat contactName/contactPhone/email in sync with the first contact,
+// so the list, map popups and share pages (which read those fields) show the
+// primary contact.
+function syncPrimaryContact(data) {
+  if (Array.isArray(data.contacts)) {
+    const primary = data.contacts.find((c) => c.name || c.phone || c.email) || {};
+    data.contactName = primary.name || null;
+    data.contactPhone = primary.phone || null;
+    if (primary.email) data.email = primary.email;
+  }
+}
 
 // On-demand geocode — called by the frontend "Update coordinates" button
 router.post('/geocode', authenticateToken, async (req, res) => {
@@ -56,6 +79,60 @@ router.post('/geocode', authenticateToken, async (req, res) => {
     }
     console.error('[customers] geocode error:', err.message);
     res.status(500).json({ error: 'Failed to geocode address' });
+  }
+});
+
+// ── Customer share ───────────────────────────────────────────────────────────
+// The public GET must be declared before "/:id" so "share" isn't parsed as an id.
+const shareSchema = z.object({
+  customerIds: z.array(z.number().int()).min(1),
+  title: z.string().max(200).optional(),
+});
+
+// Create a share link from a (filtered) selection of customers.
+router.post('/share', authenticateToken, async (req, res) => {
+  try {
+    const { customerIds, title } = shareSchema.parse(req.body);
+    const share = await prisma.customerShare.create({
+      data: { token: randomBytes(20).toString('hex'), title: title?.trim() || null, customerIds },
+    });
+    res.status(201).json({ token: share.token });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    console.error(error);
+    res.status(500).json({ error: 'Failed to create share link' });
+  }
+});
+
+// Public — anyone with the token sees the shared customer list (no auth). Contact
+// phone / email / notes are intentionally stripped from the public payload.
+router.get('/share/:token', async (req, res) => {
+  try {
+    const share = await prisma.customerShare.findUnique({ where: { token: req.params.token } });
+    if (!share) {
+      return res.status(404).json({ error: 'Share not found' });
+    }
+    const customers = await prisma.customer.findMany({
+      where: { id: { in: share.customerIds } },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        latitude: true,
+        longitude: true,
+        status: true,
+        tier: true,
+        tags: true,
+        contactName: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ title: share.title, createdAt: share.createdAt, count: customers.length, customers });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to load shared customers' });
   }
 });
 
@@ -99,6 +176,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const data = customerSchema.parse(req.body);
+    syncPrimaryContact(data);
     await applyGeocode(data);
     const customer = await prisma.customer.create({ data });
     res.status(201).json(customer);
@@ -116,6 +194,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const data = customerSchema.parse(req.body);
+    syncPrimaryContact(data);
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ error: 'Customer not found' });

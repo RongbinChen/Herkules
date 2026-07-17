@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
@@ -45,6 +45,11 @@ function fmt(value) {
 export default function CustomerDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Return to the map view when the user arrived via the map's "Details" link.
+  const cameFromMap = searchParams.get('from') === 'map'
+  const backTo = cameFromMap ? '/customers?view=map' : '/customers'
+  const backLabel = cameFromMap ? '← Back to map' : '← Customers'
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 
@@ -103,10 +108,10 @@ export default function CustomerDetail() {
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <button
-          onClick={() => navigate('/customers')}
+          onClick={() => navigate(backTo)}
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
         >
-          ← Customers
+          {backLabel}
         </button>
         <div className="flex items-center gap-2">
           <button onClick={() => setEditOpen(true)} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700">
@@ -143,9 +148,21 @@ export default function CustomerDetail() {
           )}
 
           <dl className="mt-5 space-y-3 text-sm">
-            <Row label="Contact" value={customer.contactName} />
-            <Row label="Phone" value={customer.contactPhone} />
-            <Row label="Email" value={customer.email} />
+            {Array.isArray(customer.contacts) && customer.contacts.length > 0 ? (
+              customer.contacts.map((c, i) => (
+                <Row
+                  key={i}
+                  label={i === 0 ? 'Contact' : `Contact ${i + 1}`}
+                  value={[c.name, c.title, c.phone, c.email].filter(Boolean).join(' · ') || null}
+                />
+              ))
+            ) : (
+              <>
+                <Row label="Contact" value={customer.contactName} />
+                <Row label="Phone" value={customer.contactPhone} />
+                <Row label="Email" value={customer.email} />
+              </>
+            )}
             <Row label="Address" value={customer.address} />
             <Row
               label="Coordinates"

@@ -50,6 +50,7 @@ model Customer {
   contactName  String?
   contactPhone String?
   email        String?
+  contacts     Json?          // 多联系人 [{name, phone, title, email}]；上面的 contactName/Phone/email 为主联系人（第一个）
   notes        String?
   latitude     Float?
   longitude    Float?
@@ -63,6 +64,17 @@ model Customer {
 
   @@index([status])
   @@index([tier])
+}
+
+// 客户共享：把筛选出的一批客户打包成免登录分享链接，推荐给同事查看
+model CustomerShare {
+  id          Int      @id @default(autoincrement())
+  token       String   @unique // 公开分享令牌（免登录访问）
+  title       String?
+  customerIds Int[] // 分享包含的客户 id 列表
+  createdAt   DateTime @default(now())
+
+  @@index([token])
 }
 
 // 行程：给某位同事安排的一次出差/拜访，含多个客户站点，可生成公开分享链接

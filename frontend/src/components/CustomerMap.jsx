@@ -9,6 +9,12 @@ const STATUS_COLOR = {
   LOST: '#ef4444',
 }
 
+// Escape user-provided text before injecting into the Leaflet popup's innerHTML.
+const escapeHtml = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (m) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]),
+  )
+
 export default function CustomerMap({ customers, onSelect }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -78,11 +84,30 @@ export default function CustomerMap({ customers, onSelect }) {
           const color = STATUS_COLOR[c.status] || STATUS_COLOR.LEAD
           const marker = L.marker([mlat, mlng], { icon: markerIcon(L, color) })
           const visits = c._count?.events ?? 0
-          marker.bindPopup(
-            `<strong>${c.name}</strong><br/>${c.status} · Tier ${c.tier}<br/>${visits} visit(s)` +
-              (c.contactName ? `<br/>${c.contactName}` : ''),
-          )
-          marker.on('click', () => onSelectRef.current?.(c))
+          // Info popup on click or hover. Only the "Details" link — not the
+          // marker/popup itself — navigates, so a click just previews the card.
+          const el = document.createElement('div')
+          el.className = 'space-y-1'
+          el.innerHTML =
+            `<div class="text-sm font-semibold text-slate-900">${escapeHtml(c.name)}</div>` +
+            `<div class="text-xs text-slate-500">${c.status} · Tier ${c.tier}${visits ? ` · ${visits} visit(s)` : ''}</div>` +
+            (c.address ? `<div class="text-xs text-slate-500">${escapeHtml(c.address)}</div>` : '') +
+            (c.contactName
+              ? `<div class="text-xs text-slate-600">${escapeHtml(c.contactName)}${
+                  c.contactPhone ? ' · ' + escapeHtml(c.contactPhone) : ''
+                }</div>`
+              : '') +
+            (onSelectRef.current
+              ? `<div class="pt-1.5 text-right"><button type="button" class="cust-details-btn rounded-md bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100">Details →</button></div>`
+              : '')
+          // No "Details" link in read-only contexts (e.g. the public share page)
+          // where no onSelect handler is provided.
+          const detailsBtn = el.querySelector('.cust-details-btn')
+          if (detailsBtn) detailsBtn.addEventListener('click', () => onSelectRef.current?.(c))
+          marker.bindPopup(el, { maxWidth: 260 })
+          // Open on hover too; don't auto-close on mouseout so the pointer can
+          // travel to the popup and click Details.
+          marker.on('mouseover', () => marker.openPopup())
           marker.addTo(layerRef.current)
           bounds.push([mlat, mlng])
         })
