@@ -16,8 +16,16 @@ export const INDUSTRY_JOBS = [
   { tradeClassCode: '01', label: 'Machining' },
   { tradeClassCode: '02', label: 'Medical equipment & medicine' },
 ];
-// Keywords to always monitor (separate searches)
-export const KEYWORD_JOBS = ['机床', '磨床'];
+// Keywords to always monitor (separate searches). English terms — the /en site's
+// fullText search matches announcement bodies in English; Chinese terms (机床/磨床)
+// return nothing here. Each keyword scrape is relevance-filtered by DeepSeek.
+export const KEYWORD_JOBS = [
+  'grinding machine', 'roll grinder',
+  'milling machine', 'portal milling', 'gantry milling',
+  'boring machine',
+  'lathe', 'horizontal lathe', 'crankshaft lathe',
+  'machining center', 'machine tool',
+];
 // Competitor names to monitor daily (scraped without relevance filter — exact keyword hits)
 export const COMPETITOR_KEYWORDS = ['georg', 'pomini', 'INNSE', 'DANIELI', 'waldrich'];
 
