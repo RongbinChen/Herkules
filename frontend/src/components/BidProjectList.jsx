@@ -320,7 +320,7 @@ function BidProjectList() {
                 </button>
 
                 {showNotif && (
-                  <div className="absolute right-0 z-[60] mt-2 w-96 max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  <div className="fixed inset-x-3 top-16 z-[80] rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-w-[90vw]">
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <span className="text-sm font-bold text-slate-800">通知 Notifications</span>
                       {notif.unreadCount > 0 && (
