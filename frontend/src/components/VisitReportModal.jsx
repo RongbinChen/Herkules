@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { visitReportsAPI } from '../api/api'
+import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 
 const SECTIONS = [
@@ -32,14 +32,32 @@ export default function VisitReportModal({ report, customers = [], currentUserId
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // Searchable customer picker (477+ customers — a plain dropdown is unusable).
+  const [custList, setCustList] = useState(customers)
   const [custQuery, setCustQuery] = useState(report?.customer?.name || '')
   const [custOpen, setCustOpen] = useState(false)
-  const custMatches = custQuery.trim()
-    ? customers.filter((c) => c.name.toLowerCase().includes(custQuery.trim().toLowerCase())).slice(0, 30)
-    : []
+  const [creatingCust, setCreatingCust] = useState(false)
+  const q = custQuery.trim().toLowerCase()
+  const custMatches = q ? custList.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 30) : []
+  const exactMatch = q && custList.some((c) => c.name.toLowerCase() === q)
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const setContent = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, [k]: v } }))
+
+  // No matching customer → create one on the spot (name only; enrich later in Customers).
+  const createCustomer = async () => {
+    const name = custQuery.trim()
+    if (!name || creatingCust) return
+    setErr(''); setCreatingCust(true)
+    try {
+      const { data } = await customersAPI.create({ name })
+      setCustList((prev) => [data, ...prev])
+      set('customerId', data.id)
+      setCustQuery(data.name)
+      setCustOpen(false)
+    } catch (e) {
+      setErr(e.response?.data?.error || '新建客户失败')
+    } finally { setCreatingCust(false) }
+  }
 
   const generate = async () => {
     if (!form.rawNotes.trim() && photos.length === 0) { setErr('请先填写随手记或上传照片'); return }
@@ -117,8 +135,8 @@ export default function VisitReportModal({ report, customers = [], currentUserId
                   <button type="button" onClick={() => { set('customerId', ''); setCustQuery('') }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label="清除">✕</button>
                 )}
-                {custOpen && !readOnly && custMatches.length > 0 && (
-                  <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                {custOpen && !readOnly && custQuery.trim() && (
+                  <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
                     {custMatches.map((c) => (
                       <li key={c.id}>
                         <button type="button"
@@ -129,10 +147,18 @@ export default function VisitReportModal({ report, customers = [], currentUserId
                         </button>
                       </li>
                     ))}
+                    {/* No exact match → offer to create the customer on the spot */}
+                    {!exactMatch && (
+                      <li className="border-t border-slate-100">
+                        <button type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={createCustomer} disabled={creatingCust}
+                          className="block w-full truncate px-3 py-2 text-left text-sm font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-50">
+                          {creatingCust ? '新建中…' : `＋ 新建客户「${custQuery.trim()}」`}
+                        </button>
+                      </li>
+                    )}
                   </ul>
-                )}
-                {custOpen && !readOnly && custQuery.trim() && custMatches.length === 0 && (
-                  <div className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-400 shadow-lg">无匹配客户</div>
                 )}
               </div>
             </div>
