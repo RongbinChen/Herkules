@@ -320,14 +320,24 @@ function BidProjectList() {
                 </button>
 
                 {showNotif && (
+                  <>
+                  {/* click-outside backdrop */}
+                  <div className="fixed inset-0 z-[70]" onClick={() => setShowNotif(false)} />
                   <div className="fixed inset-x-3 top-16 z-[80] rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-w-[90vw]">
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <span className="text-sm font-bold text-slate-800">通知 Notifications</span>
-                      {notif.unreadCount > 0 && (
-                        <button onClick={handleMarkAllRead} className="text-xs font-semibold text-brand-600 hover:underline">
-                          全部已读
+                      <div className="flex items-center gap-3">
+                        {notif.unreadCount > 0 && (
+                          <button onClick={handleMarkAllRead} className="text-xs font-semibold text-brand-600 hover:underline">
+                            全部已读
+                          </button>
+                        )}
+                        <button onClick={() => setShowNotif(false)} aria-label="关闭" className="text-slate-400 transition hover:text-slate-700">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
                         </button>
-                      )}
+                      </div>
                     </div>
                     <ul className="max-h-96 overflow-y-auto divide-y divide-slate-50">
                       {notif.items.length === 0 ? (
@@ -356,6 +366,7 @@ function BidProjectList() {
                       ))}
                     </ul>
                   </div>
+                  </>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
