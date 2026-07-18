@@ -308,7 +308,7 @@ export default function CustomerList() {
             {filtered.length}
           </span>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
             <button
               onClick={() => setView('list')}
