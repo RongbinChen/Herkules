@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { Button, Card } from './ui'
 
 const MODULES = [
   {
@@ -38,6 +39,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Brand accent bar */}
+      <div className="h-1 w-full bg-brand-600" />
+
       {/* Top bar */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] items-center justify-between px-4 py-3 sm:px-6">
@@ -48,19 +52,18 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             {user?.name && <span className="hidden text-sm text-slate-500 sm:inline">{user.name}</span>}
-            <button
-              onClick={logout}
-              className="w-48 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-            >
-              Sign out
-            </button>
+            <Button variant="secondary" size="sm" onClick={logout}>Sign out</Button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6 sm:py-10">
         <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />
+            Herkules China · Sales Workspace
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             {user?.name ? `Welcome back, ${user.name.split(' ')[0]}` : 'Welcome'}
           </h1>
           <p className="mt-1 text-sm text-slate-500">Select a module to get started.</p>
@@ -68,10 +71,12 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {MODULES.map((m) => (
-            <button
+            <Card
               key={m.path}
+              as="button"
+              hover
               onClick={() => navigate(m.path)}
-              className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md"
+              className="group flex items-start gap-4 p-5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 hover:border-brand-200"
             >
               <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl ring-1 ${m.badge}`}>
                 {m.icon}
@@ -79,11 +84,11 @@ export default function Dashboard() {
               <span className="min-w-0">
                 <span className="flex items-center gap-1 font-semibold text-slate-800">
                   {m.title}
-                  <span className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-sky-500">→</span>
+                  <span className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600">→</span>
                 </span>
                 <span className="mt-1 block text-sm leading-snug text-slate-500">{m.desc}</span>
               </span>
-            </button>
+            </Card>
           ))}
         </div>
       </main>
