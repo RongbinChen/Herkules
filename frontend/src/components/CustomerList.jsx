@@ -290,7 +290,7 @@ export default function CustomerList() {
   }
 
   const selectCls =
-    'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-sky-500'
+    'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-500'
 
   return (
     <div className="mx-auto max-w-[1400px] p-5">
@@ -312,13 +312,13 @@ export default function CustomerList() {
           <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
             <button
               onClick={() => setView('list')}
-              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${view === 'list' ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${view === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               List
             </button>
             <button
               onClick={() => setView('map')}
-              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${view === 'map' ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${view === 'map' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               Map
             </button>
@@ -337,13 +337,13 @@ export default function CustomerList() {
             onClick={() => setTripOpen(true)}
             disabled={filtered.length === 0}
             title="Schedule the currently filtered customers into a trip"
-            className="whitespace-nowrap rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50 disabled:opacity-50"
+            className="whitespace-nowrap rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
           >
             Schedule trip
           </button>
           <button
             onClick={openCreate}
-            className="whitespace-nowrap rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+            className="whitespace-nowrap rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
           >
             + New customer
           </button>
@@ -356,7 +356,7 @@ export default function CustomerList() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search name, contact, phone, address..."
-          className="min-w-[240px] flex-1 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 outline-none transition focus:border-sky-500"
+          className="min-w-[240px] flex-1 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-500"
         />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls}>
           <option value="">All statuses</option>
@@ -378,17 +378,17 @@ export default function CustomerList() {
             ))}
           </select>
         )}
-        <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 focus-within:border-sky-500">
+        <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 focus-within:border-brand-500">
           {locationFilters.map((loc) => (
             <span
               key={loc}
-              className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200"
+              className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-200"
             >
               {loc}
               <button
                 type="button"
                 onClick={() => removeLocation(loc)}
-                className="text-sky-400 hover:text-sky-700"
+                className="text-brand-400 hover:text-brand-700"
               >
                 ×
               </button>
@@ -436,7 +436,7 @@ export default function CustomerList() {
             <div
               key={c.id}
               onClick={() => navigate(`/customers/${c.id}`)}
-              className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition active:bg-sky-50/60"
+              className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 transition active:bg-brand-50/60"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-start gap-2">
@@ -445,7 +445,7 @@ export default function CustomerList() {
                     checked={selectedIds.has(c.id)}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => toggleSelect(c.id, e)}
-                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-sky-600"
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-brand-600"
                   />
                   <p className="min-w-0 font-semibold text-slate-800">{c.name}</p>
                 </div>
@@ -467,7 +467,7 @@ export default function CustomerList() {
                 </div>
               )}
               <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2">
-                <button onClick={(e) => openEdit(c, e)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 transition hover:bg-sky-50">Edit</button>
+                <button onClick={(e) => openEdit(c, e)} className="rounded-md px-2 py-1 text-xs font-semibold text-brand-600 transition hover:bg-brand-50">Edit</button>
                 {isAdmin && (
                   <button onClick={(e) => handleDelete(c, e)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-50">Delete</button>
                 )}
@@ -486,7 +486,7 @@ export default function CustomerList() {
                     checked={allFilteredSelected}
                     onChange={toggleSelectAll}
                     title="Select all filtered customers"
-                    className="h-4 w-4 cursor-pointer accent-sky-600"
+                    className="h-4 w-4 cursor-pointer accent-brand-600"
                   />
                 </th>
                 <th className="px-4 py-3">Company</th>
@@ -503,14 +503,14 @@ export default function CustomerList() {
                 <tr
                   key={c.id}
                   onClick={() => navigate(`/customers/${c.id}`)}
-                  className="cursor-pointer border-b border-slate-100 transition last:border-0 hover:bg-sky-50/50"
+                  className="cursor-pointer border-b border-slate-100 transition last:border-0 hover:bg-brand-50/50"
                 >
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.has(c.id)}
                       onChange={(e) => toggleSelect(c.id, e)}
-                      className="h-4 w-4 cursor-pointer accent-sky-600"
+                      className="h-4 w-4 cursor-pointer accent-brand-600"
                     />
                   </td>
                   <td className="px-4 py-3">
@@ -535,7 +535,7 @@ export default function CustomerList() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={(e) => openEdit(c, e)}
-                        className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 transition hover:bg-sky-50"
+                        className="rounded-md px-2 py-1 text-xs font-semibold text-brand-600 transition hover:bg-brand-50"
                       >
                         Edit
                       </button>
@@ -609,7 +609,7 @@ export default function CustomerList() {
               />
               <button
                 onClick={copyShareUrl}
-                className="whitespace-nowrap rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                className="whitespace-nowrap rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
               >
                 {shareCopied ? 'Copied!' : 'Copy'}
               </button>

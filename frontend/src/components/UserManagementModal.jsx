@@ -235,7 +235,7 @@ export default function UserManagementModal({
               <input
                 value={form.name}
                 onChange={(event) => updateField('name', event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
                 placeholder="Employee name"
                 required
               />
@@ -246,7 +246,7 @@ export default function UserManagementModal({
               <input
                 value={form.email}
                 onChange={(event) => updateField('email', event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
                 placeholder="maria or team.lead"
                 required
               />
@@ -260,7 +260,7 @@ export default function UserManagementModal({
                 type="password"
                 value={form.password}
                 onChange={(event) => updateField('password', event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
                 placeholder={selectedUser ? 'Leave blank to keep current password' : 'At least 6 characters'}
                 required={!selectedUser}
                 minLength={6}
@@ -277,7 +277,7 @@ export default function UserManagementModal({
                 checked={form.isAdmin}
                 onChange={(event) => updateField('isAdmin', event.target.checked)}
                 disabled={selectedUser?.id === currentUser?.id}
-                className="h-4 w-4 rounded border-slate-300 text-sky-600"
+                className="h-4 w-4 rounded border-slate-300 text-brand-600"
               />
             </label>
 

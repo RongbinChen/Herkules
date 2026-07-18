@@ -114,7 +114,7 @@ export default function TripMap({ stops, height = 460 }) {
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-md outline-none transition focus:border-sky-500"
+          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-md outline-none transition focus:border-brand-500"
           title="Map source"
         >
           {Object.entries(PROVIDERS).map(([key, cfg]) => (

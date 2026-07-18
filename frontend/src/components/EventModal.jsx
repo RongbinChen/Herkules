@@ -182,7 +182,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
         type="button"
         onClick={() => !disabled && setIsOpen((prev) => !prev)}
         disabled={disabled}
-        className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left text-slate-900 outline-none transition hover:border-sky-400 focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+        className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left text-slate-900 outline-none transition hover:border-brand-400 focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
       >
         <span>{formatPickerDisplayValue(value, allDay)}</span>
         <span className="text-lg text-slate-400">▣</span>
@@ -228,7 +228,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                       onClick={() => updateDay(day)}
                       className={[
                         'h-8 rounded-lg text-sm font-medium transition',
-                        selected ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100',
+                        selected ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100',
                         inMonth ? '' : 'text-slate-300',
                       ].join(' ')}
                     >
@@ -244,7 +244,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                 <select
                   value={getHour12(draftDate)}
                   onChange={(event) => updateHour(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-brand-500"
                 >
                   {HOUR_OPTIONS.map((hour) => (
                     <option key={hour} value={hour}>{hour}</option>
@@ -253,7 +253,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                 <select
                   value={getMinute(draftDate)}
                   onChange={(event) => updateMinute(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-brand-500"
                 >
                   {MINUTE_OPTIONS.map((minute) => (
                     <option key={minute} value={minute}>{minute}</option>
@@ -262,7 +262,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
                 <select
                   value={getMeridiem(draftDate)}
                   onChange={(event) => updateMeridiem(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-brand-500"
                 >
                   {MERIDIEM_OPTIONS.map((period) => (
                     <option key={period} value={period}>{period}</option>
@@ -291,7 +291,7 @@ function DateTimePickerField({ label, value, allDay, disabled, onApply }) {
               <button
                 type="button"
                 onClick={handleApply}
-                className="rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
               >
                 Apply
               </button>
@@ -505,7 +505,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                   value={form.title}
                   onChange={(event) => updateField('title', event.target.value)}
                   disabled={readOnly}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   placeholder="Write customer visit, technical review, contract round..."
                   required
                 />
@@ -518,7 +518,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                     value={form.location}
                     onChange={(event) => updateField('location', event.target.value)}
                     disabled={readOnly}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                     placeholder="Office, Zoom, Warehouse A"
                   />
                 </label>
@@ -530,7 +530,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                       value={form.userId}
                       onChange={(event) => updateField('userId', event.target.value)}
                       disabled={readOnly || !isAdmin}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                     >
                       {assignableUsers.map((user) => (
                         <option key={user.id} value={user.id}>{user.name}</option>
@@ -550,7 +550,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                   onChange={(event) => updateField('description', event.target.value)}
                   rows={3}
                   disabled={readOnly}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   placeholder="Capture customer feedback, blockers, negotiation notes, or internal handoff details."
                 />
               </label>
@@ -563,7 +563,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                       <button
                         type="button"
                         onClick={() => { setShowNewCustomer((prev) => !prev); setCustomerError('') }}
-                        className="text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+                        className="text-xs font-semibold text-brand-600 transition hover:text-brand-700"
                       >
                         {showNewCustomer ? 'Cancel' : '+ New customer'}
                       </button>
@@ -574,7 +574,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                     value={form.customerId}
                     onChange={(event) => updateField('customerId', event.target.value)}
                     disabled={readOnly}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   >
                     <option value="">Customer Selection</option>
                     {customers.map((customer) => (
@@ -595,26 +595,26 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                       <input
                         value={newCustomer.name}
                         onChange={(event) => setNewCustomer((prev) => ({ ...prev, name: event.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                         placeholder="Customer name (required)"
                       />
                       <input
                         value={newCustomer.address}
                         onChange={(event) => setNewCustomer((prev) => ({ ...prev, address: event.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                         placeholder="Address (for map)"
                       />
                       <div className="grid gap-2.5 sm:grid-cols-2">
                         <input
                           value={newCustomer.contactName}
                           onChange={(event) => setNewCustomer((prev) => ({ ...prev, contactName: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                           placeholder="Contact name"
                         />
                         <input
                           value={newCustomer.contactPhone}
                           onChange={(event) => setNewCustomer((prev) => ({ ...prev, contactPhone: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                           placeholder="Phone"
                         />
                       </div>
@@ -640,7 +640,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                       <button
                         type="button"
                         onClick={() => { setShowNewAgent((prev) => !prev); setAgentError('') }}
-                        className="text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+                        className="text-xs font-semibold text-brand-600 transition hover:text-brand-700"
                       >
                         {showNewAgent ? 'Cancel' : '+ New agent'}
                       </button>
@@ -651,7 +651,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                     value={form.agentId}
                     onChange={(event) => updateField('agentId', event.target.value)}
                     disabled={readOnly}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                   >
                     <option value="">Agent Selection</option>
                     {agents.map((agent) => (
@@ -674,20 +674,20 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                       <input
                         value={newAgent.name}
                         onChange={(event) => setNewAgent((prev) => ({ ...prev, name: event.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                         placeholder="Agent name (required)"
                       />
                       <div className="grid gap-2.5 sm:grid-cols-2">
                         <input
                           value={newAgent.company}
                           onChange={(event) => setNewAgent((prev) => ({ ...prev, company: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                           placeholder="Company / agency"
                         />
                         <input
                           value={newAgent.contactPhone}
                           onChange={(event) => setNewAgent((prev) => ({ ...prev, contactPhone: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500"
                           placeholder="Phone"
                         />
                       </div>
@@ -713,7 +713,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                   value={form.category}
                   onChange={(event) => updateField('category', event.target.value)}
                   disabled={readOnly}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                 >
                   {CATEGORY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -735,7 +735,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                     }))
                   }}
                   disabled={readOnly}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600"
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
                 />
                 <span className="text-sm font-medium text-slate-700">All-day activity</span>
               </label>

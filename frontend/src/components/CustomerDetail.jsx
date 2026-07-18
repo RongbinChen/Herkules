@@ -114,7 +114,7 @@ export default function CustomerDetail() {
           {backLabel}
         </button>
         <div className="flex items-center gap-2">
-          <button onClick={() => setEditOpen(true)} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700">
+          <button onClick={() => setEditOpen(true)} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700">
             Edit
           </button>
           {isAdmin && (
@@ -142,7 +142,7 @@ export default function CustomerDetail() {
           {(customer.tags || []).length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {customer.tags.map((tag) => (
-                <span key={tag} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">{tag}</span>
+                <span key={tag} className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-200">{tag}</span>
               ))}
             </div>
           )}

@@ -35,7 +35,7 @@ function ManualEntryForm({ onSaved, onCancel }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const cell = 'rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white'
+  const cell = 'rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:bg-white'
 
   function setBidder(i, field, v) {
     setBidders((prev) => prev.map((b, idx) => (idx === i ? { ...b, [field]: v } : b)))
@@ -95,9 +95,9 @@ function ManualEntryForm({ onSaved, onCancel }) {
         </table>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button onClick={addRow} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-sky-600 hover:bg-sky-50">+ Add bidder</button>
+        <button onClick={addRow} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-brand-600 hover:bg-brand-50">+ Add bidder</button>
         <div className="flex-1" />
-        <button onClick={submit} disabled={saving} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
+        <button onClick={submit} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
           {saving ? 'Saving…' : 'Save record'}
         </button>
       </div>
@@ -282,20 +282,20 @@ function OpeningTab() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/50 p-4 sm:flex-row sm:items-center">
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-dashed border-brand-300 bg-brand-50/50 p-4 sm:flex-row sm:items-center">
         <div className="min-w-0 sm:flex-1">
           <p className="font-semibold text-slate-800">Add a bid-opening record</p>
           <p className="mt-0.5 text-xs text-slate-500">
             Upload an Excel (.xlsx) or a photo/scan (.jpg/.png) — AI auto-extracts bidding no / project / date / bidders & prices, or
-            <button onClick={handleTemplate} className="mx-1 font-semibold text-sky-600 hover:underline">download the template</button>
+            <button onClick={handleTemplate} className="mx-1 font-semibold text-brand-600 hover:underline">download the template</button>
             to fill in and upload, or enter it manually.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <button onClick={() => setManualOpen((v) => !v)} className="rounded-lg border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50">
+          <button onClick={() => setManualOpen((v) => !v)} className="rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50">
             {manualOpen ? 'Close manual entry' : '✎ Enter manually'}
           </button>
-          <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-sky-600 hover:bg-sky-700'}`}>
+          <label className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${uploading ? 'bg-slate-300' : 'bg-brand-600 hover:bg-brand-700'}`}>
             {uploading ? 'Recognizing…' : 'Upload Excel / Image'}
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.jpg,.jpeg,.png,.webp,image/*" className="hidden" disabled={uploading} onChange={handleFile} />
           </label>
@@ -337,7 +337,7 @@ function OpeningTab() {
                   >
                     {translatingId === r.id ? '⏳' : `🌐 ${nextLangLabel}`}
                   </button>
-                  <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-50">
+                  <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="rounded-md px-2 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50">
                     {expanded === r.id ? 'Collapse' : `Expand (${(r.bidders || []).length} bidders)`}
                   </button>
                   <button
@@ -445,7 +445,7 @@ function OpeningTab() {
                               {resultPanel.subscribed ? (
                                 <span className="ml-1 font-semibold text-emerald-700">Subscribed ✓ — you'll be notified when they're published.</span>
                               ) : (
-                                <button onClick={() => subscribeNo(r)} className="ml-1 font-semibold text-sky-700 underline hover:text-sky-900">
+                                <button onClick={() => subscribeNo(r)} className="ml-1 font-semibold text-brand-700 underline hover:text-brand-900">
                                   Subscribe to this No.
                                 </button>
                               )}
@@ -485,7 +485,7 @@ function OpeningTab() {
                 <div className="flex items-center gap-2">
                   <input readOnly value={shareModal.url} onFocus={(e) => e.target.select()}
                     className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 outline-none" />
-                  <button onClick={copyShareLink} className="shrink-0 rounded-lg bg-sky-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-sky-700">
+                  <button onClick={copyShareLink} className="shrink-0 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                     {shareModal.copied ? 'Copied ✓' : 'Copy'}
                   </button>
                 </div>
@@ -572,14 +572,14 @@ function WatchTab() {
         <p className="mb-2 font-semibold text-slate-800">New subscription</p>
         <div className="flex flex-wrap items-center gap-2">
           <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Bidding no or keyword, e.g. 0712-254112DG050 / roll grinder"
-            className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+            className="min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)"
-            className="w-44 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+            className="w-44 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
           <label className="flex items-center gap-1.5 text-sm text-slate-600">
-            <input type="checkbox" checked={emailNotify} onChange={(e) => setEmailNotify(e.target.checked)} className="h-4 w-4 accent-sky-600" />
+            <input type="checkbox" checked={emailNotify} onChange={(e) => setEmailNotify(e.target.checked)} className="h-4 w-4 accent-brand-600" />
             Email
           </label>
-          <button onClick={handleCreate} disabled={saving} className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
+          <button onClick={handleCreate} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
             {saving ? 'Saving…' : '+ Subscribe'}
           </button>
         </div>
@@ -598,11 +598,11 @@ function WatchTab() {
                 <p className="text-xs text-slate-400">Keyword / No.: <span className="font-mono">{s.keyword}</span>{s.lastRunAt ? ` · last run ${new Date(s.lastRunAt).toLocaleString('en-US')}` : ' · not run yet'}</p>
               </div>
               <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                <input type="checkbox" checked={s.autoMonitor} onChange={() => toggle(s, 'autoMonitor')} className="h-4 w-4 accent-sky-600" />
+                <input type="checkbox" checked={s.autoMonitor} onChange={() => toggle(s, 'autoMonitor')} className="h-4 w-4 accent-brand-600" />
                 Daily watch
               </label>
               <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                <input type="checkbox" checked={s.emailNotify} onChange={() => toggle(s, 'emailNotify')} className="h-4 w-4 accent-sky-600" />
+                <input type="checkbox" checked={s.emailNotify} onChange={() => toggle(s, 'emailNotify')} className="h-4 w-4 accent-brand-600" />
                 Email
               </label>
               <button onClick={() => handleDelete(s)} className="rounded-md px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">Delete</button>
@@ -640,7 +640,7 @@ export default function BidOpenPage() {
           <div className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
             {TABS.map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition ${tab === t.key ? 'bg-white text-sky-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                className={`flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition ${tab === t.key ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 {t.label}
               </button>
             ))}

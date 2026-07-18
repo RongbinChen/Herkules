@@ -243,10 +243,10 @@ function BidStatistics() {
                     const interest = c.watchType === 'INTEREST';
                     const icon = own ? '🏆' : interest ? '👀' : '⚔️';
                     const cardCls = own ? 'border-emerald-200 bg-emerald-50/60'
-                      : interest ? 'border-sky-200 bg-sky-50/60'
+                      : interest ? 'border-brand-200 bg-brand-50/60'
                       : 'border-slate-100 bg-slate-50/60';
                     const badgeCls = own ? 'bg-emerald-50 text-emerald-600 ring-emerald-200'
-                      : interest ? 'bg-sky-50 text-sky-600 ring-sky-200'
+                      : interest ? 'bg-brand-50 text-brand-600 ring-brand-200'
                       : 'bg-red-50 text-red-600 ring-red-200';
                     return (
                     <li key={c.id} className={`rounded-xl border px-4 py-3 ${cardCls}`}>

@@ -16,7 +16,7 @@ export default function TripPlanView({ trip }) {
               <li key={i} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   {f.date && <span className="font-semibold text-slate-800">{f.date}</span>}
-                  {f.flightNo && <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs font-semibold text-sky-700">{f.flightNo}</span>}
+                  {f.flightNo && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-xs font-semibold text-brand-700">{f.flightNo}</span>}
                   {f.routing && <span className="text-slate-700">{f.routing}</span>}
                   {f.time && <span className="text-slate-500">{f.time}</span>}
                 </div>
