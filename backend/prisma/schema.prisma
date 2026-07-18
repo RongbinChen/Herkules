@@ -19,6 +19,7 @@ model User {
   events            Event[]
   createdTrips      Trip[]   @relation("TripCreator")
   assignedTrips     Trip[]   @relation("TripAssignee")
+  visitReports      VisitReport[]
 }
 
 model Event {
@@ -61,9 +62,39 @@ model Customer {
   updatedAt    DateTime       @updatedAt
   events       Event[]
   tripStops    TripStop[]
+  visitReports VisitReport[]
 
   @@index([status])
   @@index([tier])
+}
+
+// 拜访报告：销售现场记录（照片/随手记）经 AI 整理成结构化报告，关联客户/招投标项目
+model VisitReport {
+  id          Int               @id @default(autoincrement())
+  title       String
+  visitDate   DateTime
+  customerId  Int?
+  customer    Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  threadKey   String?           // 关联的招投标项目线索键（BidProject.threadKey）
+  authorId    Int               // 创建人（按创建人权限：本人/管理员可编辑）
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  summary     String?           // 一句话摘要（AI）
+  content     Json?             // 结构化正文：{ attendees, needs, equipment, competitors, budgetTimeline, nextSteps, risks }
+  rawNotes    String?           // 原始输入（随手记 + 照片 OCR 文本）
+  attachments Json?             // 附件元信息 [{ name, kind }]
+  status      VisitReportStatus @default(DRAFT)
+  aiModel     String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([customerId])
+  @@index([authorId])
+  @@index([threadKey])
+}
+
+enum VisitReportStatus {
+  DRAFT
+  FINAL
 }
 
 // 客户共享：把筛选出的一批客户打包成免登录分享链接，推荐给同事查看

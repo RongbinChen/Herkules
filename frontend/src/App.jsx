@@ -12,6 +12,7 @@ import LampLoginPreview from './components/LampLoginPreview'
 import CustomerList from './components/CustomerList'
 import CustomerDetail from './components/CustomerDetail'
 import TripList from './components/TripList'
+import VisitReportList from './components/VisitReportList'
 import TripDetail from './components/TripDetail'
 import TripShare from './components/TripShare'
 import CustomerShare from './components/CustomerShare'
@@ -32,6 +33,7 @@ function App() {
       <Route path="/customers" element={token ? <CustomerList /> : <Navigate to="/login" />} />
       <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
       <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />
+      <Route path="/visit-reports" element={token ? <VisitReportList /> : <Navigate to="/login" />} />
       <Route path="/trips/:id" element={token ? <TripDetail /> : <Navigate to="/login" />} />
       {/* Public — no login required */}
       <Route path="/trip/share/:token" element={<TripShare />} />
