@@ -31,6 +31,13 @@ const MODULES = [
     desc: 'Auto-generate site-visit itineraries with map, shareable with anyone',
     badge: 'bg-indigo-50 text-indigo-600 ring-indigo-100',
   },
+  {
+    path: '/visit-reports',
+    icon: '📝',
+    title: 'Visit Reports',
+    desc: 'Turn on-site notes & photos into AI-structured visit reports',
+    badge: 'bg-rose-50 text-rose-600 ring-rose-100',
+  },
 ]
 
 export default function Dashboard() {

@@ -61,6 +61,16 @@ export const customersAPI = {
   getShared: (token) => api.get(`/customers/share/${token}`),
 }
 
+export const visitReportsAPI = {
+  list: (params = {}) => api.get('/visit-reports', { params }),
+  get: (id) => api.get(`/visit-reports/${id}`),
+  create: (data) => api.post('/visit-reports', data),
+  update: (id, data) => api.put(`/visit-reports/${id}`, data),
+  delete: (id) => api.delete(`/visit-reports/${id}`),
+  // AI-structure raw notes (+ optional photos) into a draft — multipart, not saved.
+  generate: (formData) => api.post('/visit-reports/generate', formData),
+}
+
 export const agentsAPI = {
   getAll: () => api.get('/agents'),
   get: (id) => api.get(`/agents/${id}`),

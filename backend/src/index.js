@@ -11,6 +11,7 @@ import chinabiddingRoutes from './routes/chinabidding.js';
 import customersRoutes from './routes/customers.js';
 import agentsRoutes from './routes/agents.js';
 import tripsRoutes from './routes/trips.js';
+import visitReportsRoutes from './routes/visitReports.js';
 import shareMetaRoutes from './routes/shareMeta.js';
 
 dotenv.config();
@@ -36,6 +37,7 @@ app.use('/api/chinabidding', chinabiddingRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/trips', tripsRoutes);
+app.use('/api/visit-reports', visitReportsRoutes);
 // Public share pages (SPA shell + per-record OG meta for WeChat link cards)
 app.use(shareMetaRoutes);
 
