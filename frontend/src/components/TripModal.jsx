@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { tripsAPI, customersAPI, usersAPI } from '../api/api'
 
 const inputCls =
-  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white'
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white'
 
 // datetime-local needs "YYYY-MM-DDTHH:mm" in local time.
 function toLocalInput(value) {
@@ -172,7 +172,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, address, contact..."
-              className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:bg-white"
+              className="mb-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white"
             />
             <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200">
               {filtered.length === 0 ? (
@@ -184,9 +184,9 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
                   return (
                     <label
                       key={c.id}
-                      className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 hover:bg-sky-50/50"
+                      className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 hover:bg-brand-50/50"
                     >
-                      <input type="checkbox" checked={checked} onChange={() => toggle(c.id)} className="h-4 w-4 accent-sky-600" />
+                      <input type="checkbox" checked={checked} onChange={() => toggle(c.id)} className="h-4 w-4 accent-brand-600" />
                       <span className="min-w-0 flex-1">
                         <span className="font-medium text-slate-800">{c.name}</span>
                         {c.address && <span className="block truncate text-xs text-slate-400">{c.address}</span>}
@@ -208,20 +208,20 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-sm font-medium text-slate-700">Flights <span className="text-slate-400">(optional)</span></span>
-              <button type="button" onClick={addFlight} className="text-xs font-semibold text-sky-600 hover:underline">+ Add flight</button>
+              <button type="button" onClick={addFlight} className="text-xs font-semibold text-brand-600 hover:underline">+ Add flight</button>
             </div>
             {flights.length > 0 && (
               <div className="space-y-2">
                 {flights.map((f, i) => (
                   <div key={i} className="rounded-xl border border-slate-200 p-2.5">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <input value={f.date || ''} onChange={(e) => updateFlight(i, 'date', e.target.value)} placeholder="Date e.g. 8 Jul" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
-                      <input value={f.flightNo || ''} onChange={(e) => updateFlight(i, 'flightNo', e.target.value)} placeholder="Flight e.g. CA4508" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
-                      <input value={f.routing || ''} onChange={(e) => updateFlight(i, 'routing', e.target.value)} placeholder="Routing e.g. → CTU" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
-                      <input value={f.time || ''} onChange={(e) => updateFlight(i, 'time', e.target.value)} placeholder="Time e.g. 06:55" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                      <input value={f.date || ''} onChange={(e) => updateFlight(i, 'date', e.target.value)} placeholder="Date e.g. 8 Jul" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+                      <input value={f.flightNo || ''} onChange={(e) => updateFlight(i, 'flightNo', e.target.value)} placeholder="Flight e.g. CA4508" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+                      <input value={f.routing || ''} onChange={(e) => updateFlight(i, 'routing', e.target.value)} placeholder="Routing e.g. → CTU" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+                      <input value={f.time || ''} onChange={(e) => updateFlight(i, 'time', e.target.value)} placeholder="Time e.g. 06:55" className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:bg-white" />
                     </div>
                     <div className="mt-2 flex items-center gap-2">
-                      <input value={f.notes || ''} onChange={(e) => updateFlight(i, 'notes', e.target.value)} placeholder="Notes" className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-sky-500 focus:bg-white" />
+                      <input value={f.notes || ''} onChange={(e) => updateFlight(i, 'notes', e.target.value)} placeholder="Notes" className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:bg-white" />
                       <button type="button" onClick={() => removeFlight(i)} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50">Remove</button>
                     </div>
                   </div>
@@ -241,7 +241,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
           </label>
 
           <label className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
-            <input type="checkbox" checked={hidePhone} onChange={(e) => setHidePhone(e.target.checked)} className="h-4 w-4 accent-sky-600" />
+            <input type="checkbox" checked={hidePhone} onChange={(e) => setHidePhone(e.target.checked)} className="h-4 w-4 accent-brand-600" />
             <span className="text-sm text-slate-700">Hide customer phone on the public share page</span>
           </label>
 
@@ -252,7 +252,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
           <button onClick={onClose} type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={saving} className="rounded-xl bg-sky-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60">
+          <button onClick={handleSubmit} disabled={saving} className="rounded-xl bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60">
             {saving ? 'Saving...' : trip ? 'Save changes' : 'Create trip'}
           </button>
         </div>

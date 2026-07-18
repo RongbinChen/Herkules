@@ -8,7 +8,7 @@ export default function TripItinerary({ stops }) {
     <ol className="space-y-3">
       {stops.map((s, i) => (
         <li key={s.id} className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-600 text-sm font-bold text-white">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
             {i + 1}
           </span>
           <div className="min-w-0 flex-1">

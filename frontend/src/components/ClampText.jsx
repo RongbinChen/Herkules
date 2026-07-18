@@ -13,7 +13,7 @@ export default function ClampText({ text, max = 36, className = '' }) {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
-        className="whitespace-nowrap font-semibold text-sky-600 hover:underline"
+        className="whitespace-nowrap font-semibold text-brand-600 hover:underline"
       >
         {open ? 'less' : 'more…'}
       </button>

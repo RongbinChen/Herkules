@@ -58,7 +58,7 @@ export default function BidOpeningShare() {
                   <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{b.country}</span>
                 )}
               </div>
-              <p className="mt-1.5 text-lg font-bold text-sky-700">
+              <p className="mt-1.5 text-lg font-bold text-brand-700">
                 {[b.priceTerm, b.currency, b.price].filter(Boolean).join(' ') || '—'}
               </p>
               <div className="mt-1.5 space-y-0.5 text-xs text-slate-500">

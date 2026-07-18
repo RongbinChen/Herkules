@@ -231,7 +231,7 @@ function MiniMonth({ events, anchorDate, onJump, collapsed, onToggle }) {
                 >
                   {day.getDate()}
                   {isMarked && (
-                    <span className={classNames('absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full', isToday ? 'bg-sky-300' : 'bg-sky-600')} />
+                    <span className={classNames('absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full', isToday ? 'bg-brand-300' : 'bg-brand-600')} />
                   )}
                 </button>
               )
@@ -290,7 +290,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllU
               type="checkbox"
               checked={isSelected}
               onChange={() => onToggleUser(member.id)}
-              className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600"
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
@@ -327,7 +327,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllU
                 className={classNames(
                   'flex gap-3 rounded-3xl border px-4 py-3 text-left transition',
                   calendar.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
-                  isSelected ? 'border-sky-200 bg-sky-50 text-slate-950' : 'border-slate-200 bg-slate-50',
+                  isSelected ? 'border-brand-200 bg-brand-50 text-slate-950' : 'border-slate-200 bg-slate-50',
                 )}
               >
                 <input
@@ -335,7 +335,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllU
                   checked={isSelected}
                   onChange={() => calendar.enabled && onToggleHolidayCalendar(calendar.id)}
                   disabled={!calendar.enabled}
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -361,7 +361,7 @@ function FiltersPanel({ selectedCategory, setSelectedCategory }) {
         <select
           value={selectedCategory}
           onChange={(event) => setSelectedCategory(event.target.value)}
-          className="w-full max-w-[360px] rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-slate-50"
+          className="w-full max-w-[360px] rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:bg-slate-50"
         >
           <option value="ALL">All categories</option>
           {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -1226,12 +1226,12 @@ export default function Calendar() {
             {adminNotices.map((notice) => (
               <div
                 key={notice.id}
-                className="rounded-[24px] border border-sky-200 bg-[linear-gradient(135deg,_rgba(224,242,254,0.96),_rgba(239,246,255,0.92))] px-4 py-4 shadow-[0_14px_34px_rgba(14,116,144,0.08)] sm:px-5"
+                className="rounded-[24px] border border-brand-200 bg-[linear-gradient(135deg,_rgba(224,242,254,0.96),_rgba(239,246,255,0.92))] px-4 py-4 shadow-[0_14px_34px_rgba(14,116,144,0.08)] sm:px-5"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white">
+                      <span className="rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white">
                         Admin Notice
                       </span>
                       {notice.publishedAt && (
@@ -1247,7 +1247,7 @@ export default function Calendar() {
                         href={notice.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-3 inline-flex text-sm font-semibold text-sky-700 transition hover:text-sky-800"
+                        className="mt-3 inline-flex text-sm font-semibold text-brand-700 transition hover:text-brand-800"
                       >
                         View official notice
                       </a>

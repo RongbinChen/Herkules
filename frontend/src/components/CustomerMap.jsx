@@ -98,7 +98,7 @@ export default function CustomerMap({ customers, onSelect }) {
                 }</div>`
               : '') +
             (onSelectRef.current
-              ? `<div class="pt-1.5 text-right"><button type="button" class="cust-details-btn rounded-md bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100">Details →</button></div>`
+              ? `<div class="pt-1.5 text-right"><button type="button" class="cust-details-btn rounded-md bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100">Details →</button></div>`
               : '')
           // No "Details" link in read-only contexts (e.g. the public share page)
           // where no onSelect handler is provided.
@@ -143,7 +143,7 @@ export default function CustomerMap({ customers, onSelect }) {
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-md outline-none transition focus:border-sky-500"
+          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-md outline-none transition focus:border-brand-500"
           title="选择地图源"
         >
           {Object.entries(PROVIDERS).map(([key, cfg]) => (

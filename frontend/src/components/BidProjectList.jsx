@@ -260,11 +260,14 @@ function BidProjectList() {
       <div className="mx-auto flex max-w-[1400px] flex-col gap-5">
 
         {/* ── Header banner ──────────────────────────────────────────── */}
-        <header className="banner-simple relative rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm sm:px-6 sm:py-4 md:px-7">
+        <header className="banner-simple relative overflow-hidden rounded-2xl border border-slate-200 border-l-[3px] border-l-brand-600 bg-white px-5 py-4 shadow-card sm:px-6 sm:py-4 md:px-7">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
-              <div className="space-y-1">
-                <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Tender Intelligence</p>
+              <div className="space-y-1.5">
+                <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.3em] text-brand-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-600" />
+                  Tender Intelligence
+                </p>
                 <p className="text-sm font-medium leading-6 text-slate-700 sm:text-[1.08rem]">
                   Track and analyse China bidding projects for sales opportunities and competitor activity.
                 </p>
@@ -317,7 +320,7 @@ function BidProjectList() {
                 </button>
 
                 {showNotif && (
-                  <div className="absolute right-0 z-[60] mt-2 w-96 max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  <div className="fixed inset-x-3 top-16 z-[80] rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-w-[90vw]">
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <span className="text-sm font-bold text-slate-800">通知 Notifications</span>
                       {notif.unreadCount > 0 && (
@@ -724,17 +727,17 @@ function BidProjectList() {
                     {/* Row 3: tags */}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {project.equipmentType && (
-                        <span className="rounded border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-600">
+                        <span className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-600">
                           {project.equipmentType}
                         </span>
                       )}
                       {project.purchaser && (
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
                           采购方：{project.purchaser.slice(0, 30)}
                         </span>
                       )}
                       {project.winner && (
-                        <span className={`rounded border px-2 py-0.5 text-[11px] font-medium ${
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                           project.competitorId
                             ? 'border-red-200 bg-red-50 text-red-600'
                             : 'border-emerald-200 bg-emerald-50 text-emerald-600'
@@ -743,12 +746,12 @@ function BidProjectList() {
                         </span>
                       )}
                       {project.region && (
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
                           Region：{project.region.slice(0, 40)}
                         </span>
                       )}
                       {project.deadline && (
-                        <span className={`rounded border px-2 py-0.5 text-[11px] font-medium ${
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                           new Date(project.deadline) < new Date()
                             ? 'border-red-200 bg-red-50 text-red-500'
                             : 'border-slate-200 bg-slate-50 text-slate-500'
@@ -757,14 +760,14 @@ function BidProjectList() {
                         </span>
                       )}
                       {project.budget && (
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
                           Budget：{project.budget}
                         </span>
                       )}
                       {project.threadKey && (
                         <button
                           onClick={() => openThread(project.id)}
-                          className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition hover:border-brand-300 hover:text-brand-600"
+                          className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition hover:border-brand-300 hover:text-brand-600"
                         >
                           ⧉ 项目线索
                         </button>

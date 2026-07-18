@@ -19,7 +19,7 @@ const EMPTY = {
 }
 
 const inputCls =
-  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white'
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white'
 
 // Create / edit customer. `customer` null → create mode.
 export default function CustomerModal({ isOpen, customer, onClose, onSaved, existingCustomers = [] }) {
@@ -254,7 +254,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
               <button
                 type="button"
                 onClick={addContact}
-                className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
               >
                 + Add contact
               </button>
@@ -321,9 +321,9 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Tags</span>
             <div className="flex flex-wrap items-center gap-2">
               {form.tags.map((tag) => (
-                <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-sky-200">
+                <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
                   {tag}
-                  <button type="button" onClick={() => removeTag(tag)} className="text-sky-400 hover:text-sky-700">&times;</button>
+                  <button type="button" onClick={() => removeTag(tag)} className="text-brand-400 hover:text-brand-700">&times;</button>
                 </span>
               ))}
               <input
@@ -336,7 +336,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
                   }
                 }}
                 onBlur={addTag}
-                className="min-w-[120px] flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                className="min-w-[120px] flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
                 placeholder="Add tag, press Enter"
               />
             </div>
@@ -362,7 +362,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
                 type="button"
                 onClick={() => fetchCoords(form.address)}
                 disabled={geocoding || !form.address.trim()}
-                className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {geocoding ? (
                   <>
@@ -416,7 +416,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
           <button onClick={onClose} type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={saving} className="rounded-xl bg-sky-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60">
+          <button onClick={handleSubmit} disabled={saving} className="rounded-xl bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60">
             {saving ? 'Saving...' : customer ? 'Save changes' : 'Create customer'}
           </button>
         </div>

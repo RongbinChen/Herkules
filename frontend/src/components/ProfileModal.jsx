@@ -179,7 +179,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
               <input
                 value={form.name}
                 onChange={(event) => updateField('name', event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
                 required
               />
             </label>
@@ -189,7 +189,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
               <input
                 value={form.email}
                 onChange={(event) => updateField('email', event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
                 required
               />
             </label>
@@ -205,7 +205,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                     type="password"
                     value={form.currentPassword}
                     onChange={(event) => updateField('currentPassword', event.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500"
                     placeholder="Required only when setting a new password"
                   />
                 </label>
@@ -216,7 +216,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                     type="password"
                     value={form.password}
                     onChange={(event) => updateField('password', event.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500"
                     placeholder="At least 6 characters"
                   />
                 </label>
@@ -227,7 +227,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                     type="password"
                     value={form.confirmPassword}
                     onChange={(event) => updateField('confirmPassword', event.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-500"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500"
                   />
                 </label>
               </div>
@@ -242,7 +242,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                   </p>
                 </div>
                 {copyState && (
-                  <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                  <span className="rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700">
                     {copyState}
                   </span>
                 )}

@@ -175,7 +175,7 @@ export default function TripDetail() {
       <div className="mx-auto max-w-[1100px] p-5">
         <p className="py-16 text-center text-slate-400">Trip not found.</p>
         <div className="text-center">
-          <button onClick={() => navigate('/trips')} className="text-sky-600 hover:underline">← Back to trips</button>
+          <button onClick={() => navigate('/trips')} className="text-brand-600 hover:underline">← Back to trips</button>
         </div>
       </div>
     )
@@ -200,7 +200,7 @@ export default function TripDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setEditOpen(true)} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-sky-600 transition hover:bg-sky-50">
+          <button onClick={() => setEditOpen(true)} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50">
             Edit
           </button>
           <button onClick={handleDelete} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50">
@@ -210,18 +210,18 @@ export default function TripDetail() {
       </div>
 
       {/* Share link */}
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-        <span className="text-sm font-semibold text-sky-700">Public share link</span>
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/60 p-3">
+        <span className="text-sm font-semibold text-brand-700">Public share link</span>
         <input
           readOnly
           value={shareUrl}
           onFocus={(e) => e.target.select()}
-          className="min-w-[220px] flex-1 rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-sm text-slate-600 outline-none"
+          className="min-w-[220px] flex-1 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm text-slate-600 outline-none"
         />
-        <button onClick={copyShare} className="rounded-lg bg-sky-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-sky-700">
+        <button onClick={copyShare} className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
           {copied ? 'Copied ✓' : 'Copy link'}
         </button>
-        <p className="w-full text-xs text-sky-600/80">
+        <p className="w-full text-xs text-brand-600/80">
           Anyone with this link can view the trip and map without logging in (Google Maps by default; switch to AMap for China access).
           {trip.hidePhoneOnShare ? ' Phone numbers are hidden from the public page.' : ''}
         </p>
@@ -244,7 +244,7 @@ export default function TripDetail() {
                 <button
                   onClick={saveStops}
                   disabled={savingStops}
-                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
                 >
                   {savingStops ? 'Saving...' : 'Save changes'}
                 </button>
@@ -258,7 +258,7 @@ export default function TripDetail() {
             <ol className="space-y-3">
               {stops.map((s, i) => (
                 <li key={s.id ?? s.customer.id} className="flex gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-600 text-sm font-bold text-white">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -277,7 +277,7 @@ export default function TripDetail() {
                           type="datetime-local"
                           value={toLocalInput(s.plannedArrival)}
                           onChange={(e) => setArrival(i, e.target.value)}
-                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
+                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-brand-500 focus:bg-white"
                         />
                       </label>
                       <label className="flex items-center gap-1.5">
@@ -285,7 +285,7 @@ export default function TripDetail() {
                         <select
                           value={s.priority || 'NORMAL'}
                           onChange={(e) => setStopField(i, 'priority', e.target.value)}
-                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
+                          className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-brand-500 focus:bg-white"
                         >
                           <option value="PRIORITY">Priority</option>
                           <option value="NORMAL">Normal</option>
@@ -298,7 +298,7 @@ export default function TripDetail() {
                           value={s.visitDuration || ''}
                           onChange={(e) => setStopField(i, 'visitDuration', e.target.value)}
                           placeholder="1 day"
-                          className="w-24 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-sky-500 focus:bg-white"
+                          className="w-24 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 outline-none focus:border-brand-500 focus:bg-white"
                         />
                       </label>
                     </div>
@@ -342,7 +342,7 @@ export default function TripDetail() {
           <button
             onClick={generateItinerary}
             disabled={planning}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
           >
             {planning ? `Generating… ${elapsed}s` : trip.itinerary ? '↻ Regenerate with AI' : '✨ Generate with AI'}
           </button>
@@ -355,7 +355,7 @@ export default function TripDetail() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
               </svg>
-              <span className="text-3xl font-bold tabular-nums text-indigo-600">{elapsed}s</span>
+              <span className="text-3xl font-bold tabular-nums text-brand-600">{elapsed}s</span>
             </div>
             <p className="text-sm text-slate-400">
               DeepSeek is arranging the itinerary… usually 20–60 seconds.
