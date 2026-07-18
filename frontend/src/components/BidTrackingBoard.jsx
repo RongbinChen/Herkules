@@ -15,7 +15,7 @@ const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.key, i]));
 const OUR_STATUSES = [
   { key: 'WATCHING', zh: '关注', cls: 'bg-slate-100 text-slate-600' },
   { key: 'PREPARING', zh: '准备投标', cls: 'bg-amber-100 text-amber-700' },
-  { key: 'SUBMITTED', zh: '已投标', cls: 'bg-blue-100 text-blue-700' },
+  { key: 'SUBMITTED', zh: '已投标', cls: 'bg-brand-100 text-brand-700' },
   { key: 'SHORTLISTED', zh: '入围', cls: 'bg-indigo-100 text-indigo-700' },
   { key: 'WON', zh: '中标', cls: 'bg-green-100 text-green-700' },
   { key: 'LOST', zh: '落标', cls: 'bg-rose-100 text-rose-700' },
@@ -38,9 +38,9 @@ function StageProgress({ current }) {
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${
                 isCurrent
-                  ? 'bg-blue-600 text-white shadow-sm'
+                  ? 'bg-brand-600 text-white shadow-sm'
                   : reached
-                    ? 'bg-blue-100 text-blue-700'
+                    ? 'bg-brand-100 text-brand-700'
                     : 'bg-slate-100 text-slate-400'
               }`}
               title={s.en}
@@ -48,7 +48,7 @@ function StageProgress({ current }) {
               {s.zh}
             </span>
             {i < STAGES.length - 1 && (
-              <span className={`text-xs ${i < curIdx ? 'text-blue-400' : 'text-slate-300'}`}>›</span>
+              <span className={`text-xs ${i < curIdx ? 'text-brand-400' : 'text-slate-300'}`}>›</span>
             )}
           </div>
         );
@@ -126,7 +126,7 @@ function TrackingEditor({ thread, onSaved }) {
       {err && <div className="mt-2 text-xs text-rose-600">{err}</div>}
       <div className="mt-2 flex justify-end">
         <button onClick={save} disabled={saving}
-          className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50">
+          className="rounded-full bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50">
           {saving ? '保存中…' : '保存 Save'}
         </button>
       </div>
@@ -192,7 +192,7 @@ function ThreadCard({ thread, onSaved }) {
                 <span className="text-slate-400">{fmtDate(a.publishDate)}</span>{' '}
                 <span className="font-semibold text-slate-700">{a.infoClass || a.bidStage || '公告'}</span>
                 {a.winner ? ` — 中标：${a.winner}` : ''}{' '}
-                <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">原文↗</a>
+                <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">原文↗</a>
               </li>
             ))}
           </ol>
@@ -276,12 +276,12 @@ export default function BidTrackingBoard() {
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs font-semibold text-slate-400">阶段</span>
             <button onClick={() => setStage('')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${stage === '' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${stage === '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               全部
             </button>
             {STAGES.map((s) => (
               <button key={s.key} onClick={() => setStage(s.key)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${stage === s.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${stage === s.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                 {s.zh}
               </button>
             ))}

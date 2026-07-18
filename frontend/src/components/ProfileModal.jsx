@@ -285,7 +285,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                         type="button"
                         onClick={() => feedInfo?.webcalUrl && window.open(feedInfo.webcalUrl, '_blank', 'noopener,noreferrer')}
                         disabled={!feedInfo?.webcalUrl}
-                        className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                        className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                       >
                         Open on iPhone / Mac
                       </button>
@@ -380,7 +380,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                           <button
                             type="button"
                             onClick={() => window.open(teamFeed.webcalUrl, '_blank', 'noopener,noreferrer')}
-                            className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800"
+                            className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
                           >
                             Open
                           </button>
@@ -420,7 +420,7 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {submitting ? 'Saving...' : 'Save changes'}
             </button>
