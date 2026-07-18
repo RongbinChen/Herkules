@@ -21,7 +21,7 @@ function StatCard({ label, value, accent = false, onClick = null }) {
 
 function Panel({ title, subtitle, children, className = '' }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 ${className}`}>
+    <div className={`min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 ${className}`}>
       <h3 className="text-sm font-bold text-slate-800">{title}</h3>
       {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
       <div className="mt-4">{children}</div>

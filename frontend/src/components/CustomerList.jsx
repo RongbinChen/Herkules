@@ -290,7 +290,7 @@ export default function CustomerList() {
   }
 
   const selectCls =
-    'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-500'
+    'w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-500 sm:w-auto'
 
   return (
     <div className="mx-auto max-w-[1400px] p-5">
@@ -308,7 +308,7 @@ export default function CustomerList() {
             {filtered.length}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
             <button
               onClick={() => setView('list')}
