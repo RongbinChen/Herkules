@@ -141,7 +141,7 @@ export default function UserManagementModal({
             <button
               type="button"
               onClick={startCreateMode}
-              className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               New account
             </button>
@@ -298,7 +298,7 @@ export default function UserManagementModal({
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 sm:w-auto"
+                className="w-full rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50 sm:w-auto"
               >
                 {submitting ? 'Saving...' : selectedUser ? 'Save account' : 'Create account'}
               </button>

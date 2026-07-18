@@ -19,7 +19,7 @@ const STAGE_META = {
   change: { label: 'Tender Changes', cls: 'bg-orange-500' },
   evaluation: { label: 'Evaluation Results', cls: 'bg-violet-500' },
   award: { label: 'Tender Awards', cls: 'bg-emerald-600' },
-  tender: { label: 'New Tenders', cls: 'bg-blue-500' },
+  tender: { label: 'New Tenders', cls: 'bg-brand-500' },
 }
 
 function fmtDate(v) {
@@ -414,7 +414,7 @@ function OpeningTab() {
                     const others = [...(d.change || []), ...(d.tender || [])]
                     const Item = ({ p }) => (
                       <li className="rounded-lg border border-slate-200 bg-white p-2.5">
-                        <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-800 hover:text-blue-600 hover:underline">{p.projectName}</a>
+                        <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-800 hover:text-brand-600 hover:underline">{p.projectName}</a>
                         <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
                           <span>Published {fmtDate(p.publishDate)}</span>
                           {p.winner && <span>Winner: <b className="text-slate-700">{p.winner}</b>{p.competitor ? ` (${p.competitor.name})` : ''}</span>}

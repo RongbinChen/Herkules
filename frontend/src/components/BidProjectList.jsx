@@ -31,7 +31,7 @@ const STATUS_STYLES = {
 
 // Chinabidding announcement categories (matches the site's filter tabs).
 const CATEGORY_BADGE = {
-  'New Tenders':        'bg-blue-500 text-white',
+  'New Tenders':        'bg-brand-500 text-white',
   'Tender Changes':     'bg-orange-500 text-white',
   'Evaluation Results': 'bg-violet-500 text-white',
   'Tender Awards':      'bg-emerald-600 text-white',
@@ -321,7 +321,7 @@ function BidProjectList() {
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <span className="text-sm font-bold text-slate-800">通知 Notifications</span>
                       {notif.unreadCount > 0 && (
-                        <button onClick={handleMarkAllRead} className="text-xs font-semibold text-blue-600 hover:underline">
+                        <button onClick={handleMarkAllRead} className="text-xs font-semibold text-brand-600 hover:underline">
                           全部已读
                         </button>
                       )}
@@ -347,7 +347,7 @@ function BidProjectList() {
                                   : new Date(n.createdAt).toLocaleDateString('zh-CN')}
                               </p>
                             </div>
-                            {!n.readAt && <span className="mt-1.5 ml-auto h-2 w-2 shrink-0 rounded-full bg-blue-500" />}
+                            {!n.readAt && <span className="mt-1.5 ml-auto h-2 w-2 shrink-0 rounded-full bg-brand-500" />}
                           </div>
                         </li>
                       ))}
@@ -359,7 +359,7 @@ function BidProjectList() {
                 <button
                   onClick={handleRunDaily}
                   disabled={dailyRunning}
-                  className="rounded-full bg-blue-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300 sm:px-5 sm:py-2 sm:text-sm"
+                  className="rounded-full bg-brand-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300 sm:px-5 sm:py-2 sm:text-sm"
                 >
                   {dailyRunning ? '⟳ Running…' : '⟳ Refresh Data'}
                 </button>
@@ -404,7 +404,7 @@ function BidProjectList() {
                       {updates.newProjects.slice(0, 10).map(p => (
                         <li key={p.id} className="flex items-start gap-2 text-sm">
                           <span className="mt-0.5 shrink-0 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">NEW</span>
-                          <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-blue-600 hover:underline line-clamp-1">
+                          <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-brand-600 hover:underline line-clamp-1">
                             {p.projectName}
                           </a>
                           <span className="shrink-0 text-xs text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</span>
@@ -421,7 +421,7 @@ function BidProjectList() {
                       {updates.statusChanged.slice(0, 10).map(p => (
                         <li key={p.id} className="flex items-start gap-2 text-sm">
                           <span className="mt-0.5 shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">UPD</span>
-                          <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-blue-600 hover:underline line-clamp-1">
+                          <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:text-brand-600 hover:underline line-clamp-1">
                             {p.projectName}
                           </a>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[p.status] || STATUS_STYLES.CANCELLED}`}>{p.status}</span>
@@ -443,7 +443,7 @@ function BidProjectList() {
             className="flex w-full items-center justify-between px-5 py-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
           >
             <span className="flex items-center gap-2">
-              <svg className="h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
               </svg>
               Keyword Subscriptions
@@ -461,18 +461,18 @@ function BidProjectList() {
                   placeholder="Subscription name (e.g. Georg competitor)"
                   value={newSearchName}
                   onChange={e => setNewSearchName(e.target.value)}
-                  className="flex-1 min-w-[180px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:bg-white transition"
+                  className="flex-1 min-w-[180px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:bg-white transition"
                 />
                 <input
                   placeholder="Keyword (e.g. georg)"
                   value={newSearchKeyword}
                   onChange={e => setNewSearchKeyword(e.target.value)}
-                  className="flex-1 min-w-[140px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:bg-white transition"
+                  className="flex-1 min-w-[140px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:bg-white transition"
                 />
                 <button
                   onClick={handleCreateSearch}
                   disabled={!newSearchName.trim() || !newSearchKeyword.trim()}
-                  className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   + Add
                 </button>
@@ -486,7 +486,7 @@ function BidProjectList() {
                     <li key={s.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2 min-w-0">
                         <span className="font-semibold text-sm text-slate-800">{s.name}</span>
-                        <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">"{s.keyword}"</span>
+                        <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-700">"{s.keyword}"</span>
                         {s.lastRunAt && (
                           <span className="text-xs text-slate-400">last run {new Date(s.lastRunAt).toLocaleDateString()}</span>
                         )}
@@ -495,7 +495,7 @@ function BidProjectList() {
                         <button
                           onClick={() => handleRunSearch(s.id)}
                           disabled={runningSearchId === s.id}
-                          className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                          className="rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:bg-slate-300 disabled:cursor-not-allowed"
                         >
                           {runningSearchId === s.id ? 'Running…' : '▶ Run'}
                         </button>
@@ -526,8 +526,8 @@ function BidProjectList() {
                   onClick={() => handleTagClick(tag)}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                     searchKeyword === tag
-                      ? 'border-blue-500 bg-blue-500 text-white'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-400 hover:text-blue-600'
+                      ? 'border-brand-500 bg-brand-500 text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-brand-400 hover:text-brand-600'
                   }`}
                 >
                   {tag}
@@ -544,11 +544,11 @@ function BidProjectList() {
                 value={searchKeyword}
                 onChange={e => setSearchKeyword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:bg-white transition w-44"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:bg-white transition w-44"
               />
               <button
                 onClick={handleSearch}
-                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
               >
                 Search
               </button>
@@ -584,7 +584,7 @@ function BidProjectList() {
                       fetchProjects(1, override);
                     }}
                     className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                      active ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      active ? 'bg-brand-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
                     {t.label}
@@ -600,7 +600,7 @@ function BidProjectList() {
               <select
                 value={filters.biddingType}
                 onChange={e => setFilters({ ...filters, biddingType: e.target.value })}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:bg-white transition"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:bg-white transition"
               >
                 <option value="">All Projects</option>
                 <option value="NEW">New Tenders</option>
@@ -609,7 +609,7 @@ function BidProjectList() {
               <select
                 value={filters.status}
                 onChange={e => setFilters({ ...filters, status: e.target.value })}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:bg-white transition"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:bg-white transition"
               >
                 <option value="">All Status</option>
                 <option value="PUBLISHED">Published</option>
@@ -629,7 +629,7 @@ function BidProjectList() {
                 { key: 'recent',        label: '最近',     value: filters.recent ? `${filters.recent} 天内新增` : '', params: ['recent'] },
                 { key: 'period',        label: '月份',     value: periodLabel,           params: ['month'], clears: { startDate: '', endDate: '' } },
               ].filter(c => c.value).map(c => (
-                <span key={c.key} className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">
+                <span key={c.key} className="flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-600">
                   {c.label}：{c.value}
                   <button
                     onClick={() => {
@@ -640,7 +640,7 @@ function BidProjectList() {
                       setSearchParams(searchParams, { replace: true });
                       fetchProjects(1, override);
                     }}
-                    className="text-blue-400 hover:text-blue-700"
+                    className="text-brand-400 hover:text-brand-700"
                     title={`清除${c.label}筛选`}
                   >
                     ✕
@@ -693,7 +693,7 @@ function BidProjectList() {
                           href={project.sourceUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="min-w-0 break-words text-[0.93rem] font-bold leading-snug text-slate-800 hover:text-blue-600 hover:underline"
+                          className="min-w-0 break-words text-[0.93rem] font-bold leading-snug text-slate-800 hover:text-brand-600 hover:underline"
                         >
                           {isNewProject(project) && (
                             <span className="mr-1.5 inline-block translate-y-[-1px] rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">NEW</span>
@@ -724,7 +724,7 @@ function BidProjectList() {
                     {/* Row 3: tags */}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {project.equipmentType && (
-                        <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600">
+                        <span className="rounded border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-600">
                           {project.equipmentType}
                         </span>
                       )}
@@ -764,7 +764,7 @@ function BidProjectList() {
                       {project.threadKey && (
                         <button
                           onClick={() => openThread(project.id)}
-                          className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition hover:border-blue-300 hover:text-blue-600"
+                          className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition hover:border-brand-300 hover:text-brand-600"
                         >
                           ⧉ 项目线索
                         </button>
@@ -831,7 +831,7 @@ function BidProjectList() {
                         /award/i.test(t.infoClass || '') ? 'bg-emerald-500'
                         : /evaluation/i.test(t.infoClass || '') ? 'bg-amber-400'
                         : /change/i.test(t.infoClass || '') ? 'bg-orange-400'
-                        : 'bg-blue-500'
+                        : 'bg-brand-500'
                       }`} />
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
                         <span className="font-semibold text-slate-600">{t.infoClass || (t.biddingType === 'PAST' ? 'Tender Awards' : 'New Tenders')}</span>
@@ -839,7 +839,7 @@ function BidProjectList() {
                       </div>
                       <a
                         href={t.sourceUrl} target="_blank" rel="noopener noreferrer"
-                        className="mt-0.5 block text-sm font-semibold text-slate-800 hover:text-blue-600 hover:underline"
+                        className="mt-0.5 block text-sm font-semibold text-slate-800 hover:text-brand-600 hover:underline"
                       >
                         {t.projectName}
                       </a>

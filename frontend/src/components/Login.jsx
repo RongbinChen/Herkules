@@ -70,7 +70,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 disabled:opacity-50"
+            className="w-full bg-brand-500 text-white py-2 rounded-md hover:bg-brand-600 disabled:opacity-50"
           >
             {loading ? 'Please wait...' : 'Login'}
           </button>

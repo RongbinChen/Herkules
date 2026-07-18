@@ -8,12 +8,12 @@ function StatCard({ label, value, accent = false, onClick = null }) {
     <div
       onClick={onClick || undefined}
       title={clickable ? 'View list' : undefined}
-      className={`group rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm ${clickable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md' : ''}`}
+      className={`group rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm ${clickable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md' : ''}`}
     >
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{label}</p>
-      <p className={`mt-2 flex items-center gap-1 text-3xl font-bold ${accent ? 'text-blue-600' : 'text-slate-900'}`}>
+      <p className={`mt-2 flex items-center gap-1 text-3xl font-bold ${accent ? 'text-brand-600' : 'text-slate-900'}`}>
         {value}
-        {clickable && <span className="text-base text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500">→</span>}
+        {clickable && <span className="text-base text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500">→</span>}
       </p>
     </div>
   );
@@ -31,7 +31,7 @@ function Panel({ title, subtitle, children, className = '' }) {
 
 // Simple horizontal bar list (no chart lib needed).
 // onItemClick(name) — when provided, each label becomes a clickable link.
-function BarList({ items, color = 'bg-blue-500', onItemClick = null }) {
+function BarList({ items, color = 'bg-brand-500', onItemClick = null }) {
   const max = Math.max(...items.map(i => i.count), 1);
   return (
     <ul className="space-y-2">
@@ -41,7 +41,7 @@ function BarList({ items, color = 'bg-blue-500', onItemClick = null }) {
             <button
               onClick={() => onItemClick(i.name)}
               title={`查看「${i.name}」的项目`}
-              className="w-36 shrink-0 truncate text-left text-slate-600 hover:text-blue-600 hover:underline"
+              className="w-36 shrink-0 truncate text-left text-slate-600 hover:text-brand-600 hover:underline"
             >
               {i.name}
             </button>
@@ -77,7 +77,7 @@ function MonthlyChart({ monthly, onBarClick = null }) {
             <rect
               x={PAD + i * bw + bw * 0.15} y={H - h}
               width={bw * 0.7} height={h}
-              rx="3" className="fill-blue-500/80 hover:fill-blue-600"
+              rx="3" className="fill-brand-500/80 hover:fill-brand-600"
             >
               <title>{m.month}: {m.total} 项目（点击查看）</title>
             </rect>
@@ -169,7 +169,7 @@ function BidStatistics() {
               <button
                 onClick={handleGenerateReport}
                 disabled={reportLoading}
-                className="rounded-full bg-blue-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="rounded-full bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {reportLoading ? '⟳ 生成中…' : '✦ AI 市场简报'}
               </button>
@@ -179,9 +179,9 @@ function BidStatistics() {
 
         {/* ── AI Market Report ───────────────────────────────────────── */}
         {report && (
-          <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm sm:p-6">
+          <div className="rounded-2xl border border-brand-200 bg-brand-50/60 p-5 shadow-sm sm:p-6">
             <div className="flex items-start justify-between gap-4">
-              <h3 className="text-sm font-bold text-blue-800">✦ AI 市场简报（近 6 个月，基于 {report.basedOn?.projects ?? '-'} 个项目）</h3>
+              <h3 className="text-sm font-bold text-brand-800">✦ AI 市场简报（近 6 个月，基于 {report.basedOn?.projects ?? '-'} 个项目）</h3>
               <button onClick={() => setReport(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             <div className="prose prose-sm mt-3 max-w-none whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">
@@ -211,8 +211,8 @@ function BidStatistics() {
               onClick={() => setMonths(m)}
               className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                 months === m
-                  ? 'border-blue-500 bg-blue-500 text-white'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-blue-400 hover:text-blue-600'
+                  ? 'border-brand-500 bg-brand-500 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-brand-400 hover:text-brand-600'
               }`}
             >
               {m} 个月
@@ -231,7 +231,7 @@ function BidStatistics() {
             <div className="grid gap-5 lg:grid-cols-2">
               {/* ── Equipment types ──────────────────────────────────── */}
               <Panel title="设备类型分布" subtitle="DeepSeek 自动分类">
-                <BarList items={trends.equipmentTypes} color="bg-blue-500"
+                <BarList items={trends.equipmentTypes} color="bg-brand-500"
                   onItemClick={(name) => navigate(`/chinabidding?equipmentType=${encodeURIComponent(name)}`)} />
               </Panel>
 
@@ -263,7 +263,7 @@ function BidStatistics() {
                         <ul className="mt-2 space-y-1">
                           {c.recentWins.slice(0, 3).map(w => (
                             <li key={w.id} className="truncate text-xs text-slate-500">
-                              <a href={w.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">
+                              <a href={w.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 hover:underline">
                                 · {w.projectName}
                               </a>
                               {w.winningPrice && <span className="ml-1 text-emerald-600">（{w.winningPrice}）</span>}
@@ -302,7 +302,7 @@ function BidStatistics() {
                   {trends.upcomingDeadlines.map(p => (
                     <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                       {p.sourceUrl ? (
-                        <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 hover:text-blue-600 hover:underline">
+                        <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 hover:text-brand-600 hover:underline">
                           {p.projectName}
                         </a>
                       ) : (
@@ -310,7 +310,7 @@ function BidStatistics() {
                       )}
                       <div className="flex shrink-0 items-center gap-2">
                         {p.equipmentType && (
-                          <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600">{p.equipmentType}</span>
+                          <span className="rounded border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-600">{p.equipmentType}</span>
                         )}
                         <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-500">
                           截止 {new Date(p.deadline).toLocaleDateString('zh-CN')}

@@ -391,7 +391,7 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               Close
             </button>
@@ -1206,7 +1206,7 @@ export default function Calendar() {
               {canCreateActivities && (
                 <button
                   onClick={() => openNewActivity(new Date())}
-                  className="rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 sm:px-5 sm:py-2.5"
+                  className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 sm:px-5 sm:py-2.5"
                 >
                   New activity
                 </button>
@@ -1346,7 +1346,7 @@ export default function Calendar() {
                 <button
                   type="button"
                   onClick={loadInitialData}
-                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
                 >
                   Retry
                 </button>
@@ -1370,7 +1370,7 @@ export default function Calendar() {
                     <button onClick={() => navigateCalendar('next')} className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-slate-700 transition hover:bg-slate-50" aria-label="Next">
                       &gt;
                     </button>
-                    <button onClick={() => navigateCalendar('today')} className="rounded-full bg-slate-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                    <button onClick={() => navigateCalendar('today')} className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700">
                       Today
                     </button>
                   </div>
@@ -1659,7 +1659,7 @@ export default function Calendar() {
               <button
                 type="button"
                 onClick={handleConfirmLogout}
-                className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
               >
                 Logout
               </button>
