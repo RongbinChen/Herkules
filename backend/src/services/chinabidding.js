@@ -11,10 +11,12 @@ const USERNAME = process.env.CHINABIDDING_USERNAME;
 const PASSWORD = process.env.CHINABIDDING_PASSWORD;
 
 // ── Scrape targets ───────────────────────────────────────────────────────────
-// Industries to always monitor
+// Industries to always monitor. Only Machining (01) is relevant to CNC machine
+// tools — other industries (Medical, etc.) just scan hundreds of irrelevant
+// announcements that DeepSeek then skips, wasting scrape time and API calls.
+// Cross-industry machine-tool projects are still caught by KEYWORD_JOBS.
 export const INDUSTRY_JOBS = [
   { tradeClassCode: '01', label: 'Machining' },
-  { tradeClassCode: '02', label: 'Medical equipment & medicine' },
 ];
 // Keywords to always monitor (separate searches). English terms — the /en site's
 // fullText search matches announcement bodies in English; Chinese terms (机床/磨床)
