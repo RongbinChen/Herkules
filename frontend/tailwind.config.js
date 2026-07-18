@@ -7,18 +7,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Herkules brand accent — engineering red. Neutrals use Tailwind slate.
+        // Herkules brand accent — corporate steel blue (matches herkulesgroup.com).
+        // Neutrals use Tailwind slate.
         brand: {
-          50: '#fef2f2',
-          100: '#fee2e2',
-          200: '#fecaca',
-          300: '#fca5a5',
-          400: '#f87171',
-          500: '#ef4444',
-          600: '#dc2626', // primary accent
-          700: '#b91c1c',
-          800: '#991b1b',
-          900: '#7f1d1d',
+          50: '#f0f6fb',
+          100: '#dbeaf6',
+          200: '#bcd7ee',
+          300: '#8fbbe1',
+          400: '#5b97cf',
+          500: '#3178ba',
+          600: '#1c6cb0', // primary accent
+          700: '#175a94',
+          800: '#164b78',
+          900: '#163f64',
         },
       },
       fontFamily: {
