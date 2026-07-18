@@ -35,3 +35,6 @@ proxy/*.bak.*
 
 # Imported data sources — archived locally, not committed (large binaries)
 /docs/data/
+
+# 会话临时快照,不入库
+/docs/SESSION_STATE.md
