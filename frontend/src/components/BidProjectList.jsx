@@ -306,7 +306,7 @@ function BidProjectList() {
               {/* Notification bell */}
               <div className="relative">
                 <button
-                  onClick={() => setShowNotif(v => !v)}
+                  onClick={() => { if (!showNotif) loadNotifications(); setShowNotif(v => !v); }}
                   className="relative flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
