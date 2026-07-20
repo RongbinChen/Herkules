@@ -985,13 +985,11 @@ export async function listNotifications(userId, { unreadOnly = false, limit = 50
     prisma.notification.count({ where: { userId, readAt: null } }),
   ]);
 
-  // Order by the bid's actual publish date (newest first); items without a
-  // publish date fall back to the alert's createdAt and sort to the bottom.
-  const items = rows.sort((a, b) => {
-    const da = a.project?.publishDate ? new Date(a.project.publishDate).getTime() : new Date(a.createdAt).getTime();
-    const db = b.project?.publishDate ? new Date(b.project.publishDate).getTime() : new Date(b.createdAt).getTime();
-    return db - da;
-  });
+  // A notification bell is about the ALERT's recency, not the linked bid's
+  // publish date. Sort UNREAD first (so the "N new" badge always points at
+  // something visible at the top), then most-recently-fired first. rows is
+  // already createdAt-desc, and Array.sort is stable, so this preserves that.
+  const items = rows.slice().sort((a, b) => (a.readAt ? 1 : 0) - (b.readAt ? 1 : 0));
 
   return { items, unreadCount };
 }
