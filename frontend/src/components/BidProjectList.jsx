@@ -206,7 +206,7 @@ function BidProjectList() {
   };
 
   const handleRunDaily = async () => {
-    if (!confirm('Run full data refresh?\n\nThis will scrape Machining + Medical + 机床 + 磨床 + all your keyword subscriptions. It runs in the background and may take several minutes.')) return;
+    if (!confirm('Run full data refresh?\n\nThis will scrape the Machining category, the English machine-tool keywords and all your keyword subscriptions. It runs in the background and may take several minutes.')) return;
     setDailyRunning(true);
     setDailyStatus('Starting…');
     try {
@@ -305,7 +305,7 @@ function BidProjectList() {
                 onClick={() => navigate('/chinabidding/tracking')}
                 className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
               >
-                项目跟踪
+                Project Tracking
               </button>
 
               {/* Notification bell */}
@@ -330,14 +330,14 @@ function BidProjectList() {
                   <div className="fixed inset-0 z-[70]" onClick={() => setShowNotif(false)} />
                   <div className="fixed inset-x-3 top-16 z-[80] rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-w-[90vw]">
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                      <span className="text-sm font-bold text-slate-800">通知 Notifications</span>
+                      <span className="text-sm font-bold text-slate-800">Notifications</span>
                       <div className="flex items-center gap-3">
                         {notif.unreadCount > 0 && (
                           <button onClick={handleMarkAllRead} className="text-xs font-semibold text-brand-600 hover:underline">
-                            全部已读
+                            Mark all read
                           </button>
                         )}
-                        <button onClick={() => setShowNotif(false)} aria-label="关闭" className="text-slate-400 transition hover:text-slate-700">
+                        <button onClick={() => setShowNotif(false)} aria-label="Close" className="text-slate-400 transition hover:text-slate-700">
                           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
@@ -346,7 +346,7 @@ function BidProjectList() {
                     </div>
                     <ul className="max-h-96 overflow-y-auto divide-y divide-slate-50">
                       {notif.items.length === 0 ? (
-                        <li className="px-4 py-8 text-center text-sm text-slate-400">暂无通知</li>
+                        <li className="px-4 py-8 text-center text-sm text-slate-400">No notifications</li>
                       ) : notif.items.map(n => (
                         <li
                           key={n.id}
@@ -361,8 +361,8 @@ function BidProjectList() {
                               <p className={`leading-snug ${!n.readAt ? 'font-semibold' : ''}`}>{n.message}</p>
                               <p className="mt-0.5 text-xs text-slate-400">
                                 {n.project?.publishDate
-                                  ? `发布日期：${new Date(n.project.publishDate).toLocaleDateString('zh-CN')}`
-                                  : new Date(n.createdAt).toLocaleDateString('zh-CN')}
+                                  ? `Published: ${new Date(n.project.publishDate).toLocaleDateString('en-GB')}`
+                                  : new Date(n.createdAt).toLocaleDateString('en-GB')}
                               </p>
                             </div>
                             {!n.readAt && <span className="mt-1.5 ml-auto h-2 w-2 shrink-0 rounded-full bg-brand-500" />}
@@ -588,7 +588,7 @@ function BidProjectList() {
 
             {/* Announcement-stage tabs (chinabidding categories) */}
             <div className="flex w-full flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-xs font-semibold text-slate-400">公告类型</span>
+              <span className="mr-1 text-xs font-semibold text-slate-400">Announcement type</span>
               {STAGE_TABS.map(t => {
                 const active = filters.bidStage === t.key;
                 return (
@@ -642,11 +642,11 @@ function BidProjectList() {
                 Filter
               </button>
               {[
-                { key: 'equipmentType', label: '设备类型', value: filters.equipmentType, params: ['equipmentType'] },
-                { key: 'purchaser',     label: '采购方',   value: filters.purchaser,     params: ['purchaser'] },
-                { key: 'region',        label: '地区',     value: filters.region,        params: ['region'] },
-                { key: 'recent',        label: '最近',     value: filters.recent ? `${filters.recent} 天内新增` : '', params: ['recent'] },
-                { key: 'period',        label: '月份',     value: periodLabel,           params: ['month'], clears: { startDate: '', endDate: '' } },
+                { key: 'equipmentType', label: 'Equipment', value: filters.equipmentType, params: ['equipmentType'] },
+                { key: 'purchaser',     label: 'Purchaser', value: filters.purchaser,     params: ['purchaser'] },
+                { key: 'region',        label: 'Region',    value: filters.region,        params: ['region'] },
+                { key: 'recent',        label: 'Recent',    value: filters.recent ? `new in ${filters.recent} days` : '', params: ['recent'] },
+                { key: 'period',        label: 'Month',     value: periodLabel,           params: ['month'], clears: { startDate: '', endDate: '' } },
               ].filter(c => c.value).map(c => (
                 <span key={c.key} className="flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-600">
                   {c.label}：{c.value}
@@ -660,7 +660,7 @@ function BidProjectList() {
                       fetchProjects(1, override);
                     }}
                     className="text-brand-400 hover:text-brand-700"
-                    title={`清除${c.label}筛选`}
+                    title={`Clear ${c.label} filter`}
                   >
                     ✕
                   </button>
@@ -701,7 +701,7 @@ function BidProjectList() {
                       <div className="flex min-w-0 flex-1 items-start gap-2">
                         <button
                           onClick={() => toggleFollow(project.id)}
-                          title={followedIds.has(project.id) ? '取消关注' : '关注此项目（状态变更/截止临近会收到提醒）'}
+                          title={followedIds.has(project.id) ? 'Unfollow' : 'Follow this project (get alerts on status change / approaching deadline)'}
                           className={`mt-0.5 shrink-0 text-base leading-none transition ${
                             followedIds.has(project.id) ? 'text-amber-400 hover:text-amber-500' : 'text-slate-300 hover:text-amber-400'
                           }`}
@@ -749,7 +749,7 @@ function BidProjectList() {
                       )}
                       {project.purchaser && (
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
-                          采购方：{project.purchaser.slice(0, 30)}
+                          Purchaser：{project.purchaser.slice(0, 30)}
                         </span>
                       )}
                       {project.winner && (
@@ -758,7 +758,7 @@ function BidProjectList() {
                             ? 'border-red-200 bg-red-50 text-red-600'
                             : 'border-emerald-200 bg-emerald-50 text-emerald-600'
                         }`}>
-                          中标：{project.winner.slice(0, 36)}{project.winningPrice ? `（${project.winningPrice}）` : ''}
+                          Winner：{project.winner.slice(0, 36)}{project.winningPrice ? `（${project.winningPrice}）` : ''}
                         </span>
                       )}
                       {project.region && (
@@ -785,7 +785,7 @@ function BidProjectList() {
                           onClick={() => openThread(project.id)}
                           className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 transition hover:border-brand-300 hover:text-brand-600"
                         >
-                          ⧉ 项目线索
+                          ⧉ Project thread
                         </button>
                       )}
                     </div>
@@ -837,11 +837,11 @@ function BidProjectList() {
             ) : (
               <>
                 <div className="mb-1 flex items-start justify-between gap-4">
-                  <h3 className="text-base font-bold text-slate-800">项目生命周期</h3>
+                  <h3 className="text-base font-bold text-slate-800">Project Lifecycle</h3>
                   <button onClick={() => setThreadData(null)} className="text-slate-400 hover:text-slate-600">✕</button>
                 </div>
                 <p className="mb-4 text-xs text-slate-400">
-                  Bidding NO：{threadData.project.threadKey} — 同一项目的全部公告（招标 → 变更 → 评标 → 中标）
+                  Bidding NO：{threadData.project.threadKey} — all announcements for this project (Tender → Change → Evaluation → Award)
                 </p>
                 <ol className="relative space-y-4 border-l-2 border-slate-100 pl-5">
                   {threadData.thread.map(t => (
@@ -865,7 +865,7 @@ function BidProjectList() {
                       {t.summary && <p className="mt-1 text-xs leading-relaxed text-slate-500 line-clamp-2">{t.summary}</p>}
                       {t.winner && (
                         <p className="mt-1 text-xs font-medium text-emerald-600">
-                          中标：{t.winner}{t.winningPrice ? `（${t.winningPrice}）` : ''}
+                          Winner：{t.winner}{t.winningPrice ? `（${t.winningPrice}）` : ''}
                         </p>
                       )}
                     </li>
