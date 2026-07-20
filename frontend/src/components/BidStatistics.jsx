@@ -59,6 +59,49 @@ function BarList({ items, color = 'bg-brand-500', onItemClick = null }) {
   );
 }
 
+// One competitor in the win ranking. Shows 3 wins, expandable to all (so the
+// list length matches the "中标 N 次" badge).
+function CompetitorRow({ c }) {
+  const [expanded, setExpanded] = useState(false);
+  const own = c.watchType === 'OWN';
+  const interest = c.watchType === 'INTEREST';
+  const icon = own ? '🏆' : interest ? '👀' : '⚔️';
+  const cardCls = own ? 'border-emerald-200 bg-emerald-50/60'
+    : interest ? 'border-brand-200 bg-brand-50/60'
+    : 'border-slate-100 bg-slate-50/60';
+  const badgeCls = own ? 'bg-emerald-50 text-emerald-600 ring-emerald-200'
+    : interest ? 'bg-brand-50 text-brand-600 ring-brand-200'
+    : 'bg-red-50 text-red-600 ring-red-200';
+  const shown = expanded ? c.recentWins : c.recentWins.slice(0, 3);
+  const more = c.recentWins.length - 3;
+  return (
+    <li className={`rounded-xl border px-4 py-3 ${cardCls}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-800">
+          <span>{icon}</span><span className="truncate">{c.name}</span>
+        </span>
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${badgeCls}`}>中标 {c.winCount} 次</span>
+      </div>
+      {c.country && <p className="text-xs text-slate-400">{c.country}</p>}
+      {c.recentWins.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {shown.map(w => (
+            <li key={w.id} className="truncate text-xs text-slate-500">
+              <a href={w.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 hover:underline">· {w.projectName}</a>
+              {w.winningPrice && <span className="ml-1 text-emerald-600">（{w.winningPrice}）</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {more > 0 && (
+        <button onClick={() => setExpanded(v => !v)} className="mt-1.5 text-xs font-semibold text-brand-600 hover:underline">
+          {expanded ? '收起 ▴' : `更多 ${more} 个 ▾`}
+        </button>
+      )}
+    </li>
+  );
+}
+
 // Monthly trend column chart (SVG). onBarClick(month) makes bars clickable.
 function MonthlyChart({ monthly, onBarClick = null }) {
   if (!monthly || monthly.length === 0) return <p className="text-xs text-slate-400">暂无数据</p>;
@@ -238,42 +281,9 @@ function BidStatistics() {
               {/* ── Win ranking ──────────────────────────────────────── */}
               <Panel title="中标排行" subtitle="基于中标公告自动匹配（🏆 本集团 / ⚔️ 竞争对手 / 👀 关注公司）">
                 <ul className="space-y-3">
-                  {trends.competitorStats.filter(c => c.winCount > 0).map(c => {
-                    const own = c.watchType === 'OWN';
-                    const interest = c.watchType === 'INTEREST';
-                    const icon = own ? '🏆' : interest ? '👀' : '⚔️';
-                    const cardCls = own ? 'border-emerald-200 bg-emerald-50/60'
-                      : interest ? 'border-brand-200 bg-brand-50/60'
-                      : 'border-slate-100 bg-slate-50/60';
-                    const badgeCls = own ? 'bg-emerald-50 text-emerald-600 ring-emerald-200'
-                      : interest ? 'bg-brand-50 text-brand-600 ring-brand-200'
-                      : 'bg-red-50 text-red-600 ring-red-200';
-                    return (
-                    <li key={c.id} className={`rounded-xl border px-4 py-3 ${cardCls}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
-                          <span>{icon}</span>{c.name}
-                        </span>
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${badgeCls}`}>
-                          中标 {c.winCount} 次
-                        </span>
-                      </div>
-                      {c.country && <p className="text-xs text-slate-400">{c.country}</p>}
-                      {c.recentWins.length > 0 && (
-                        <ul className="mt-2 space-y-1">
-                          {c.recentWins.slice(0, 3).map(w => (
-                            <li key={w.id} className="truncate text-xs text-slate-500">
-                              <a href={w.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-brand-600 hover:underline">
-                                · {w.projectName}
-                              </a>
-                              {w.winningPrice && <span className="ml-1 text-emerald-600">（{w.winningPrice}）</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  );
-                  })}
+                  {trends.competitorStats.filter(c => c.winCount > 0).map(c => (
+                    <CompetitorRow key={c.id} c={c} />
+                  ))}
                   {trends.competitorStats.filter(c => c.winCount > 0).length === 0 && (
                     <li className="text-xs text-slate-400">统计周期内暂无中标记录</li>
                   )}

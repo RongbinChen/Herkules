@@ -1074,8 +1074,15 @@ export async function getTrends({ months = 12 } = {}) {
     orderBy: { publishDate: 'asc' },
   });
 
+  // Scope competitor wins to the SAME time window as the rest of the trends —
+  // otherwise a "近6个月" report leaks all-time wins (e.g. 2023 projects).
   const competitors = await prisma.competitor.findMany({
-    include: { projects: { select: { id: true, projectName: true, publishDate: true, winningPrice: true, sourceUrl: true } } },
+    include: {
+      projects: {
+        where: { publishDate: { gte: since } },
+        select: { id: true, projectName: true, publishDate: true, winningPrice: true, sourceUrl: true },
+      },
+    },
   });
 
   // Monthly counts by equipmentType
@@ -1118,9 +1125,11 @@ export async function getTrends({ months = 12 } = {}) {
       country: c.country,
       watchType: c.watchType,
       winCount: c.projects.length,
+      // Return all wins (capped) so the UI's count matches the expandable list.
       recentWins: c.projects
+        .slice()
         .sort((a, b) => (b.publishDate ?? 0) - (a.publishDate ?? 0))
-        .slice(0, 5),
+        .slice(0, 50),
     }))
     .sort((a, b) => b.winCount - a.winCount);
 
@@ -1156,7 +1165,7 @@ export async function generateTrendReport() {
     设备类型分布: trends.equipmentTypes,
     活跃采购单位: trends.topPurchasers,
     地区分布: trends.topRegions,
-    竞争对手中标: trends.competitorStats.map(c => ({ 名称: c.name, 中标数: c.winCount, 近期中标: c.recentWins.map(w => w.projectName) })),
+    竞争对手中标: trends.competitorStats.map(c => ({ 名称: c.name, 中标数: c.winCount, 近期中标: c.recentWins.slice(0, 3).map(w => w.projectName) })),
     即将截止的招标: trends.upcomingDeadlines.map(p => ({ 项目: p.projectName, 截止: p.deadline })),
   }, null, 1);
 
