@@ -660,9 +660,18 @@ export async function searchAndSave(keyword) {
   }
 
   // Return rich DB records matching the sourceUrls chinabidding.com returned
-  const data = await prisma.bidProject.findMany({
+  const rows = await prisma.bidProject.findMany({
     where: { sourceUrl: { in: allSourceUrls } },
     orderBy: { publishDate: 'desc' },
+  });
+
+  // chinabidding's fullText search matches loosely — e.g. "Waldrich Coburg" also
+  // returns "Waldrich Siegen" via the shared word "Waldrich". Keep only records
+  // whose text actually contains the full searched phrase.
+  const needle = keyword.trim().toLowerCase();
+  const data = rows.filter((p) => {
+    const hay = `${p.projectName || ''} ${p.summary || ''} ${p.rawContent || ''} ${p.winner || ''} ${p.purchaser || ''}`.toLowerCase();
+    return hay.includes(needle);
   });
 
   return { data, pagination: { page: 1, limit: data.length, total: data.length, totalPages: 1 } };
