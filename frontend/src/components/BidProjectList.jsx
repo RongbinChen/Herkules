@@ -260,7 +260,7 @@ function BidProjectList() {
       <div className="mx-auto flex max-w-[1400px] flex-col gap-5">
 
         {/* ── Header banner ──────────────────────────────────────────── */}
-        <header className="banner-simple relative overflow-hidden rounded-2xl border border-slate-200 border-l-[3px] border-l-brand-600 bg-white px-5 py-4 shadow-card sm:px-6 sm:py-4 md:px-7">
+        <header className="banner-simple relative rounded-2xl border border-slate-200 border-l-[3px] border-l-brand-600 bg-white px-5 py-4 shadow-card sm:px-6 sm:py-4 md:px-7">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
               <div className="space-y-1.5">
