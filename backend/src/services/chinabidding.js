@@ -520,12 +520,23 @@ export async function listScrapeJobs(limit = 20) {
 }
 
 export async function scrapeProjects(filters = {}) {
-  const { page = 1, limit = 20, biddingType, bidStage, status, region, industry, equipmentType, purchaser, startDate, endDate, recent } = filters;
+  const { page = 1, limit = 20, biddingType, bidStage, status, region, industry, equipmentType, purchaser, startDate, endDate, recent, keyword } = filters;
 
   const where = {};
   if (biddingType) where.biddingType = biddingType;
   if (bidStage) where.bidStage = bidStage; // 公告阶段：TENDER/CHANGE/EVALUATION/AWARD
   if (status) where.status = status;
+  // Full-phrase keyword match — combines with the stage/status/etc. filters (AND).
+  if (keyword && keyword.trim()) {
+    const k = keyword.trim();
+    where.OR = [
+      { projectName: { contains: k, mode: 'insensitive' } },
+      { summary:     { contains: k, mode: 'insensitive' } },
+      { rawContent:  { contains: k, mode: 'insensitive' } },
+      { winner:      { contains: k, mode: 'insensitive' } },
+      { purchaser:   { contains: k, mode: 'insensitive' } },
+    ];
+  }
   const recentDays = parseInt(recent, 10);
   if (recentDays > 0) where.createdAt = { gte: new Date(Date.now() - recentDays * 24 * 60 * 60 * 1000) };
   if (region) where.region = { contains: region, mode: 'insensitive' };

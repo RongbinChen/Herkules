@@ -78,6 +78,7 @@ function BidProjectList() {
   const [filters, setFilters] = useState({
     biddingType: searchParams.get('biddingType') || '',
     bidStage: searchParams.get('bidStage') || '',
+    keyword: '',
     status: searchParams.get('status') || '',
     recent: searchParams.get('recent') || '',
     equipmentType: searchParams.get('equipmentType') || '',
@@ -244,6 +245,10 @@ function BidProjectList() {
       const result = await searchByKeyword(tag);
       setProjects(result.data || []);
       setPagination(result.pagination || { page: 1, totalPages: 1, total: result.data?.length || 0 });
+      // Remember the keyword so subsequent filters (公告类型/status/…) combine with it;
+      // reset the stage tab to "All" since a fresh keyword search spans all stages.
+      setFilters(f => ({ ...f, keyword: tag, bidStage: '' }));
+      searchParams.delete('bidStage'); setSearchParams(searchParams, { replace: true });
       setSearchPhase('done');
       setTimeout(() => setSearchPhase(''), 4000);
     } catch (error) {
@@ -568,7 +573,7 @@ function BidProjectList() {
               </button>
               {searchKeyword && (
                 <button
-                  onClick={() => { setSearchKeyword(''); setSearchPhase(''); fetchProjects(1); }}
+                  onClick={() => { setSearchKeyword(''); setSearchPhase(''); setFilters(f => ({ ...f, keyword: '' })); fetchProjects(1, { keyword: '' }); }}
                   className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
                 >
                   Clear
