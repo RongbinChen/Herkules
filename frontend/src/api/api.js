@@ -56,6 +56,9 @@ export const customersAPI = {
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),
   geocode: (address) => api.post('/customers/geocode', { address }),
+  // Cross-reference: link / unlink a tender-project thread to a customer.
+  linkProject: (id, data) => api.post(`/customers/${id}/projects`, data),
+  unlinkProject: (id, linkId) => api.delete(`/customers/${id}/projects/${linkId}`),
   createShare: (data) => api.post('/customers/share', data),
   // Public — no auth required (interceptor omits the header when logged out).
   getShared: (token) => api.get(`/customers/share/${token}`),
