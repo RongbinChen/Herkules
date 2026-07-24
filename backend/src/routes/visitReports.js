@@ -1,9 +1,14 @@
 import express from 'express';
 import multer from 'multer';
+import { execFile } from 'child_process';
+import { readFile, writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { structureVisitReport } from '../services/visitReport.js';
 import { ocrImage, isGeminiConfigured } from '../services/gemini.js';
+import { reportToMarkdown } from '../services/visitReportExport.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -153,6 +158,44 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating visit report:', error);
     res.status(500).json({ error: 'Failed to update visit report' });
+  }
+});
+
+// ── Export to Word (.docx via pandoc) ───────────────────────────────────────────
+const runPandoc = (mdPath, docxPath) =>
+  new Promise((resolve, reject) => {
+    execFile('pandoc', [mdPath, '-f', 'markdown', '-t', 'docx', '-o', docxPath], (err) =>
+      err ? reject(err) : resolve());
+  });
+
+router.get('/:id/export', async (req, res) => {
+  const stamp = `${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}`;
+  const mdPath = join(tmpdir(), `vr-${stamp}.md`);
+  const docxPath = join(tmpdir(), `vr-${stamp}.docx`);
+  try {
+    const report = await prisma.visitReport.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: {
+        customer: { select: { id: true, name: true } },
+        author: { select: { id: true, name: true } },
+      },
+    });
+    if (!report) return res.status(404).json({ error: 'Not found' });
+
+    await writeFile(mdPath, reportToMarkdown(report), 'utf8');
+    await runPandoc(mdPath, docxPath);
+    const buf = await readFile(docxPath);
+
+    const safe = (report.title || 'visit-report').replace(/[^\w.\- ]+/g, '_').slice(0, 80);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safe)}.docx"`);
+    res.send(buf);
+  } catch (error) {
+    console.error('Error exporting visit report:', error);
+    res.status(500).json({ error: 'Failed to export report' });
+  } finally {
+    unlink(mdPath).catch(() => {});
+    unlink(docxPath).catch(() => {});
   }
 });
 
