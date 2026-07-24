@@ -7,6 +7,7 @@
  */
 import { prisma } from '../index.js';
 import { listProjectThreads, getTrends } from './chinabidding.js';
+import { visibleWhere } from '../routes/hotProjects.js';
 import {
   DeepSeekError,
   deepseekErrorFromResponse,
@@ -97,6 +98,20 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'search_hot_projects',
+      description: '搜索内部热点项目跟踪列表（销售 Open/Potential Projects：客户、负责人、需求机型、优先级、带日期的状态更新日志）。这是内部敏感数据，结果已按提问者权限过滤。',
+      parameters: {
+        type: 'object',
+        properties: {
+          q: { type: 'string', description: '客户/需求/负责人/更新内容关键字（可选，留空列出全部可见项目）' },
+          category: { type: 'string', enum: ['OPEN', 'POTENTIAL'], description: 'OPEN=询价进行中，POTENTIAL=潜在项目（可选）' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_events',
       description: '查询团队日历日程（拜访、会议、出差等）。可按关键字和日期范围过滤。',
       parameters: {
@@ -106,6 +121,17 @@ const TOOLS = [
           from: { type: 'string', description: '起始日期 YYYY-MM-DD（可选）' },
           to: { type: 'string', description: '结束日期 YYYY-MM-DD（可选）' },
         },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_trips',
+      description: '搜索出差行程（Trips 模块：多客户拜访行程规划，含行程标题、起止日期、负责人、拜访站点客户列表、AI 生成的日程安排）。按标题/备注/客户名/人员名关键字查询。',
+      parameters: {
+        type: 'object',
+        properties: { q: { type: 'string', description: '关键字（行程标题、客户名、负责人名等；留空列出最近行程）' } },
       },
     },
   },
@@ -253,6 +279,37 @@ const impl = {
     };
   },
 
+  async search_hot_projects({ q, category }, ctx) {
+    // Same visibility rule as the module's own routes — PRIVATE records are
+    // only returned to their owner or an admin. The model never sees the rest.
+    const where = { AND: [visibleWhere({ userId: ctx.userId, isAdmin: ctx.isAdmin })] };
+    if (category === 'OPEN' || category === 'POTENTIAL') where.AND.push({ category });
+    if (q) {
+      where.AND.push({
+        OR: [
+          { customer: { contains: String(q), mode: 'insensitive' } },
+          { requirements: { contains: String(q), mode: 'insensitive' } },
+          { processor: { contains: String(q), mode: 'insensitive' } },
+          { updates: { some: { content: { contains: String(q), mode: 'insensitive' } } } },
+        ],
+      });
+    }
+    const rows = await prisma.hotProject.findMany({
+      where,
+      orderBy: [{ priority: { sort: 'asc', nulls: 'last' } }, { sortNo: 'asc' }],
+      take: 12,
+      include: {
+        updates: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 2, include: { author: { select: { name: true } } } },
+      },
+    });
+    return rows.map((p) => ({
+      id: p.id, category: p.category, customer: p.customer, processor: p.processor,
+      priority: p.priority, deadline: p.deadline,
+      requirements: (p.requirements || '').slice(0, 200),
+      latestUpdates: p.updates.map((u) => ({ date: u.date, by: u.author?.name, content: u.content.slice(0, 300) })),
+    }));
+  },
+
   async search_events({ q, from, to }) {
     const where = {};
     if (q) where.OR = [
@@ -272,6 +329,52 @@ const impl = {
       },
     });
     return rows;
+  },
+
+  async search_trips({ q }) {
+    const s = String(q || '').trim();
+    const where = s
+      ? {
+          OR: [
+            { title: { contains: s, mode: 'insensitive' } },
+            { notes: { contains: s, mode: 'insensitive' } },
+            { constraints: { contains: s, mode: 'insensitive' } },
+            { stops: { some: { customer: { name: { contains: s, mode: 'insensitive' } } } } },
+            { assignee: { name: { contains: s, mode: 'insensitive' } } },
+            { createdBy: { name: { contains: s, mode: 'insensitive' } } },
+          ],
+        }
+      : {};
+    const trips = await prisma.trip.findMany({
+      where,
+      orderBy: { startTime: 'desc' },
+      take: 8,
+      include: {
+        createdBy: { select: { name: true } },
+        assignee: { select: { name: true } },
+        stops: {
+          orderBy: { order: 'asc' },
+          include: { customer: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    return trips.map((t) => ({
+      id: t.id,
+      title: t.title,
+      startTime: t.startTime,
+      endTime: t.endTime,
+      assignee: t.assignee?.name || null,
+      createdBy: t.createdBy?.name || null,
+      notes: (t.notes || '').slice(0, 200),
+      stops: t.stops.map((st) => ({
+        order: st.order + 1, customer: st.customer?.name, priority: st.priority,
+        plannedArrival: st.plannedArrival, duration: st.visitDuration, notes: (st.notes || '').slice(0, 120),
+      })),
+      // Compact itinerary summary (day → location + program), if generated.
+      itinerary: Array.isArray(t.itinerary?.days)
+        ? t.itinerary.days.map((d) => ({ date: d.date, location: d.location, program: String(d.program || '').slice(0, 200) }))
+        : null,
+    }));
   },
 
   async create_event({ title, start, end, description, location, customerId, category }, ctx) {
@@ -332,10 +435,10 @@ const todayCN = () =>
 
 const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、重型机床制造商）中国销售团队工作台的 AI 助手。今天是 ${todayCN()}（北京时间）。
 
-工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、拜访报告（Visit Reports）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
+工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、热点项目（Hot Projects，内部销售 Open/Potential 项目跟踪，敏感数据、查询结果已按提问者权限过滤）、拜访报告（Visit Reports）、出差行程（Trips，多客户拜访行程规划）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
 
 规则：
-- 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到。
+- 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到；查不到时先想想换个工具查——比如人名/行程类问题日历查不到就查 search_trips，客户类问题再试 search_customers。
 - 用用户提问的语言回答（中文问中文答，英文问英文答）。
 - 回答简洁、结构清晰，用短段落或列表；涉及多条数据时挑重点，不要机械罗列全部字段。
 - 涉及客户/项目/报告时，尽量把关联信息串起来（如客户的项目跟踪状态、最近拜访情况）。
@@ -345,11 +448,19 @@ const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、
 /**
  * Run the assistant loop.
  * `history` — [{role:'user'|'assistant', content}] prior turns (capped by caller).
+ * `user` — { userId, isAdmin } of the asker; tools apply per-user visibility.
+ * `lang` — 'zh' | 'en' | undefined: force the reply language (undefined = follow the question).
  * Returns { reply, steps: [{tool, args, count}] }.
  */
-export async function runAssistant(history, userId) {
+export async function runAssistant(history, user, lang) {
+  const ctx = { userId: user.userId, isAdmin: user.isAdmin === true };
+  const langDirective = lang === 'zh'
+    ? '\n- 强制：无论用户用什么语言提问，都用中文回答。'
+    : lang === 'en'
+      ? '\n- MANDATORY: Always reply in English, regardless of the language of the question.'
+      : '';
   const messages = [
-    { role: 'system', content: SYSTEM() },
+    { role: 'system', content: SYSTEM() + langDirective },
     ...history.slice(-10).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 4000) })),
   ];
   const steps = [];
@@ -367,7 +478,7 @@ export async function runAssistant(history, userId) {
       try { args = JSON.parse(call.function?.arguments || '{}'); } catch { /* keep {} */ }
       let result;
       try {
-        result = impl[name] ? await impl[name](args, { userId }) : { error: `unknown tool ${name}` };
+        result = impl[name] ? await impl[name](args, ctx) : { error: `unknown tool ${name}` };
       } catch (err) {
         console.error(`[assistant] tool ${name} failed:`, err.message);
         result = { error: `tool failed: ${err.message}` };

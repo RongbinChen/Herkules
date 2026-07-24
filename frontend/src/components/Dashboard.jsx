@@ -18,6 +18,13 @@ const MODULES = [
     badge: 'bg-amber-50 text-amber-600 ring-amber-100',
   },
   {
+    path: '/hotprojects',
+    icon: '🔥',
+    title: 'Hot Projects',
+    desc: 'Internal open & potential projects tracking (confidential)',
+    badge: 'bg-orange-50 text-orange-600 ring-orange-100',
+  },
+  {
     path: '/customers',
     icon: '🤝',
     title: 'Customers',

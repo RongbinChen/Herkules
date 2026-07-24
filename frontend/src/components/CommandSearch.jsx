@@ -23,7 +23,7 @@ const EXAMPLES = [
 const TOOL_LABEL = {
   search_customers: '客户', get_customer: '客户档案', search_projects: '招投标',
   get_bidding_stats: '市场统计', search_reports: '拜访报告', get_report: '报告全文',
-  search_events: '日历', create_event: '✚ 创建日程',
+  search_hot_projects: '热点项目', search_trips: '行程', search_events: '日历', create_event: '✚ 创建日程',
 }
 
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
@@ -82,6 +82,9 @@ export default function CommandSearch() {
   // AI chat
   const [chat, setChat] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
+  // Reply language: 'auto' follows the question; 'zh'/'en' force it. Persisted.
+  const [lang, setLang] = useState(() => localStorage.getItem('assistantLang') || 'auto')
+  const pickLang = (v) => { setLang(v); localStorage.setItem('assistantLang', v) }
 
   const parsed = parseInput(raw)
 
@@ -122,7 +125,10 @@ export default function CommandSearch() {
     setRaw('')
     setChatLoading(true)
     try {
-      const { data } = await assistantAPI.chat(next.map(({ role, content }) => ({ role, content })))
+      const { data } = await assistantAPI.chat(
+        next.map(({ role, content }) => ({ role, content })),
+        lang === 'auto' ? undefined : lang,
+      )
       setChat([...next, { role: 'assistant', content: data.reply, steps: data.steps || [] }])
     } catch (e) {
       setChat([...next, { role: 'assistant', content: e.response?.data?.error || '助手暂时不可用，请稍后重试。', isError: true }])
@@ -159,12 +165,23 @@ export default function CommandSearch() {
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
             ← Modules
           </button>
-          {chat.length > 0 && (
-            <button onClick={() => setChat([])}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">
-              ✕ 清空对话
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Reply-language toggle */}
+            <div className="flex overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-semibold shadow-sm">
+              {[{ k: 'auto', t: 'Auto' }, { k: 'zh', t: '中文' }, { k: 'en', t: 'EN' }].map((o) => (
+                <button key={o.k} onClick={() => pickLang(o.k)} title="AI 回复语言 / Reply language"
+                  className={`px-3 py-1.5 transition ${lang === o.k ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                  {o.t}
+                </button>
+              ))}
+            </div>
+            {chat.length > 0 && (
+              <button onClick={() => setChat([])}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">
+                ✕ 清空对话
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Welcome / hints */}

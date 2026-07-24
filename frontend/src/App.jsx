@@ -17,6 +17,7 @@ import TripDetail from './components/TripDetail'
 import TripShare from './components/TripShare'
 import CustomerShare from './components/CustomerShare'
 import CommandSearch from './components/CommandSearch'
+import HotProjects from './components/HotProjects'
 
 function App() {
   const { token } = useAuth()
@@ -27,6 +28,7 @@ function App() {
       <Route path="/login" element={!token ? <Login /> : <Navigate to="/" />} />
       <Route path="/" element={token ? <Dashboard /> : <Navigate to="/login" />} />
       <Route path="/search" element={token ? <CommandSearch /> : <Navigate to="/login" />} />
+      <Route path="/hotprojects" element={token ? <HotProjects /> : <Navigate to="/login" />} />
       <Route path="/calendar" element={token ? <Calendar /> : <Navigate to="/login" />} />
       <Route path="/chinabidding" element={token ? <BidProjectList /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/stats" element={token ? <BidStatistics /> : <Navigate to="/login" />} />
