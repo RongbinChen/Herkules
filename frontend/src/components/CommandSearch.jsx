@@ -23,7 +23,8 @@ const EXAMPLES = [
 const TOOL_LABEL = {
   search_customers: '客户', get_customer: '客户档案', search_projects: '招投标',
   get_bidding_stats: '市场统计', search_reports: '拜访报告', get_report: '报告全文',
-  search_hot_projects: '热点项目', search_trips: '行程', search_events: '日历', create_event: '✚ 创建日程',
+  search_hot_projects: '热点项目', search_bid_openings: '开标记录', search_trips: '行程',
+  search_events: '日历', create_event: '✚ 创建日程',
 }
 
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
