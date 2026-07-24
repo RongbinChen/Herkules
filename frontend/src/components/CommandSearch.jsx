@@ -14,17 +14,17 @@ const COMMANDS = [
 const CMD_BY_KEY = Object.fromEntries(COMMANDS.map((c) => [c.key, c]))
 
 const EXAMPLES = [
-  'COSCO 最近的拜访情况和项目进展怎么样？',
-  '最近 6 个月哪些竞争对手中标最多？',
-  '下周有哪些日程安排？',
-  '帮我安排下周二上午拜访 COSCO',
+  'How are the recent visits and project progress with COSCO?',
+  'Which competitors won the most tenders in the last 6 months?',
+  "What's on the calendar next week?",
+  'Schedule a visit to COSCO next Tuesday morning',
 ]
 
 const TOOL_LABEL = {
-  search_customers: '客户', get_customer: '客户档案', search_projects: '招投标',
-  get_bidding_stats: '市场统计', search_reports: '拜访报告', get_report: '报告全文',
-  search_hot_projects: '热点项目', search_bid_openings: '开标记录', search_trips: '行程',
-  search_events: '日历', create_event: '✚ 创建日程',
+  search_customers: 'Customers', get_customer: 'Customer profile', search_projects: 'Tenders',
+  get_bidding_stats: 'Market stats', search_reports: 'Visit reports', get_report: 'Report',
+  search_hot_projects: 'Hot projects', search_bid_openings: 'Bid openings', search_trips: 'Trips',
+  search_events: 'Calendar', create_event: '✚ New event',
 }
 
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
@@ -188,7 +188,7 @@ export default function CommandSearch() {
       )
       setChat([...next, { role: 'assistant', content: data.reply, steps: data.steps || [] }])
     } catch (e) {
-      setChat([...next, { role: 'assistant', content: e.response?.data?.error || '助手暂时不可用，请稍后重试。', isError: true }])
+      setChat([...next, { role: 'assistant', content: e.response?.data?.error || 'The assistant is temporarily unavailable, please retry.', isError: true }])
     } finally {
       setChatLoading(false)
     }
@@ -235,7 +235,7 @@ export default function CommandSearch() {
             {chat.length > 0 && (
               <button onClick={() => setChat([])}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">
-                ✕ 清空对话
+                ✕ Clear
               </button>
             )}
           </div>
@@ -244,12 +244,13 @@ export default function CommandSearch() {
         {/* Welcome / hints */}
         {showWelcome && (
           <div className="mb-4">
-            <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">✦ AI 助手</h1>
+            <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">✦ AI Assistant</h1>
             <p className="mt-1 text-sm text-slate-500">
-              直接提问 —— 我会查询客户、招投标、拜访报告、日历的真实数据来回答，也能帮你创建日程。
-              斜杠命令（<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/customer</code>
+              Ask anything — I answer from real workspace data (customers, tenders, bid openings,
+              hot projects, visit reports, trips, calendar) and can create calendar events.
+              Slash commands (<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/customer</code>
               {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/project</code>
-              {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/report</code>）仍可直接快搜。
+              {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/report</code>) still work for instant search.
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {EXAMPLES.map((ex) => (
@@ -278,7 +279,7 @@ export default function CommandSearch() {
                     <Md text={m.content} />
                     {m.steps?.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-50 pt-2">
-                        <span className="text-[10px] text-slate-300">已查询</span>
+                        <span className="text-[10px] text-slate-300">Queried</span>
                         {m.steps.map((s, si) => (
                           <span key={si} className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">
                             {TOOL_LABEL[s.tool] || s.tool}{s.count != null ? ` ${s.count}` : ''}
@@ -297,7 +298,7 @@ export default function CommandSearch() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
-                  正在查询数据…
+                  Querying data…
                 </div>
               </div>
             )}
@@ -354,7 +355,7 @@ export default function CommandSearch() {
                 ref={inputRef}
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}
-                placeholder={chat.length ? '继续提问…' : '问我任何问题，或输入 / 快搜…'}
+                placeholder={chat.length ? 'Ask a follow-up…' : 'Ask anything, or type / for quick search…'}
                 className="w-full bg-transparent text-base outline-none placeholder:text-slate-400 sm:text-sm"
                 autoComplete="off"
                 spellCheck={false}
@@ -366,7 +367,7 @@ export default function CommandSearch() {
               {!raw.startsWith('/') && (
                 <button type="submit" disabled={!raw.trim() || chatLoading}
                   className="shrink-0 rounded-full bg-brand-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-brand-700 disabled:opacity-40">
-                  发送
+                  Send
                 </button>
               )}
             </form>
