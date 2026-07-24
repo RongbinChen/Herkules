@@ -41,7 +41,8 @@ model HotProject {
   id            Int                  @id @default(autoincrement())
   category      HotProjectCategory   @default(OPEN)
   customer      String // customer name as written in the sheet
-  customerId    Int? // optional link into the Customers module
+  customerId    Int? // link into the Customers module
+  customerRef   Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
   dateOfReceipt DateTime?
   processor     String? // 负责人 as written (Chen / Bao / …)
   ownerId       Int? // system user owning this record (visibility + edit rights)
@@ -117,6 +118,7 @@ model Customer {
   tripStops    TripStop[]
   visitReports VisitReport[]
   projectLinks CustomerProjectLink[]
+  hotProjects  HotProject[]
 
   @@index([status])
   @@index([tier])

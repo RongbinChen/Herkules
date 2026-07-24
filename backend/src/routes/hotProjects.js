@@ -45,6 +45,7 @@ router.get('/', async (req, res) => {
       orderBy: [{ priority: { sort: 'asc', nulls: 'last' } }, { sortNo: 'asc' }, { id: 'asc' }],
       include: {
         owner: { select: { id: true, name: true } },
+        customerRef: { select: { id: true, name: true } },
         updates: { ...UPDATE_INCLUDE, take: 1 }, // latest update as list snippet
         _count: { select: { updates: true } },
       },
@@ -63,6 +64,7 @@ router.get('/:id', async (req, res) => {
       where: { id: parseInt(req.params.id), ...visibleWhere(req.user) },
       include: {
         owner: { select: { id: true, name: true } },
+        customerRef: { select: { id: true, name: true } },
         updates: UPDATE_INCLUDE,
       },
     });
