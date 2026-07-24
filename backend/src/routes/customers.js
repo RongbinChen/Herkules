@@ -150,25 +150,117 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Get a single customer (with related events / visit history)
+// Resolve a set of project-thread keys into lightweight project cards
+// (representative announcement + our manual tracking), for the customer hub.
+async function resolveThreads(threadKeys) {
+  if (!threadKeys.length) return new Map();
+  const [projects, trackings] = await Promise.all([
+    prisma.bidProject.findMany({
+      where: { threadKey: { in: threadKeys } },
+      orderBy: { publishDate: 'asc' },
+      select: {
+        id: true, threadKey: true, projectName: true, region: true, purchaser: true,
+        equipmentType: true, deadline: true, bidStage: true, winner: true, sourceUrl: true,
+      },
+    }),
+    prisma.bidTracking.findMany({ where: { threadKey: { in: threadKeys } } }),
+  ]);
+  const trackingByKey = new Map(trackings.map((t) => [t.threadKey, t]));
+  const byKey = new Map();
+  for (const p of projects) byKey.set(p.threadKey, p); // last (latest publishDate) wins as representative
+  const out = new Map();
+  for (const [key, rep] of byKey) {
+    out.set(key, {
+      threadKey: key,
+      projectName: rep.projectName,
+      region: rep.region,
+      purchaser: rep.purchaser,
+      equipmentType: rep.equipmentType,
+      deadline: rep.deadline,
+      bidStage: rep.bidStage,
+      winner: rep.winner,
+      sourceUrl: rep.sourceUrl,
+      tracking: trackingByKey.get(key) || null,
+    });
+  }
+  return out;
+}
+
+// Get a single customer (hub view: events, linked tender projects, visit reports)
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
+    const id = parseInt(req.params.id, 10);
     const customer = await prisma.customer.findUnique({
-      where: { id: parseInt(req.params.id, 10) },
+      where: { id },
       include: {
         events: {
           orderBy: { start: 'desc' },
           include: { user: { select: { id: true, name: true } } },
+        },
+        projectLinks: { orderBy: { createdAt: 'desc' } },
+        visitReports: {
+          orderBy: { visitDate: 'desc' },
+          select: {
+            id: true, title: true, visitDate: true, summary: true, status: true,
+            threadKey: true, author: { select: { id: true, name: true } },
+          },
         },
       },
     });
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    // Resolve each linked thread into a project card.
+    const resolved = await resolveThreads(customer.projectLinks.map((l) => l.threadKey));
+    customer.projects = customer.projectLinks.map((l) => ({
+      linkId: l.id,
+      note: l.note,
+      ...(resolved.get(l.threadKey) || { threadKey: l.threadKey, projectName: l.threadKey, tracking: null }),
+    }));
     res.json(customer);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch customer' });
+  }
+});
+
+// Link a tender-project thread to this customer (manual confirm).
+router.post('/:id/projects', authenticateToken, async (req, res) => {
+  try {
+    const customerId = parseInt(req.params.id, 10);
+    const threadKey = (req.body?.threadKey || '').trim();
+    if (!threadKey) return res.status(400).json({ error: 'threadKey is required' });
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+    // Guard against typos — the thread must exist among scraped projects.
+    const exists = await prisma.bidProject.findFirst({ where: { threadKey }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: 'No project found for that threadKey' });
+    const link = await prisma.customerProjectLink.upsert({
+      where: { customerId_threadKey: { customerId, threadKey } },
+      update: { note: req.body?.note ?? null },
+      create: { customerId, threadKey, note: req.body?.note ?? null, createdById: req.user.userId },
+    });
+    res.status(201).json(link);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to link project' });
+  }
+});
+
+// Remove a project link.
+router.delete('/:id/projects/:linkId', authenticateToken, async (req, res) => {
+  try {
+    const customerId = parseInt(req.params.id, 10);
+    const linkId = parseInt(req.params.linkId, 10);
+    const link = await prisma.customerProjectLink.findUnique({ where: { id: linkId } });
+    if (!link || link.customerId !== customerId) {
+      return res.status(404).json({ error: 'Link not found' });
+    }
+    await prisma.customerProjectLink.delete({ where: { id: linkId } });
+    res.json({ message: 'Link removed' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to remove link' });
   }
 });
 

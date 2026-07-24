@@ -134,7 +134,7 @@ function TrackingEditor({ thread, onSaved }) {
   );
 }
 
-function ThreadCard({ thread, onSaved }) {
+function ThreadCard({ thread, onSaved, onCustomer }) {
   const [showEdit, setShowEdit] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
 
@@ -158,6 +158,22 @@ function ThreadCard({ thread, onSaved }) {
           <StageProgress current={thread.currentStage} />
           <span className="text-[11px] text-slate-400">Updated {fmtDate(thread.lastUpdate)}</span>
         </div>
+
+        {/* Linked customers (cross-reference) */}
+        {thread.customers?.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {thread.customers.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => onCustomer(c.id)}
+                title="Open customer"
+                className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-100"
+              >
+                👤 {c.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Winner / budget */}
         {(thread.winner || thread.budget) && (
@@ -310,7 +326,7 @@ export default function BidTrackingBoard() {
           <div className="py-16 text-center text-sm text-slate-400">No matching projects</div>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {threads.map((t) => <ThreadCard key={t.threadKey} thread={t} onSaved={onSaved} />)}
+            {threads.map((t) => <ThreadCard key={t.threadKey} thread={t} onSaved={onSaved} onCustomer={(cid) => navigate(`/customers/${cid}`)} />)}
           </div>
         )}
       </div>

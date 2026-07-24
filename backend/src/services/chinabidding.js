@@ -901,12 +901,22 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
   }
 
   const keys = [...groups.keys()];
-  const [trackings, follows] = await Promise.all([
+  const [trackings, follows, custLinks] = await Promise.all([
     prisma.bidTracking.findMany({ where: { threadKey: { in: keys } } }),
     prisma.projectFollow.findMany({ where: { userId }, select: { projectId: true } }),
+    prisma.customerProjectLink.findMany({
+      where: { threadKey: { in: keys } },
+      select: { threadKey: true, customer: { select: { id: true, name: true } } },
+    }),
   ]);
   const trackingByKey = new Map(trackings.map((t) => [t.threadKey, t]));
   const followedIds = new Set(follows.map((f) => f.projectId));
+  // threadKey → [{id, name}] of linked customers
+  const customersByKey = new Map();
+  for (const l of custLinks) {
+    if (!customersByKey.has(l.threadKey)) customersByKey.set(l.threadKey, []);
+    customersByKey.get(l.threadKey).push(l.customer);
+  }
 
   const ms = (d) => (d ? new Date(d).getTime() : 0);
 
@@ -936,6 +946,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       lastUpdate: anns.reduce((m, a) => (ms(a.updatedAt) > ms(m) ? a.updatedAt : m), anns[0].updatedAt),
       following: anns.some((a) => followedIds.has(a.id)),
       tracking: trackingByKey.get(key) || null,
+      customers: customersByKey.get(key) || [],
       announcements: anns.map((a) => ({
         id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
         publishDate: a.publishDate, sourceUrl: a.sourceUrl,

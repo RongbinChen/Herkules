@@ -63,9 +63,28 @@ model Customer {
   events       Event[]
   tripStops    TripStop[]
   visitReports VisitReport[]
+  projectLinks CustomerProjectLink[]
 
   @@index([status])
   @@index([tier])
+}
+
+// Cross-reference glue: links a customer to a tender-project thread (BidProject.threadKey).
+// Many-to-many + manually confirmed — one customer can own several projects, and a
+// project can involve several customers. Keyed on threadKey (the project grain used by
+// BidTracking), not a single announcement id.
+model CustomerProjectLink {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  threadKey   String // = BidProject.threadKey (the grouped project)
+  note        String? // optional context on why they're linked
+  createdById Int? // who confirmed the link
+  createdAt   DateTime @default(now())
+
+  @@unique([customerId, threadKey])
+  @@index([customerId])
+  @@index([threadKey])
 }
 
 // 拜访报告：销售现场记录（照片/随手记）经 AI 整理成结构化报告，关联客户/招投标项目
