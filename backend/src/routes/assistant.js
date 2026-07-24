@@ -13,7 +13,7 @@ router.post('/chat', async (req, res) => {
     if (!history.length || !String(history[history.length - 1]?.content || '').trim()) {
       return res.status(400).json({ error: 'messages is empty' });
     }
-    const out = await runAssistant(history, req.user.userId);
+    const out = await runAssistant(history, req.user);
     res.json(out);
   } catch (error) {
     if (error.isDeepSeek) return res.status(502).json({ error: error.message });

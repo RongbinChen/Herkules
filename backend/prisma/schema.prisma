@@ -20,6 +20,59 @@ model User {
   createdTrips      Trip[]   @relation("TripCreator")
   assignedTrips     Trip[]   @relation("TripAssignee")
   visitReports      VisitReport[]
+  hotProjects       HotProject[]       @relation("HotProjectOwner")
+  hotProjectUpdates HotProjectUpdate[]
+}
+
+// ── Hot projects (internal sales open-projects list, from the WAV template) ──
+// Sensitive module: per-record visibility. TEAM = all logged-in staff;
+// PRIVATE = owner + admin only. The AI assistant applies the same filter.
+enum HotProjectCategory {
+  OPEN      // Enquiry - Open Projects
+  POTENTIAL // Potential Projects
+}
+
+enum HotProjectVisibility {
+  TEAM
+  PRIVATE
+}
+
+model HotProject {
+  id            Int                  @id @default(autoincrement())
+  category      HotProjectCategory   @default(OPEN)
+  customer      String // customer name as written in the sheet
+  customerId    Int? // optional link into the Customers module
+  dateOfReceipt DateTime?
+  processor     String? // 负责人 as written (Chen / Bao / …)
+  ownerId       Int? // system user owning this record (visibility + edit rights)
+  owner         User?                @relation("HotProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  forwardedOn   String?
+  requirements  String? // Requirements / Technical Remarks / Machine Selection
+  deadline      DateTime? // Deadline for Submission
+  priority      Int? // 1 high, 2 mid-time, 3 offer done
+  visibility    HotProjectVisibility @default(TEAM)
+  sortNo        Int? // original row number from the sheet
+  createdById   Int?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  updates       HotProjectUpdate[]
+
+  @@index([category])
+  @@index([ownerId])
+}
+
+// Append-only status log ("Updated on …" entries) — tracks who wrote what when.
+model HotProjectUpdate {
+  id        Int        @id @default(autoincrement())
+  projectId Int
+  project   HotProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date      DateTime? // the "Updated on" date; null for imported entries with unparsed dates
+  content   String
+  authorId  Int?
+  author    User?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+
+  @@index([projectId])
 }
 
 model Event {

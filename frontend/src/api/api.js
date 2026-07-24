@@ -89,6 +89,17 @@ export const assistantAPI = {
   chat: (messages) => api.post('/assistant/chat', { messages }, { timeout: 120000 }),
 }
 
+// Hot projects — internal sales open/potential projects tracking (sensitive).
+export const hotProjectsAPI = {
+  list: (params = {}) => api.get('/hotprojects', { params }),
+  get: (id) => api.get(`/hotprojects/${id}`),
+  create: (data) => api.post('/hotprojects', data),
+  update: (id, data) => api.put(`/hotprojects/${id}`, data),
+  delete: (id) => api.delete(`/hotprojects/${id}`),
+  addUpdate: (id, data) => api.post(`/hotprojects/${id}/updates`, data),
+  deleteUpdate: (id, updateId) => api.delete(`/hotprojects/${id}/updates/${updateId}`),
+}
+
 export const agentsAPI = {
   getAll: () => api.get('/agents'),
   get: (id) => api.get(`/agents/${id}`),

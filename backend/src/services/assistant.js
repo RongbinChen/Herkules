@@ -7,6 +7,7 @@
  */
 import { prisma } from '../index.js';
 import { listProjectThreads, getTrends } from './chinabidding.js';
+import { visibleWhere } from '../routes/hotProjects.js';
 import {
   DeepSeekError,
   deepseekErrorFromResponse,
@@ -91,6 +92,20 @@ const TOOLS = [
         type: 'object',
         properties: { id: { type: 'number', description: '报告 id（可先用 search_reports 找到）' } },
         required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_hot_projects',
+      description: '搜索内部热点项目跟踪列表（销售 Open/Potential Projects：客户、负责人、需求机型、优先级、带日期的状态更新日志）。这是内部敏感数据，结果已按提问者权限过滤。',
+      parameters: {
+        type: 'object',
+        properties: {
+          q: { type: 'string', description: '客户/需求/负责人/更新内容关键字（可选，留空列出全部可见项目）' },
+          category: { type: 'string', enum: ['OPEN', 'POTENTIAL'], description: 'OPEN=询价进行中，POTENTIAL=潜在项目（可选）' },
+        },
       },
     },
   },
@@ -253,6 +268,37 @@ const impl = {
     };
   },
 
+  async search_hot_projects({ q, category }, ctx) {
+    // Same visibility rule as the module's own routes — PRIVATE records are
+    // only returned to their owner or an admin. The model never sees the rest.
+    const where = { AND: [visibleWhere({ userId: ctx.userId, isAdmin: ctx.isAdmin })] };
+    if (category === 'OPEN' || category === 'POTENTIAL') where.AND.push({ category });
+    if (q) {
+      where.AND.push({
+        OR: [
+          { customer: { contains: String(q), mode: 'insensitive' } },
+          { requirements: { contains: String(q), mode: 'insensitive' } },
+          { processor: { contains: String(q), mode: 'insensitive' } },
+          { updates: { some: { content: { contains: String(q), mode: 'insensitive' } } } },
+        ],
+      });
+    }
+    const rows = await prisma.hotProject.findMany({
+      where,
+      orderBy: [{ priority: { sort: 'asc', nulls: 'last' } }, { sortNo: 'asc' }],
+      take: 12,
+      include: {
+        updates: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 2, include: { author: { select: { name: true } } } },
+      },
+    });
+    return rows.map((p) => ({
+      id: p.id, category: p.category, customer: p.customer, processor: p.processor,
+      priority: p.priority, deadline: p.deadline,
+      requirements: (p.requirements || '').slice(0, 200),
+      latestUpdates: p.updates.map((u) => ({ date: u.date, by: u.author?.name, content: u.content.slice(0, 300) })),
+    }));
+  },
+
   async search_events({ q, from, to }) {
     const where = {};
     if (q) where.OR = [
@@ -332,7 +378,7 @@ const todayCN = () =>
 
 const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、重型机床制造商）中国销售团队工作台的 AI 助手。今天是 ${todayCN()}（北京时间）。
 
-工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、拜访报告（Visit Reports）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
+工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、热点项目（Hot Projects，内部销售 Open/Potential 项目跟踪，敏感数据、查询结果已按提问者权限过滤）、拜访报告（Visit Reports）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
 
 规则：
 - 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到。
@@ -345,9 +391,11 @@ const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、
 /**
  * Run the assistant loop.
  * `history` — [{role:'user'|'assistant', content}] prior turns (capped by caller).
+ * `user` — { userId, isAdmin } of the asker; tools apply per-user visibility.
  * Returns { reply, steps: [{tool, args, count}] }.
  */
-export async function runAssistant(history, userId) {
+export async function runAssistant(history, user) {
+  const ctx = { userId: user.userId, isAdmin: user.isAdmin === true };
   const messages = [
     { role: 'system', content: SYSTEM() },
     ...history.slice(-10).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 4000) })),
@@ -367,7 +415,7 @@ export async function runAssistant(history, userId) {
       try { args = JSON.parse(call.function?.arguments || '{}'); } catch { /* keep {} */ }
       let result;
       try {
-        result = impl[name] ? await impl[name](args, { userId }) : { error: `unknown tool ${name}` };
+        result = impl[name] ? await impl[name](args, ctx) : { error: `unknown tool ${name}` };
       } catch (err) {
         console.error(`[assistant] tool ${name} failed:`, err.message);
         result = { error: `tool failed: ${err.message}` };
