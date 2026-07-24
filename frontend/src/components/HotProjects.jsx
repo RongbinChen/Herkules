@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { hotProjectsAPI } from '../api/api'
+import { hotProjectsAPI, customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Input, Textarea, Badge } from './ui'
 
@@ -28,6 +28,7 @@ function ProjectModal({ project, category, onClose, onSaved }) {
   const [form, setForm] = useState(() => ({
     category: project?.category || category || 'OPEN',
     customer: project?.customer || '',
+    customerId: project?.customerId || project?.customerRef?.id || '',
     dateOfReceipt: fmtDate(project?.dateOfReceipt),
     processor: project?.processor || '',
     forwardedOn: project?.forwardedOn || '',
@@ -39,6 +40,16 @@ function ProjectModal({ project, category, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  // Searchable link into the Customers module. Typing keeps the free text and
+  // clears the link; picking a suggestion sets both name + customerId.
+  const [custList, setCustList] = useState([])
+  const [custOpen, setCustOpen] = useState(false)
+  useEffect(() => {
+    customersAPI.getAll().then((r) => setCustList(r.data || [])).catch(() => {})
+  }, [])
+  const cq = form.customer.trim().toLowerCase()
+  const custMatches = cq ? custList.filter((c) => c.name.toLowerCase().includes(cq)).slice(0, 20) : []
 
   const save = async () => {
     if (!form.customer.trim()) { setErr('Customer 必填'); return }
@@ -78,10 +89,44 @@ function ProjectModal({ project, category, onClose, onSaved }) {
               </select>
             </label>
           </div>
-          <label className="block text-xs font-semibold text-slate-600">
-            Customer *
-            <Input value={form.customer} onChange={set('customer')} className="mt-1" />
-          </label>
+          <div className="text-xs font-semibold text-slate-600">
+            <div className="flex items-center justify-between">
+              <span>Customer *</span>
+              {form.customerId ? (
+                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                  ✓ Linked to Customers
+                  <button type="button" onClick={() => setForm((f) => ({ ...f, customerId: '' }))}
+                    className="text-slate-300 hover:text-rose-500" title="Unlink">✕</button>
+                </span>
+              ) : (
+                <span className="text-[10px] font-normal text-slate-400">type to search & link</span>
+              )}
+            </div>
+            <div className="relative mt-1">
+              <Input
+                value={form.customer}
+                placeholder="Customer name — pick a suggestion to link"
+                className="truncate pr-8"
+                onChange={(e) => { setForm((f) => ({ ...f, customer: e.target.value, customerId: '' })); setCustOpen(true) }}
+                onFocus={() => setCustOpen(true)}
+                onBlur={() => setTimeout(() => setCustOpen(false), 150)}
+              />
+              {custOpen && !form.customerId && custMatches.length > 0 && (
+                <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                  {custMatches.map((c) => (
+                    <li key={c.id}>
+                      <button type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setForm((f) => ({ ...f, customer: c.name, customerId: c.id })); setCustOpen(false) }}
+                        className="block w-full truncate px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50">
+                        {c.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">
               Processor（负责人）
@@ -124,6 +169,7 @@ function ProjectModal({ project, category, onClose, onSaved }) {
 
 // ── One project row (expandable) ─────────────────────────────────────────────
 function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState(null)
   const [note, setNote] = useState('')
@@ -158,13 +204,23 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-brand-200">
       {/* Row header */}
-      <button onClick={toggle} className="flex w-full items-start justify-between gap-3 p-4 text-left">
+      <div onClick={toggle} role="button" tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter') toggle() }}
+        className="flex w-full cursor-pointer items-start justify-between gap-3 p-4 text-left">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {p.sortNo != null && <span className="text-xs font-bold text-slate-300">#{p.sortNo}</span>}
             <span className="font-semibold text-slate-800">{p.customer}</span>
             {p.visibility === 'PRIVATE' && <span title="仅负责人+管理员可见">🔒</span>}
             {pr && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
+            {(p.customerRef || p.customerId) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); navigate(`/customers/${p.customerRef?.id || p.customerId}`) }}
+                title={`Open customer: ${p.customerRef?.name || p.customer}`}
+                className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700 transition hover:bg-brand-100">
+                👤 Customer ↗
+              </button>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
             {p.processor && <span>👤 {p.processor}</span>}
@@ -177,7 +233,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
           )}
         </div>
         <span className={`mt-1 shrink-0 text-slate-300 transition ${open ? 'rotate-180' : ''}`}>▾</span>
-      </button>
+      </div>
 
       {/* Expanded detail */}
       {open && (

@@ -192,7 +192,7 @@ const impl = {
     }));
   },
 
-  async get_customer({ id }) {
+  async get_customer({ id }, ctx) {
     const c = await prisma.customer.findUnique({
       where: { id: Number(id) },
       include: {
@@ -233,6 +233,17 @@ const impl = {
       }),
       visitReports: c.visitReports,
       recentEvents: c.events,
+      // Sensitive: hot projects filtered by the asking user's visibility.
+      hotProjects: (await prisma.hotProject.findMany({
+        where: { customerId: c.id, ...visibleWhere({ userId: ctx.userId, isAdmin: ctx.isAdmin }) },
+        orderBy: { updatedAt: 'desc' },
+        take: 5,
+        include: { updates: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { content: true } } },
+      })).map((h) => ({
+        id: h.id, category: h.category, priority: h.priority, processor: h.processor,
+        requirements: (h.requirements || '').slice(0, 150),
+        latestUpdate: h.updates[0]?.content?.slice(0, 250) || null,
+      })),
     };
   },
 

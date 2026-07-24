@@ -4,6 +4,7 @@ import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { randomBytes } from 'crypto';
 import { geocodeAddress } from '../services/geocode.js';
+import { visibleWhere } from './hotProjects.js';
 
 const router = express.Router();
 
@@ -217,6 +218,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
       note: l.note,
       ...(resolved.get(l.threadKey) || { threadKey: l.threadKey, projectName: l.threadKey, tracking: null }),
     }));
+    // Hot projects for this customer — sensitive module, apply per-user visibility.
+    customer.hotProjects = await prisma.hotProject.findMany({
+      where: { customerId: id, ...visibleWhere(req.user) },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        updates: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { content: true, createdAt: true } },
+      },
+    });
     res.json(customer);
   } catch (error) {
     console.error(error);
