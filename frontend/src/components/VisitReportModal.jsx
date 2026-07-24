@@ -39,6 +39,7 @@ export default function VisitReportModal({ report, customers = [], currentUserId
   }))
   const [photos, setPhotos] = useState([])
   const [generating, setGenerating] = useState(false)
+  const [summarizing, setSummarizing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // Searchable customer picker (477+ customers — a plain dropdown is unusable).
@@ -95,6 +96,27 @@ export default function VisitReportModal({ report, customers = [], currentUserId
     } finally { setGenerating(false) }
   }
 
+  // Gather the report's own text (original raw notes + any structured sections) as
+  // the source for the summary — the body itself is never modified.
+  const sourceText = () => {
+    const c = form.content || {}
+    const parts = [form.rawNotes]
+    for (const s of SECTIONS) if (c[s.key]) parts.push(`${s.label.split(' ')[0]}：${c[s.key]}`)
+    return parts.filter(Boolean).join('\n\n')
+  }
+
+  const summarize = async () => {
+    const text = sourceText()
+    if (!text.trim()) { setErr('没有可总结的内容（先填正文或随手记）'); return }
+    setErr(''); setSummarizing(true)
+    try {
+      const { data } = await visitReportsAPI.summarize(text)
+      set('summary', data.summary || '')
+    } catch (e) {
+      setErr(e.response?.data?.error || 'AI 总结失败')
+    } finally { setSummarizing(false) }
+  }
+
   const save = async (status) => {
     if (!form.title.trim()) { setErr('标题必填'); return }
     setErr(''); setSaving(true)
@@ -141,6 +163,7 @@ export default function VisitReportModal({ report, customers = [], currentUserId
                   value={custQuery}
                   disabled={readOnly}
                   placeholder="输入客户名搜索…"
+                  className="truncate pr-9"
                   onChange={(e) => { setCustQuery(e.target.value); set('customerId', ''); setCustOpen(true) }}
                   onFocus={() => setCustOpen(true)}
                   onBlur={() => setTimeout(() => setCustOpen(false), 150)}
@@ -202,10 +225,36 @@ export default function VisitReportModal({ report, customers = [], currentUserId
             标题
             <Input value={form.title} disabled={readOnly} onChange={(e) => set('title', e.target.value)} className="mt-1" />
           </label>
-          <label className="block text-xs font-semibold text-slate-600">
-            摘要
-            <Textarea rows={2} value={form.summary || ''} disabled={readOnly} onChange={(e) => set('summary', e.target.value)} className="mt-1" />
-          </label>
+          <div className="text-xs font-semibold text-slate-600">
+            <div className="flex items-center justify-between gap-2">
+              <span>摘要 Summary</span>
+              {editing && (
+                <Button size="sm" variant="secondary" onClick={summarize} disabled={summarizing || generating}>
+                  {summarizing ? '总结中…' : '✦ AI 概括总结'}
+                </Button>
+              )}
+            </div>
+            <Textarea rows={3} value={form.summary || ''} disabled={readOnly} onChange={(e) => set('summary', e.target.value)} className="mt-1" />
+          </div>
+
+          {/* Report header (meta) — shown when editing, or when any field is filled */}
+          {(editing || hasMeta) && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <div className="mb-2 text-xs font-bold text-slate-500">报头 Report header</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {META_FIELDS.map((mf) => (
+                  (editing || meta[mf.key]) && (
+                    <label key={mf.key} className="block text-xs font-semibold text-slate-600">
+                      {mf.label}
+                      <Input value={meta[mf.key] || ''} disabled={readOnly}
+                        onChange={(e) => setMeta(mf.key, e.target.value)} className="mt-1"
+                        placeholder={readOnly ? '—' : ''} />
+                    </label>
+                  )
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Report header (meta) — shown when editing, or when any field is filled */}
           {(editing || hasMeta) && (

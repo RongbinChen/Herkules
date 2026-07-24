@@ -72,6 +72,8 @@ export const visitReportsAPI = {
   delete: (id) => api.delete(`/visit-reports/${id}`),
   // AI-structure raw notes (+ optional photos) into a draft — multipart, not saved.
   generate: (formData) => api.post('/visit-reports/generate', formData),
+  // Concise AI summary of report text — keeps the body original, fills the summary field.
+  summarize: (text) => api.post('/visit-reports/summarize', { text }),
   // Download the report as a .docx (pandoc-rendered on the server).
   exportDocx: (id) => api.get(`/visit-reports/${id}/export`, { responseType: 'blob' }),
 }

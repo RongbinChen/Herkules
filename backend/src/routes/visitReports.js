@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { structureVisitReport } from '../services/visitReport.js';
+import { structureVisitReport, summarizeVisitReport } from '../services/visitReport.js';
 import { ocrImage, isGeminiConfigured } from '../services/gemini.js';
 import { reportToMarkdown } from '../services/visitReportExport.js';
 
@@ -104,6 +104,20 @@ router.post('/generate', upload.array('images', 10), async (req, res) => {
     if (error.isDeepSeek || error.isGemini) return res.status(502).json({ error: error.message });
     console.error('Error generating visit report:', error);
     res.status(500).json({ error: 'Failed to generate visit report' });
+  }
+});
+
+// ── AI summarize (does NOT save; keeps the body untouched) ──────────────────────
+router.post('/summarize', async (req, res) => {
+  try {
+    const text = req.body?.text || '';
+    if (!String(text).trim()) return res.status(400).json({ error: '缺少可总结的文本' });
+    const summary = await summarizeVisitReport(text);
+    res.json({ summary });
+  } catch (error) {
+    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    console.error('Error summarizing visit report:', error);
+    res.status(500).json({ error: 'Failed to summarize' });
   }
 });
 
