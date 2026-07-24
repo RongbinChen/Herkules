@@ -140,7 +140,12 @@ export default function CommandSearch() {
 
   const parsed = parseInput(raw)
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  // Auto-focus on desktop only — on iOS focusing a <16px input on mount
+  // triggers viewport auto-zoom (page looks blown-up and overflows) and pops
+  // the keyboard before the user asked for it.
+  useEffect(() => {
+    if (window.matchMedia?.('(min-width: 640px)').matches) inputRef.current?.focus()
+  }, [])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat, chatLoading])
 
   // Debounced structured search for "/type query".
@@ -350,7 +355,7 @@ export default function CommandSearch() {
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}
                 placeholder={chat.length ? '继续提问…' : '问我任何问题，或输入 / 快搜…'}
-                className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+                className="w-full bg-transparent text-base outline-none placeholder:text-slate-400 sm:text-sm"
                 autoComplete="off"
                 spellCheck={false}
               />
