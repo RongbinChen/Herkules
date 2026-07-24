@@ -111,7 +111,12 @@ export default function VisitReportModal({ report, customers = [], currentUserId
     setErr(''); setSummarizing(true)
     try {
       const { data } = await visitReportsAPI.summarize(text)
-      set('summary', data.summary || '')
+      const s = data.summary || ''
+      set('summary', s)
+      // View mode has no save button — persist the summary right away.
+      if (!isNew && report?.id && s && !editing) {
+        await visitReportsAPI.update(report.id, { summary: s })
+      }
     } catch (e) {
       setErr(e.response?.data?.error || 'AI 总结失败')
     } finally { setSummarizing(false) }
@@ -150,11 +155,62 @@ export default function VisitReportModal({ report, customers = [], currentUserId
         </div>
 
         <div className="max-h-[75vh] space-y-4 overflow-y-auto px-5 py-4">
+          {/* ── Read view: flat, article-style layout (no nested inputs) ── */}
+          {!editing && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-lg font-bold leading-snug text-slate-900">{form.title}</h3>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                  <span>📅 {form.visitDate}</span>
+                  {(report?.customer?.name || custQuery) && <span>🤝 {report?.customer?.name || custQuery}</span>}
+                  {report?.author?.name && <span>✍️ {report.author.name}</span>}
+                </div>
+              </div>
+
+              {/* Summary + on-demand AI summarize (view mode, per user preference) */}
+              <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-brand-800">摘要 Summary</span>
+                  {canEdit && (
+                    <Button size="sm" variant="secondary" onClick={summarize} disabled={summarizing}>
+                      {summarizing ? '总结中…' : '✦ AI 概括总结'}
+                    </Button>
+                  )}
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{form.summary || '—'}</p>
+              </div>
+
+              {/* Report header meta as a flat definition grid */}
+              {hasMeta && (
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 rounded-xl border border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2">
+                  {META_FIELDS.filter((mf) => meta[mf.key]).map((mf) => (
+                    <div key={mf.key} className="min-w-0">
+                      <dt className="text-[11px] font-semibold text-slate-400">{mf.label}</dt>
+                      <dd className="break-words text-sm text-slate-700">{meta[mf.key]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+
+              {/* Sections as headed paragraphs */}
+              {SECTIONS.filter((s) => form.content?.[s.key]).map((s) => (
+                <section key={s.key}>
+                  <h4 className="mb-1 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500">{s.label}</h4>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{form.content[s.key]}</p>
+                </section>
+              ))}
+              {!form.summary && SECTIONS.every((s) => !form.content?.[s.key]) && (
+                <p className="py-6 text-center text-sm text-slate-400">（暂无内容）</p>
+              )}
+            </div>
+          )}
+
+          {editing && (<>
           {/* Meta */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">
               拜访日期
-              <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => set('visitDate', e.target.value)} className="mt-1" />
+              <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => set('visitDate', e.target.value)} className="mt-1 min-w-0 max-w-full appearance-none" />
             </label>
             <div className="text-xs font-semibold text-slate-600">
               客户
@@ -225,36 +281,10 @@ export default function VisitReportModal({ report, customers = [], currentUserId
             标题
             <Input value={form.title} disabled={readOnly} onChange={(e) => set('title', e.target.value)} className="mt-1" />
           </label>
-          <div className="text-xs font-semibold text-slate-600">
-            <div className="flex items-center justify-between gap-2">
-              <span>摘要 Summary</span>
-              {editing && (
-                <Button size="sm" variant="secondary" onClick={summarize} disabled={summarizing || generating}>
-                  {summarizing ? '总结中…' : '✦ AI 概括总结'}
-                </Button>
-              )}
-            </div>
+          <label className="block text-xs font-semibold text-slate-600">
+            摘要 Summary
             <Textarea rows={3} value={form.summary || ''} disabled={readOnly} onChange={(e) => set('summary', e.target.value)} className="mt-1" />
-          </div>
-
-          {/* Report header (meta) — shown when editing, or when any field is filled */}
-          {(editing || hasMeta) && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-              <div className="mb-2 text-xs font-bold text-slate-500">报头 Report header</div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {META_FIELDS.map((mf) => (
-                  (editing || meta[mf.key]) && (
-                    <label key={mf.key} className="block text-xs font-semibold text-slate-600">
-                      {mf.label}
-                      <Input value={meta[mf.key] || ''} disabled={readOnly}
-                        onChange={(e) => setMeta(mf.key, e.target.value)} className="mt-1"
-                        placeholder={readOnly ? '—' : ''} />
-                    </label>
-                  )
-                ))}
-              </div>
-            </div>
-          )}
+          </label>
 
           {/* Report header (meta) — shown when editing, or when any field is filled */}
           {(editing || hasMeta) && (
@@ -286,6 +316,38 @@ export default function VisitReportModal({ report, customers = [], currentUserId
               </label>
             ))}
           </div>
+          </>)}
+
+          {/* Structured tables (AI-extracted, read-only) */}
+          {tables.length > 0 && (
+            <div className="space-y-3">
+              {tables.map((t, ti) => (
+                <div key={ti}>
+                  {t.title && <div className="mb-1 text-xs font-bold text-slate-600">{t.title}</div>}
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          {(t.columns || []).map((col, ci) => (
+                            <th key={ci} className="whitespace-nowrap border-b border-slate-200 px-2.5 py-1.5 text-left font-semibold text-slate-600">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(t.rows || []).map((row, ri) => (
+                          <tr key={ri} className="even:bg-slate-50/50">
+                            {row.map((cell, ci) => (
+                              <td key={ci} className="border-b border-slate-100 px-2.5 py-1.5 text-slate-700">{cell}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Structured tables (AI-extracted, read-only) */}
           {tables.length > 0 && (
