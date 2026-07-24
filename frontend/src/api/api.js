@@ -86,7 +86,7 @@ export const searchAPI = {
 // Workspace AI assistant (DeepSeek tool loop over module data). Multi-step
 // queries can take a while — give it a generous timeout.
 export const assistantAPI = {
-  chat: (messages) => api.post('/assistant/chat', { messages }, { timeout: 120000 }),
+  chat: (messages, lang) => api.post('/assistant/chat', { messages, lang }, { timeout: 120000 }),
 }
 
 // Hot projects — internal sales open/potential projects tracking (sensitive).
