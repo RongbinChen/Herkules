@@ -210,7 +210,7 @@ export default function VisitReportModal({ report, customers = [], currentUserId
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">
               拜访日期
-              <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => set('visitDate', e.target.value)} className="mt-1" />
+              <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => set('visitDate', e.target.value)} className="mt-1 min-w-0 max-w-full appearance-none" />
             </label>
             <div className="text-xs font-semibold text-slate-600">
               客户
