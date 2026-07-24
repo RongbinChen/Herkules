@@ -12,6 +12,16 @@ const SECTIONS = [
   { key: 'risks', label: '风险 Risks' },
 ]
 
+// Report-header metadata (mirrors the fields on the top of a Waldrich visit report).
+const META_FIELDS = [
+  { key: 'recipients', label: '收件人 To' },
+  { key: 'cc', label: '抄送 CC' },
+  { key: 'location', label: '地点 Location' },
+  { key: 'industry', label: '行业 Industry' },
+  { key: 'machineType', label: '机器类型 Machine / Type' },
+  { key: 'quotationNo', label: '报价号 Quotation No.' },
+]
+
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
 export default function VisitReportModal({ report, customers = [], currentUserId, isAdmin, onClose, onSaved }) {
@@ -42,6 +52,10 @@ export default function VisitReportModal({ report, customers = [], currentUserId
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const setContent = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, [k]: v } }))
+  const setMeta = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, meta: { ...(f.content?.meta || {}), [k]: v } } }))
+  const tables = Array.isArray(form.content?.tables) ? form.content.tables : []
+  const meta = form.content?.meta || {}
+  const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
 
   // No matching customer → create one on the spot (name only; enrich later in Customers).
   const createCustomer = async () => {
@@ -193,6 +207,25 @@ export default function VisitReportModal({ report, customers = [], currentUserId
             <Textarea rows={2} value={form.summary || ''} disabled={readOnly} onChange={(e) => set('summary', e.target.value)} className="mt-1" />
           </label>
 
+          {/* Report header (meta) — shown when editing, or when any field is filled */}
+          {(editing || hasMeta) && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <div className="mb-2 text-xs font-bold text-slate-500">报头 Report header</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {META_FIELDS.map((mf) => (
+                  (editing || meta[mf.key]) && (
+                    <label key={mf.key} className="block text-xs font-semibold text-slate-600">
+                      {mf.label}
+                      <Input value={meta[mf.key] || ''} disabled={readOnly}
+                        onChange={(e) => setMeta(mf.key, e.target.value)} className="mt-1"
+                        placeholder={readOnly ? '—' : ''} />
+                    </label>
+                  )
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Structured sections */}
           <div className="grid grid-cols-1 gap-3">
             {SECTIONS.map((s) => (
@@ -204,6 +237,37 @@ export default function VisitReportModal({ report, customers = [], currentUserId
               </label>
             ))}
           </div>
+
+          {/* Structured tables (AI-extracted, read-only) */}
+          {tables.length > 0 && (
+            <div className="space-y-3">
+              {tables.map((t, ti) => (
+                <div key={ti}>
+                  {t.title && <div className="mb-1 text-xs font-bold text-slate-600">{t.title}</div>}
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          {(t.columns || []).map((col, ci) => (
+                            <th key={ci} className="whitespace-nowrap border-b border-slate-200 px-2.5 py-1.5 text-left font-semibold text-slate-600">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(t.rows || []).map((row, ri) => (
+                          <tr key={ri} className="even:bg-slate-50/50">
+                            {row.map((cell, ci) => (
+                              <td key={ci} className="border-b border-slate-100 px-2.5 py-1.5 text-slate-700">{cell}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>
