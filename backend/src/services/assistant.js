@@ -18,6 +18,8 @@ import {
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
 const MODEL = 'deepseek-v4-flash';
+// Public site origin for building share links (same convention as shareMeta.js).
+const SITE_ORIGIN = process.env.PUBLIC_ORIGIN || 'https://www.herkulesgroup-china.com';
 
 const MAX_ROUNDS = 6; // tool-call loop guard
 const RESULT_CAP = 3000; // chars of tool output fed back per call
@@ -127,8 +129,19 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'search_bid_openings',
+      description: '搜索开标记录（Bid Opening：上传的开标现场记录，含招标编号、项目名、开标日期、采购单位、投标人清单及各家报价）。按项目名/采购单位/投标人/编号关键字查询。',
+      parameters: {
+        type: 'object',
+        properties: { q: { type: 'string', description: '关键字（留空列出最近开标记录）' } },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_trips',
-      description: '搜索出差行程（Trips 模块：多客户拜访行程规划，含行程标题、起止日期、负责人、拜访站点客户列表、AI 生成的日程安排）。按标题/备注/客户名/人员名关键字查询。',
+      description: '搜索出差行程（Trips 模块：多客户拜访行程规划，含行程标题、起止日期、负责人、拜访站点客户列表、AI 生成的日程安排、免登录分享链接 shareUrl）。按标题/备注/客户名/人员名关键字查询。用户要行程分享链接时直接给 shareUrl。',
       parameters: {
         type: 'object',
         properties: { q: { type: 'string', description: '关键字（行程标题、客户名、负责人名等；留空列出最近行程）' } },
@@ -331,6 +344,35 @@ const impl = {
     return rows;
   },
 
+  async search_bid_openings({ q }) {
+    const s = String(q || '').trim();
+    const where = s
+      ? {
+          OR: [
+            { projectName: { contains: s, mode: 'insensitive' } },
+            { purchaser: { contains: s, mode: 'insensitive' } },
+            { biddingNo: { contains: s, mode: 'insensitive' } },
+            { rawText: { contains: s, mode: 'insensitive' } }, // bidder names live in rawText/bidders JSON
+          ],
+        }
+      : {};
+    const rows = await prisma.bidOpening.findMany({
+      where,
+      orderBy: [{ openDate: 'desc' }, { id: 'desc' }],
+      take: 10,
+      select: {
+        id: true, biddingNo: true, projectName: true, openDate: true,
+        purchaser: true, bidders: true, summary: true, shareToken: true,
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id, biddingNo: r.biddingNo, projectName: r.projectName, openDate: r.openDate,
+      purchaser: r.purchaser, summary: r.summary,
+      shareUrl: r.shareToken ? `${SITE_ORIGIN}/bidopen/share/${r.shareToken}` : null,
+      bidders: Array.isArray(r.bidders) ? r.bidders.map((b) => ({ name: b.name, price: b.price })) : [],
+    }));
+  },
+
   async search_trips({ q }) {
     const s = String(q || '').trim();
     const where = s
@@ -363,6 +405,7 @@ const impl = {
       title: t.title,
       startTime: t.startTime,
       endTime: t.endTime,
+      shareUrl: t.shareToken ? `${SITE_ORIGIN}/trip/share/${t.shareToken}` : null,
       assignee: t.assignee?.name || null,
       createdBy: t.createdBy?.name || null,
       notes: (t.notes || '').slice(0, 200),
@@ -435,7 +478,7 @@ const todayCN = () =>
 
 const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、重型机床制造商）中国销售团队工作台的 AI 助手。今天是 ${todayCN()}（北京时间）。
 
-工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、热点项目（Hot Projects，内部销售 Open/Potential 项目跟踪，敏感数据、查询结果已按提问者权限过滤）、拜访报告（Visit Reports）、出差行程（Trips，多客户拜访行程规划）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
+工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、开标记录（Bid Openings，开标现场的投标人与报价清单）、热点项目（Hot Projects，内部销售 Open/Potential 项目跟踪，敏感数据、查询结果已按提问者权限过滤）、拜访报告（Visit Reports）、出差行程（Trips，多客户拜访行程规划）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
 
 规则：
 - 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到；查不到时先想想换个工具查——比如人名/行程类问题日历查不到就查 search_trips，客户类问题再试 search_customers。
