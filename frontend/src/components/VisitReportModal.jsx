@@ -256,6 +256,25 @@ export default function VisitReportModal({ report, customers = [], currentUserId
             </div>
           )}
 
+          {/* Report header (meta) — shown when editing, or when any field is filled */}
+          {(editing || hasMeta) && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <div className="mb-2 text-xs font-bold text-slate-500">报头 Report header</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {META_FIELDS.map((mf) => (
+                  (editing || meta[mf.key]) && (
+                    <label key={mf.key} className="block text-xs font-semibold text-slate-600">
+                      {mf.label}
+                      <Input value={meta[mf.key] || ''} disabled={readOnly}
+                        onChange={(e) => setMeta(mf.key, e.target.value)} className="mt-1"
+                        placeholder={readOnly ? '—' : ''} />
+                    </label>
+                  )
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Structured sections */}
           <div className="grid grid-cols-1 gap-3">
             {SECTIONS.map((s) => (
