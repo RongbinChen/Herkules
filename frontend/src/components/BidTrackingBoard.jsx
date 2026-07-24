@@ -13,17 +13,17 @@ const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.key, i]));
 
 // ── Our manual bid status (sales-team view) ──
 const OUR_STATUSES = [
-  { key: 'WATCHING', zh: '关注', cls: 'bg-slate-100 text-slate-600' },
-  { key: 'PREPARING', zh: '准备投标', cls: 'bg-amber-100 text-amber-700' },
-  { key: 'SUBMITTED', zh: '已投标', cls: 'bg-brand-100 text-brand-700' },
-  { key: 'SHORTLISTED', zh: '入围', cls: 'bg-indigo-100 text-indigo-700' },
-  { key: 'WON', zh: '中标', cls: 'bg-green-100 text-green-700' },
-  { key: 'LOST', zh: '落标', cls: 'bg-rose-100 text-rose-700' },
-  { key: 'ABANDONED', zh: '放弃', cls: 'bg-slate-200 text-slate-500' },
+  { key: 'WATCHING', en: 'Watching', cls: 'bg-slate-100 text-slate-600' },
+  { key: 'PREPARING', en: 'Preparing', cls: 'bg-amber-100 text-amber-700' },
+  { key: 'SUBMITTED', en: 'Submitted', cls: 'bg-brand-100 text-brand-700' },
+  { key: 'SHORTLISTED', en: 'Shortlisted', cls: 'bg-indigo-100 text-indigo-700' },
+  { key: 'WON', en: 'Won', cls: 'bg-green-100 text-green-700' },
+  { key: 'LOST', en: 'Lost', cls: 'bg-rose-100 text-rose-700' },
+  { key: 'ABANDONED', en: 'Abandoned', cls: 'bg-slate-200 text-slate-500' },
 ];
 const OUR_STATUS_MAP = Object.fromEntries(OUR_STATUSES.map((s) => [s.key, s]));
 
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('zh-CN', { year: '2-digit', month: '2-digit', day: '2-digit' }) : '—');
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { year: '2-digit', month: '2-digit', day: '2-digit' }) : '—');
 
 // Horizontal stage progress: 招标 → 变更 → 评标 → 中标, current highlighted.
 function StageProgress({ current }) {
@@ -45,7 +45,7 @@ function StageProgress({ current }) {
               }`}
               title={s.en}
             >
-              {s.zh}
+              {s.en}
             </span>
             {i < STAGES.length - 1 && (
               <span className={`text-xs ${i < curIdx ? 'text-brand-400' : 'text-slate-300'}`}>›</span>
@@ -60,7 +60,7 @@ function StageProgress({ current }) {
 function OurStatusBadge({ status }) {
   const s = OUR_STATUS_MAP[status];
   if (!s) return null;
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.cls}`}>{s.zh}</span>;
+  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.cls}`}>{s.en}</span>;
 }
 
 // Inline manual-tracking editor for one project thread.
@@ -85,7 +85,7 @@ function TrackingEditor({ thread, onSaved }) {
       const saved = await saveBidTracking(thread.threadKey, form);
       onSaved(thread.threadKey, saved);
     } catch (e) {
-      setErr(e.message || '保存失败');
+      setErr(e.message || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -93,32 +93,32 @@ function TrackingEditor({ thread, onSaved }) {
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <div className="mb-2 text-xs font-bold text-slate-500">我方跟踪 Our tracking</div>
+      <div className="mb-2 text-xs font-bold text-slate-500">Our tracking</div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-xs font-semibold text-slate-600">
-          状态 Status
+          Status
           <select value={form.ourStatus} onChange={set('ourStatus')}
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
-            {OUR_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.zh}</option>)}
+            {OUR_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.en}</option>)}
           </select>
         </label>
         <label className="text-xs font-semibold text-slate-600">
-          我方报价 Our price
-          <input value={form.ourPrice} onChange={set('ourPrice')} placeholder="如 €1.2M"
+          Our price
+          <input value={form.ourPrice} onChange={set('ourPrice')} placeholder="e.g. €1.2M"
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
-          竞争对手 Competitors
-          <input value={form.competitors} onChange={set('competitors')} placeholder="如 INNSE, DANIELI"
+          Competitors
+          <input value={form.competitors} onChange={set('competitors')} placeholder="e.g. INNSE, DANIELI"
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
-          结果 Outcome
-          <input value={form.outcome} onChange={set('outcome')} placeholder="中标/落标/结论备注"
+          Outcome
+          <input value={form.outcome} onChange={set('outcome')} placeholder="Won / lost / closing note"
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
-          跟进备注 Note
+          Note
           <textarea value={form.note} onChange={set('note')} rows={2}
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm" />
         </label>
@@ -127,7 +127,7 @@ function TrackingEditor({ thread, onSaved }) {
       <div className="mt-2 flex justify-end">
         <button onClick={save} disabled={saving}
           className="rounded-full bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50">
-          {saving ? '保存中…' : '保存 Save'}
+          {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
     </div>
@@ -156,17 +156,17 @@ function ThreadCard({ thread, onSaved }) {
         {/* Auto progress */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <StageProgress current={thread.currentStage} />
-          <span className="text-[11px] text-slate-400">更新 {fmtDate(thread.lastUpdate)}</span>
+          <span className="text-[11px] text-slate-400">Updated {fmtDate(thread.lastUpdate)}</span>
         </div>
 
         {/* Winner / budget */}
         {(thread.winner || thread.budget) && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
             {thread.winner && (
-              <span>🏆 中标方：<span className="font-semibold text-slate-800">{thread.winner}</span>
+              <span>🏆 Winner: <span className="font-semibold text-slate-800">{thread.winner}</span>
                 {thread.winningPrice ? `（${thread.winningPrice}）` : ''}</span>
             )}
-            {thread.budget && <span>预算：{thread.budget}</span>}
+            {thread.budget && <span>Budget: {thread.budget}</span>}
           </div>
         )}
 
@@ -174,14 +174,14 @@ function ThreadCard({ thread, onSaved }) {
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <button onClick={() => setShowEdit((v) => !v)}
             className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
-            {thread.tracking ? '编辑跟踪' : '＋ 添加跟踪'}
+            {thread.tracking ? 'Edit tracking' : '＋ Add tracking'}
           </button>
           <button onClick={() => setShowTimeline((v) => !v)}
             className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
-            {showTimeline ? '收起时间线' : `时间线 (${thread.announcements.length})`}
+            {showTimeline ? 'Hide timeline' : `Timeline (${thread.announcements.length})`}
           </button>
           {thread.tracking?.ourPrice && (
-            <span className="text-xs text-slate-500">报价 {thread.tracking.ourPrice}</span>
+            <span className="text-xs text-slate-500">Price {thread.tracking.ourPrice}</span>
           )}
         </div>
 
@@ -190,9 +190,9 @@ function ThreadCard({ thread, onSaved }) {
             {thread.announcements.map((a) => (
               <li key={a.id} className="text-xs text-slate-600">
                 <span className="text-slate-400">{fmtDate(a.publishDate)}</span>{' '}
-                <span className="font-semibold text-slate-700">{a.infoClass || a.bidStage || '公告'}</span>
-                {a.winner ? ` — 中标：${a.winner}` : ''}{' '}
-                <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">原文↗</a>
+                <span className="font-semibold text-slate-700">{a.infoClass || a.bidStage || 'Notice'}</span>
+                {a.winner ? ` — Winner: ${a.winner}` : ''}{' '}
+                <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">Source↗</a>
               </li>
             ))}
           </ol>
@@ -226,7 +226,7 @@ export default function BidTrackingBoard() {
       const data = await listProjectThreads({ stage, ourStatus, q: qDebounced });
       setThreads(data);
     } catch (e) {
-      setError(e.message || '加载失败');
+      setError(e.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -246,9 +246,9 @@ export default function BidTrackingBoard() {
         {/* Header */}
         <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">项目跟踪 · Project Lifecycle</h1>
+            <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">Project Tracking · Lifecycle</h1>
             <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-              自动汇总每个项目的招标→评标→中标进展，叠加我方投标跟踪。
+              Auto-aggregates each project's tender → evaluation → award progress, plus our own bid tracking.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
@@ -258,7 +258,7 @@ export default function BidTrackingBoard() {
             </button>
             <button onClick={() => navigate('/chinabidding')}
               className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm">
-              公告列表
+              Announcements
             </button>
             <button onClick={() => navigate('/chinabidding/stats')}
               className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm">
@@ -274,40 +274,40 @@ export default function BidTrackingBoard() {
         {/* Filters */}
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-xs font-semibold text-slate-400">阶段</span>
+            <span className="mr-1 text-xs font-semibold text-slate-400">Stage</span>
             <button onClick={() => setStage('')}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition ${stage === '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              全部
+              All
             </button>
             {STAGES.map((s) => (
               <button key={s.key} onClick={() => setStage(s.key)}
                 className={`rounded-full px-3 py-1 text-xs font-semibold transition ${stage === s.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                {s.zh}
+                {s.en}
               </button>
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select value={ourStatus} onChange={(e) => setOurStatus(e.target.value)}
               className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
-              <option value="">我方状态：全部</option>
-              {OUR_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.zh}</option>)}
+              <option value="">Our status: All</option>
+              {OUR_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.en}</option>)}
             </select>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索项目/单位/编号"
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search project / org / no."
               className="w-44 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs" />
           </div>
         </div>
 
         {/* Summary */}
         <div className="mb-3 text-xs text-slate-500">
-          共 {threads.length} 个项目 · 已跟踪 {trackedCount}
+          {threads.length} projects · {trackedCount} tracked
         </div>
 
         {/* List */}
         {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
         {loading ? (
-          <div className="py-16 text-center text-sm text-slate-400">加载中…</div>
+          <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
         ) : threads.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-400">没有匹配的项目</div>
+          <div className="py-16 text-center text-sm text-slate-400">No matching projects</div>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {threads.map((t) => <ThreadCard key={t.threadKey} thread={t} onSaved={onSaved} />)}

@@ -171,8 +171,8 @@ export async function getTrends(months = 12) {
   return res.json();
 }
 
-export async function generateReport() {
-  const res = await fetch(`${API_BASE}/report`, { method: 'POST', headers: authHeaders() });
+export async function generateReport(lang = 'zh') {
+  const res = await fetch(`${API_BASE}/report?lang=${lang}`, { method: 'POST', headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to generate report');
   return res.json();
 }

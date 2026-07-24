@@ -578,7 +578,8 @@ router.get('/trends', async (req, res) => {
 
 router.post('/report', async (req, res) => {
   try {
-    res.json(await generateTrendReport());
+    const lang = req.query.lang === 'en' ? 'en' : 'zh';
+    res.json(await generateTrendReport(lang));
   } catch (error) {
     console.error('Error generating report:', error);
     res.status(500).json({ error: 'Failed to generate report' });

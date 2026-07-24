@@ -1156,7 +1156,7 @@ export async function getTrends({ months = 12 } = {}) {
 }
 
 // ── AI market report ──────────────────────────────────────────────────────────
-export async function generateTrendReport() {
+export async function generateTrendReport(lang = 'zh') {
   const trends = await getTrends({ months: 6 });
   const context = JSON.stringify({
     统计周期: '近6个月',
@@ -1169,8 +1169,8 @@ export async function generateTrendReport() {
     即将截止的招标: trends.upcomingDeadlines.map(p => ({ 项目: p.projectName, 截止: p.deadline })),
   }, null, 1);
 
-  const report = await generateMarketReport(context);
-  return { report, generatedAt: new Date(), basedOn: { months: 6, projects: trends.totalProjects } };
+  const report = await generateMarketReport(context, lang);
+  return { report, lang, generatedAt: new Date(), basedOn: { months: 6, projects: trends.totalProjects } };
 }
 
 // ── Backfill: run structured extraction on existing records ──────────────────

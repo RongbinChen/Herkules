@@ -40,7 +40,7 @@ function BarList({ items, color = 'bg-brand-500', onItemClick = null }) {
           {onItemClick ? (
             <button
               onClick={() => onItemClick(i.name)}
-              title={`查看「${i.name}」的项目`}
+              title={`View projects for "${i.name}"`}
               className="w-36 shrink-0 truncate text-left text-slate-600 hover:text-brand-600 hover:underline"
             >
               {i.name}
@@ -54,7 +54,7 @@ function BarList({ items, color = 'bg-brand-500', onItemClick = null }) {
           <span className="w-8 shrink-0 text-right font-semibold text-slate-700">{i.count}</span>
         </li>
       ))}
-      {items.length === 0 && <li className="text-xs text-slate-400">暂无数据</li>}
+      {items.length === 0 && <li className="text-xs text-slate-400">No data</li>}
     </ul>
   );
 }
@@ -80,7 +80,7 @@ function CompetitorRow({ c }) {
         <span className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-800">
           <span>{icon}</span><span className="truncate">{c.name}</span>
         </span>
-        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${badgeCls}`}>中标 {c.winCount} 次</span>
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${badgeCls}`}>{c.winCount} win{c.winCount !== 1 ? 's' : ''}</span>
       </div>
       {c.country && <p className="text-xs text-slate-400">{c.country}</p>}
       {c.recentWins.length > 0 && (
@@ -95,7 +95,7 @@ function CompetitorRow({ c }) {
       )}
       {more > 0 && (
         <button onClick={() => setExpanded(v => !v)} className="mt-1.5 text-xs font-semibold text-brand-600 hover:underline">
-          {expanded ? '收起 ▴' : `更多 ${more} 个 ▾`}
+          {expanded ? 'Collapse ▴' : `+${more} more ▾`}
         </button>
       )}
     </li>
@@ -104,7 +104,7 @@ function CompetitorRow({ c }) {
 
 // Monthly trend column chart (SVG). onBarClick(month) makes bars clickable.
 function MonthlyChart({ monthly, onBarClick = null }) {
-  if (!monthly || monthly.length === 0) return <p className="text-xs text-slate-400">暂无数据</p>;
+  if (!monthly || monthly.length === 0) return <p className="text-xs text-slate-400">No data</p>;
   const W = 640, H = 180, PAD = 24;
   const max = Math.max(...monthly.map(m => m.total), 1);
   const bw = (W - PAD * 2) / monthly.length;
@@ -122,7 +122,7 @@ function MonthlyChart({ monthly, onBarClick = null }) {
               width={bw * 0.7} height={h}
               rx="3" className="fill-brand-500/80 hover:fill-brand-600"
             >
-              <title>{m.month}: {m.total} 项目（点击查看）</title>
+              <title>{m.month}: {m.total} projects (click to view)</title>
             </rect>
             <text x={PAD + i * bw + bw / 2} y={H - h - 5} textAnchor="middle" className="fill-slate-600 text-[11px] font-semibold">
               {m.total}
@@ -142,8 +142,12 @@ function BidStatistics() {
   const [stats, setStats] = useState(null);
   const [trends, setTrends] = useState(null);
   const [months, setMonths] = useState(12);
-  const [report, setReport] = useState(null);
+  // AI brief: cache both languages so switching doesn't re-generate an already-built one.
+  const [reports, setReports] = useState({ zh: null, en: null });
+  const [reportLang, setReportLang] = useState('en');
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const report = reports[reportLang];
 
   useEffect(() => {
     getStatistics().then(setStats).catch(console.error);
@@ -160,10 +164,19 @@ function BidStatistics() {
     return () => { ignore = true; };
   }, [months]);
 
-  const handleGenerateReport = async () => {
+  // Generate (or reveal) the brief in `lang`. Reuses a cached result if present.
+  const showReport = async (lang) => {
+    setReportLang(lang);
+    setReportOpen(true);
+    if (reports[lang]) return;
     setReportLoading(true);
-    try { setReport(await generateReport()); }
-    catch (err) { console.error('Report failed:', err); alert('简报生成失败，请重试'); }
+    try {
+      const r = await generateReport(lang);
+      setReports((prev) => ({ ...prev, [lang]: r }));
+    } catch (err) {
+      console.error('Report failed:', err);
+      alert(lang === 'en' ? 'Failed to generate the brief, please retry.' : '简报生成失败，请重试');
+    }
     setReportLoading(false);
   };
 
@@ -188,7 +201,7 @@ function BidStatistics() {
               <div className="space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.38em] text-slate-400">Market Intelligence</p>
                 <p className="text-[1rem] font-medium leading-6 text-slate-700 sm:text-[1.08rem]">
-                  中国市场招投标趋势、竞争对手动态与销售机会分析
+                  China market tender trends, competitor moves and sales-opportunity analysis
                 </p>
               </div>
             </div>
@@ -210,27 +223,66 @@ function BidStatistics() {
                 ← Project List
               </button>
               <button
-                onClick={handleGenerateReport}
+                onClick={() => showReport(reportLang)}
                 disabled={reportLoading}
                 className="rounded-full bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {reportLoading ? '⟳ 生成中…' : '✦ AI 市场简报'}
+                {reportLoading ? '⟳ Generating…' : '✦ AI Market Brief'}
               </button>
             </div>
           </div>
         </header>
 
-        {/* ── AI Market Report ───────────────────────────────────────── */}
-        {report && (
+        {/* ── AI Market Report (bilingual — toggle zh / en) ──────────── */}
+        {reportOpen && (
           <div className="rounded-2xl border border-brand-200 bg-brand-50/60 p-5 shadow-sm sm:p-6">
-            <div className="flex items-start justify-between gap-4">
-              <h3 className="text-sm font-bold text-brand-800">✦ AI 市场简报（近 6 个月，基于 {report.basedOn?.projects ?? '-'} 个项目）</h3>
-              <button onClick={() => setReport(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h3 className="text-sm font-bold text-brand-800">
+                {reportLang === 'en'
+                  ? `✦ AI Market Brief (last 6 months, based on ${report?.basedOn?.projects ?? '-'} projects)`
+                  : `✦ AI 市场简报（近 6 个月，基于 ${report?.basedOn?.projects ?? '-'} 个项目）`}
+              </h3>
+              <div className="flex items-center gap-2">
+                {/* Language toggle */}
+                <div className="flex overflow-hidden rounded-full border border-brand-300 text-xs font-semibold">
+                  {[{ k: 'en', t: 'EN' }, { k: 'zh', t: '中文' }].map((o) => (
+                    <button
+                      key={o.k}
+                      onClick={() => showReport(o.k)}
+                      disabled={reportLoading}
+                      className={`px-3 py-1 transition ${
+                        reportLang === o.k ? 'bg-brand-500 text-white' : 'bg-white text-brand-600 hover:bg-brand-50'
+                      } disabled:cursor-not-allowed`}
+                    >
+                      {o.t}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setReportOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+              </div>
             </div>
-            <div className="prose prose-sm mt-3 max-w-none whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">
-              {report.report || '（生成失败）'}
-            </div>
-            <p className="mt-3 text-xs text-slate-400">生成时间：{new Date(report.generatedAt).toLocaleString('zh-CN')} · 由 DeepSeek 生成，仅供参考</p>
+            {reportLoading ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-400">
+                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                {reportLang === 'en' ? 'Generating…' : '生成中…'}
+              </div>
+            ) : (
+              <>
+                <div className="prose prose-sm mt-3 max-w-none whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">
+                  {report?.report || (reportLang === 'en' ? '(generation failed)' : '（生成失败）')}
+                </div>
+                {report && (
+                  <p className="mt-3 text-xs text-slate-400">
+                    {reportLang === 'en'
+                      ? `Generated ${new Date(report.generatedAt).toLocaleString('en-GB')} · by DeepSeek, for reference only`
+                      : `生成时间：${new Date(report.generatedAt).toLocaleString('zh-CN')} · 由 DeepSeek 生成，仅供参考`}
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -247,7 +299,7 @@ function BidStatistics() {
 
         {/* ── Time range selector ────────────────────────────────────── */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">统计周期</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Period</span>
           {[3, 6, 12, 24].map(m => (
             <button
               key={m}
@@ -258,7 +310,7 @@ function BidStatistics() {
                   : 'border-slate-200 bg-white text-slate-600 hover:border-brand-400 hover:text-brand-600'
               }`}
             >
-              {m} 个月
+              {m} mo
             </button>
           ))}
         </div>
@@ -266,47 +318,47 @@ function BidStatistics() {
         {!trends ? loading : (
           <>
             {/* ── Monthly trend ──────────────────────────────────────── */}
-            <Panel title="月度招标趋势" subtitle={`近 ${months} 个月共 ${trends.totalProjects} 个相关项目（按公告发布日期）`}>
+            <Panel title="Monthly Tender Trend" subtitle={`${trends.totalProjects} relevant projects over the last ${months} months (by announcement date)`}>
               <MonthlyChart monthly={trends.monthly}
                 onBarClick={(month) => navigate(`/chinabidding?month=${month}`)} />
             </Panel>
 
             <div className="grid gap-5 lg:grid-cols-2">
               {/* ── Equipment types ──────────────────────────────────── */}
-              <Panel title="设备类型分布" subtitle="DeepSeek 自动分类">
+              <Panel title="Equipment Types" subtitle="Auto-classified by DeepSeek">
                 <BarList items={trends.equipmentTypes} color="bg-brand-500"
                   onItemClick={(name) => navigate(`/chinabidding?equipmentType=${encodeURIComponent(name)}`)} />
               </Panel>
 
               {/* ── Win ranking ──────────────────────────────────────── */}
-              <Panel title="中标排行" subtitle="基于中标公告自动匹配（🏆 本集团 / ⚔️ 竞争对手 / 👀 关注公司）">
+              <Panel title="Award Ranking" subtitle="Auto-matched from award notices (🏆 our group / ⚔️ competitor / 👀 watched)">
                 <ul className="space-y-3">
                   {trends.competitorStats.filter(c => c.winCount > 0).map(c => (
                     <CompetitorRow key={c.id} c={c} />
                   ))}
                   {trends.competitorStats.filter(c => c.winCount > 0).length === 0 && (
-                    <li className="text-xs text-slate-400">统计周期内暂无中标记录</li>
+                    <li className="text-xs text-slate-400">No awards recorded in this period</li>
                   )}
                 </ul>
               </Panel>
 
               {/* ── Active purchasers ────────────────────────────────── */}
-              <Panel title="活跃采购单位" subtitle="潜在客户清单（按招标次数）">
+              <Panel title="Active Purchasers" subtitle="Potential customers (by tender count)">
                 <BarList items={trends.topPurchasers} color="bg-emerald-500"
                   onItemClick={(name) => navigate(`/chinabidding?purchaser=${encodeURIComponent(name)}`)} />
               </Panel>
 
               {/* ── Regions ──────────────────────────────────────────── */}
-              <Panel title="地区分布" subtitle="按项目实施地">
+              <Panel title="Regions" subtitle="By project location">
                 <BarList items={trends.topRegions} color="bg-amber-500"
                   onItemClick={(name) => navigate(`/chinabidding?region=${encodeURIComponent(name)}`)} />
               </Panel>
             </div>
 
             {/* ── Upcoming deadlines ─────────────────────────────────── */}
-            <Panel title="⏰ 即将截止的招标（销售机会）" subtitle="按截止日期排序">
+            <Panel title="⏰ Upcoming Deadlines (Sales Opportunities)" subtitle="Sorted by deadline">
               {trends.upcomingDeadlines.length === 0 ? (
-                <p className="text-xs text-slate-400">暂无未截止的招标项目</p>
+                <p className="text-xs text-slate-400">No open tenders with a deadline</p>
               ) : (
                 <ul className="divide-y divide-slate-50">
                   {trends.upcomingDeadlines.map(p => (
@@ -323,7 +375,7 @@ function BidStatistics() {
                           <span className="rounded border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-600">{p.equipmentType}</span>
                         )}
                         <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-500">
-                          截止 {new Date(p.deadline).toLocaleDateString('zh-CN')}
+                          Due {new Date(p.deadline).toLocaleDateString('en-GB')}
                         </span>
                       </div>
                     </li>
