@@ -85,8 +85,9 @@ export default function Dashboard() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
           </svg>
           <span className="text-sm text-slate-400">
-            Search — type <code className="rounded bg-slate-100 px-1 font-mono text-brand-700">/customer</code>,
-            {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-500">/project</code> or
+            ✦ Ask AI — 客户 / 招投标 / 拜访报告 / 日历 · or type
+            {' '}<code className="rounded bg-slate-100 px-1 font-mono text-brand-700">/customer</code>
+            {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-500">/project</code>
             {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-500">/report</code>
           </span>
         </button>

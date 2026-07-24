@@ -83,6 +83,12 @@ export const searchAPI = {
   query: (type, q) => api.get('/search', { params: { type, q } }),
 }
 
+// Workspace AI assistant (DeepSeek tool loop over module data). Multi-step
+// queries can take a while — give it a generous timeout.
+export const assistantAPI = {
+  chat: (messages) => api.post('/assistant/chat', { messages }, { timeout: 120000 }),
+}
+
 export const agentsAPI = {
   getAll: () => api.get('/agents'),
   get: (id) => api.get(`/agents/${id}`),
