@@ -1,8 +1,11 @@
 // Import the internal WAV "Sales Open Projects" Excel into the HotProject module.
-//   node scripts/importHotProjects.js <file.xlsx> [--append]
+//   node scripts/importHotProjects.js <file.xlsx> [--append] [--asof YYYY-MM-DD]
 // Reads the "Enquiry - Open Projects" and "Potential Projects" sheets.
 // The Status column's running "Updated on …" log is split into individual
-// HotProjectUpdate rows (content kept verbatim; dates left null — ambiguous years).
+// HotProjectUpdate rows (content kept verbatim). The sheet's dates carry no
+// year, so years are inferred: logs are chronological, anchor at --asof (the
+// snapshot date, default today) and walk backwards, decrementing the year
+// whenever a date would exceed the entry that follows it.
 // Refuses to run on a non-empty table unless --append is given.
 import dotenv from 'dotenv';
 import XLSX from 'xlsx';
@@ -13,9 +16,43 @@ const prisma = new PrismaClient();
 
 const FILE = process.argv[2];
 const APPEND = process.argv.includes('--append');
-if (!FILE) {
-  console.error('Usage: node scripts/importHotProjects.js <file.xlsx> [--append]');
+const asofIdx = process.argv.indexOf('--asof');
+const ASOF = asofIdx > -1 ? new Date(`${process.argv[asofIdx + 1]}T12:00:00+08:00`) : new Date();
+if (!FILE || isNaN(ASOF)) {
+  console.error('Usage: node scripts/importHotProjects.js <file.xlsx> [--append] [--asof YYYY-MM-DD]');
   process.exit(1);
+}
+
+// "Updated on March 11(st|th)?(, 2023)?" → {m, d, y|null}
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+  january: 1, february: 2, march: 3, april: 4, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+function parseUpdateHead(content) {
+  const m = content.match(/^Updated\s+on\s+([A-Za-z]+)\.?\s*(\d{1,2})(?:st|nd|rd|th)?(?:[,\s]+(\d{4}))?/i);
+  if (!m) return null;
+  const mon = MONTHS[m[1].toLowerCase().replace(/\.$/, '')];
+  if (!mon) return null;
+  return { m: mon, d: parseInt(m[2]), y: m[3] ? parseInt(m[3]) : null };
+}
+const mkDate = (y, m, d) => new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T12:00:00+08:00`);
+
+// Assign a date to each log entry (chronological array), inferring years backwards from ASOF.
+function dateEntries(entries) {
+  const dates = new Array(entries.length).fill(null);
+  let upper = ASOF;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const h = parseUpdateHead(entries[i]);
+    if (!h) continue;
+    let date;
+    if (h.y) date = mkDate(h.y, h.m, h.d);
+    else {
+      let y = upper.getFullYear();
+      date = mkDate(y, h.m, h.d);
+      while (date > upper) { y--; date = mkDate(y, h.m, h.d); }
+    }
+    dates[i] = date;
+    upper = date;
+  }
+  return dates;
 }
 
 // Map the sheet's Processor names to system user ids (record owners).
@@ -68,9 +105,11 @@ async function importSheet(rows, category, createdById) {
       },
     });
     projects++;
-    for (const content of splitUpdates(status)) {
+    const entries = splitUpdates(status);
+    const dates = dateEntries(entries);
+    for (let i = 0; i < entries.length; i++) {
       await prisma.hotProjectUpdate.create({
-        data: { projectId: project.id, content, date: null, authorId: ownerId },
+        data: { projectId: project.id, content: entries[i], date: dates[i], authorId: ownerId },
       });
       updates++;
     }
