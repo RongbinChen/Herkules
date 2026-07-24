@@ -349,6 +349,37 @@ export default function VisitReportModal({ report, customers = [], currentUserId
             </div>
           )}
 
+          {/* Structured tables (AI-extracted, read-only) */}
+          {tables.length > 0 && (
+            <div className="space-y-3">
+              {tables.map((t, ti) => (
+                <div key={ti}>
+                  {t.title && <div className="mb-1 text-xs font-bold text-slate-600">{t.title}</div>}
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          {(t.columns || []).map((col, ci) => (
+                            <th key={ci} className="whitespace-nowrap border-b border-slate-200 px-2.5 py-1.5 text-left font-semibold text-slate-600">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(t.rows || []).map((row, ri) => (
+                          <tr key={ri} className="even:bg-slate-50/50">
+                            {row.map((cell, ci) => (
+                              <td key={ci} className="border-b border-slate-100 px-2.5 py-1.5 text-slate-700">{cell}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>
 
