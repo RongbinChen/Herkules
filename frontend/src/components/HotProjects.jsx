@@ -11,10 +11,11 @@ const CATEGORIES = [
   { key: 'OPEN', label: 'Open Projects' },
   { key: 'POTENTIAL', label: 'Potential Projects' },
 ]
+// Priority legend from the WAV sheet itself: "1 - high, 2 - mid time, 3 - offer done".
 const PRIORITY = {
-  1: { label: '1 · High', cls: 'bg-red-50 text-red-600 ring-red-200' },
-  2: { label: '2 · Mid', cls: 'bg-amber-50 text-amber-600 ring-amber-200' },
-  3: { label: '3 · Offer done', cls: 'bg-emerald-50 text-emerald-600 ring-emerald-200' },
+  1: { label: '1 · High', hint: '高优先级，紧密跟进', cls: 'bg-red-50 text-red-600 ring-red-200' },
+  2: { label: '2 · Mid time', hint: '中期跟进（项目节奏不急）', cls: 'bg-amber-50 text-amber-600 ring-amber-200' },
+  3: { label: '3 · Offer done', hint: '已报价，等待结果', cls: 'bg-emerald-50 text-emerald-600 ring-emerald-200' },
 }
 
 const fmtDate = (d) => {
@@ -212,7 +213,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
             {p.sortNo != null && <span className="text-xs font-bold text-slate-300">#{p.sortNo}</span>}
             <span className="font-semibold text-slate-800">{p.customer}</span>
             {p.visibility === 'PRIVATE' && <span title="仅负责人+管理员可见">🔒</span>}
-            {pr && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
+            {pr && <span title={pr.hint} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
             {(p.customerRef || p.customerId) && (
               <button
                 onClick={(e) => { e.stopPropagation(); navigate(`/customers/${p.customerRef?.id || p.customerId}?from=hotprojects`) }}
