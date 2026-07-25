@@ -11,6 +11,7 @@ const SYSTEM = `你是 Herkules(重型机床/轧辊磨床)中国销售团队的�
   "title": "报告标题（客户名 + 主题/日期，简洁）",
   "summary": "一句话摘要",
   "visitDate": "实际拜访日期 YYYY-MM-DD（从原文提取，如报头 Date of Visit 或正文提到的会面日期）；找不到填 null",
+  "customerName": "被拜访的客户公司名（报头 Company 或正文，保留原文写法）；找不到填 null",
   "content": {
     "meta": {
       "recipients": "报告收件人（To），逗号分隔；无则 null",
@@ -117,6 +118,7 @@ export async function structureVisitReport(rawNotes, { customerName = '', projec
     // Actual date of visit extracted from the source (e.g. the docx header) —
     // the form's default is "today", which is wrong for imported reports.
     visitDate: /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.visitDate || '')) ? parsed.visitDate : null,
+    customerName: pick(parsed.customerName),
     content: {
       meta: {
         recipients: pick(m.recipients),

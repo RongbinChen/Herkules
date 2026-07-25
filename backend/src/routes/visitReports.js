@@ -68,6 +68,30 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Conservative customer matching for AI-extracted company names: normalize
+// (case/punctuation/common suffixes/parentheticals) and require a UNIQUE
+// contains-match either way — ambiguous or missing → null (leave unlinked).
+function normalizeCompany(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[（(][^）)]*[）)]/g, ' ') // drop parenthetical qualifiers e.g. "(Shanghai)"
+    .replace(/[.,()（）\-–—&]/g, ' ')
+    .replace(/\b(co|ltd|co ltd|company|limited|gmbh|inc|corp|corporation)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function matchCustomerByName(name) {
+  const target = normalizeCompany(name);
+  if (!target || target.length < 3) return null;
+  const customers = await prisma.customer.findMany({ select: { id: true, name: true } });
+  const hits = customers.filter((c) => {
+    const cn = normalizeCompany(c.name);
+    return cn && (cn.includes(target) || target.includes(cn));
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
 // Convert an uploaded .docx buffer to plain text via pandoc (same toolchain as export).
 async function docxToText(buffer) {
   const stamp = `${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}`;
@@ -132,7 +156,14 @@ router.post('/generate', upload.fields([{ name: 'images', maxCount: 10 }, { name
     const { customerName, projectName } = await contextFor(
       customerId ? parseInt(customerId) : null, threadKey || null);
     const draft = await structureVisitReport(combined, { customerName, projectName, visitDate });
-    res.json({ ...draft, rawNotes: combined });
+
+    // Match the AI-extracted company against the Customers module — only a
+    // unique hit auto-links; otherwise the picker stays empty for manual choice.
+    let customerMatch = null;
+    if (!customerId && draft.customerName) {
+      customerMatch = await matchCustomerByName(draft.customerName);
+    }
+    res.json({ ...draft, customerMatch, rawNotes: combined });
   } catch (error) {
     if (error.isDeepSeek || error.isGemini) return res.status(502).json({ error: error.message });
     console.error('Error generating visit report:', error);

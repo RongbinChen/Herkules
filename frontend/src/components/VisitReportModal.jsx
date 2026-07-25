@@ -86,10 +86,13 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
         title: data.title || f.title,
         // Prefer the visit date extracted from the source over the "today" default.
         visitDate: data.visitDate || f.visitDate,
+        // Auto-link the customer the AI matched — only if none was chosen yet.
+        customerId: f.customerId || data.customerMatch?.id || '',
         summary: data.summary || '',
         content: data.content || {},
         rawNotes: data.rawNotes || f.rawNotes,
       }))
+      if (!form.customerId && data.customerMatch) setCustQuery(data.customerMatch.name)
     } catch (e) {
       setErr(e.response?.data?.error || t.errGenerateFailed)
     } finally { setGenerating(false) }
