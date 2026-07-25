@@ -326,7 +326,7 @@ export default function BidTrackingBoard() {
           <div className="py-16 text-center text-sm text-slate-400">No matching projects</div>
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {threads.map((t) => <ThreadCard key={t.threadKey} thread={t} onSaved={onSaved} onCustomer={(cid) => navigate(`/customers/${cid}`)} />)}
+            {threads.map((t) => <ThreadCard key={t.threadKey} thread={t} onSaved={onSaved} onCustomer={(cid) => navigate(`/customers/${cid}?from=tracking`)} />)}
           </div>
         )}
       </div>

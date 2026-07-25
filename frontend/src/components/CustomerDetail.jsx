@@ -59,10 +59,16 @@ export default function CustomerDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  // Return to the map view when the user arrived via the map's "Details" link.
-  const cameFromMap = searchParams.get('from') === 'map'
-  const backTo = cameFromMap ? '/customers?view=map' : '/customers'
-  const backLabel = cameFromMap ? '← Back to map' : '← Customers'
+  // Back button follows where the user came from (?from=…), defaulting to the list.
+  const BACK_TARGETS = {
+    map: { to: '/customers?view=map', label: '← Back to map' },
+    hotprojects: { to: '/hotprojects', label: '← Hot Projects' },
+    tracking: { to: '/chinabidding/tracking', label: '← Project Tracking' },
+    search: { to: '/search', label: '← Search' },
+  }
+  const back = BACK_TARGETS[searchParams.get('from')] || { to: '/customers', label: '← Customers' }
+  const backTo = back.to
+  const backLabel = back.label
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 

@@ -215,7 +215,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
             {pr && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
             {(p.customerRef || p.customerId) && (
               <button
-                onClick={(e) => { e.stopPropagation(); navigate(`/customers/${p.customerRef?.id || p.customerId}`) }}
+                onClick={(e) => { e.stopPropagation(); navigate(`/customers/${p.customerRef?.id || p.customerId}?from=hotprojects`) }}
                 title={`Open customer: ${p.customerRef?.name || p.customer}`}
                 className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700 transition hover:bg-brand-100">
                 👤 Customer ↗
