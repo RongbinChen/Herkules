@@ -115,11 +115,12 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_events',
-      description: '查询团队日历日程（拜访、会议、出差等）。可按关键字和日期范围过滤。',
+      description: '查询团队日历日程（拜访、会议、出差等）。查"某人的日程"必须用 user 参数按人员过滤，不要把人名放进 q（q 只匹配标题/地点/描述）。',
       parameters: {
         type: 'object',
         properties: {
-          q: { type: 'string', description: '标题/地点关键字（可选）' },
+          q: { type: 'string', description: '标题/地点/描述关键字（可选，不要放人名）' },
+          user: { type: 'string', description: '按日程所属人过滤，人名或其一部分，如 Rongbin / Chen / Bao（可选）' },
           from: { type: 'string', description: '起始日期 YYYY-MM-DD（可选）' },
           to: { type: 'string', description: '结束日期 YYYY-MM-DD（可选）' },
         },
@@ -334,19 +335,25 @@ const impl = {
     }));
   },
 
-  async search_events({ q, from, to }) {
-    const where = {};
-    if (q) where.OR = [
-      { title: { contains: String(q), mode: 'insensitive' } },
-      { location: { contains: String(q), mode: 'insensitive' } },
-    ];
+  async search_events({ q, user, from, to }) {
+    const and = [];
+    if (q) and.push({
+      OR: [
+        { title: { contains: String(q), mode: 'insensitive' } },
+        { location: { contains: String(q), mode: 'insensitive' } },
+        { description: { contains: String(q), mode: 'insensitive' } },
+      ],
+    });
+    // "Rongbin 的日程" — filter by the owning user's name.
+    if (user) and.push({ user: { name: { contains: String(user), mode: 'insensitive' } } });
     if (from || to) {
-      where.start = {};
-      if (from) where.start.gte = new Date(`${from}T00:00:00+08:00`);
-      if (to) where.start.lte = new Date(`${to}T23:59:59+08:00`);
+      const start = {};
+      if (from) start.gte = new Date(`${from}T00:00:00+08:00`);
+      if (to) start.lte = new Date(`${to}T23:59:59+08:00`);
+      and.push({ start });
     }
     const rows = await prisma.event.findMany({
-      where, orderBy: { start: 'asc' }, take: 20,
+      where: and.length ? { AND: and } : {}, orderBy: { start: 'asc' }, take: 30,
       select: {
         id: true, title: true, start: true, end: true, location: true, category: true, status: true,
         user: { select: { name: true } }, customer: { select: { name: true } },
