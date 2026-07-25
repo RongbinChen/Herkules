@@ -321,15 +321,15 @@ export default function CommandSearch() {
                   </p>
                   <div className="space-y-2">
                     {results.type === 'customer' && results.results.map((c) => (
-                      <CustomerCard key={c.id} c={c} onOpen={() => navigate(`/customers/${c.id}`)} />
+                      <CustomerCard key={c.id} c={c} onOpen={() => navigate(`/customers/${c.id}?from=search`)} />
                     ))}
                     {results.type === 'project' && results.results.map((p) => (
                       <ProjectCard key={p.threadKey} p={p} onOpen={() => navigate('/chinabidding/tracking')}
-                        onCustomer={(cid) => navigate(`/customers/${cid}`)} />
+                        onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)} />
                     ))}
                     {results.type === 'report' && results.results.map((r) => (
                       <ReportCard key={r.id} r={r} onOpen={() => navigate('/visit-reports')}
-                        onCustomer={(cid) => navigate(`/customers/${cid}`)}
+                        onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)}
                         onDownload={() => downloadReport(r)} downloading={downloading === r.id} />
                     ))}
                   </div>
