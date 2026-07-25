@@ -90,6 +90,7 @@ router.post('/', async (req, res) => {
         processor: b.processor || null,
         ownerId: b.ownerId ? parseInt(b.ownerId) : req.user.userId, // default: creator owns it
         forwardedOn: b.forwardedOn || null,
+        machineType: b.machineType || null,
         requirements: b.requirements || null,
         deadline: b.deadline ? new Date(b.deadline) : null,
         priority: b.priority ? parseInt(b.priority) : null,
@@ -121,6 +122,7 @@ router.put('/:id', async (req, res) => {
         ...(b.processor !== undefined ? { processor: b.processor || null } : {}),
         ...(b.ownerId !== undefined ? { ownerId: b.ownerId ? parseInt(b.ownerId) : null } : {}),
         ...(b.forwardedOn !== undefined ? { forwardedOn: b.forwardedOn || null } : {}),
+        ...(b.machineType !== undefined ? { machineType: b.machineType || null } : {}),
         ...(b.requirements !== undefined ? { requirements: b.requirements || null } : {}),
         ...(b.deadline !== undefined ? { deadline: b.deadline ? new Date(b.deadline) : null } : {}),
         ...(b.priority !== undefined ? { priority: b.priority ? parseInt(b.priority) : null } : {}),

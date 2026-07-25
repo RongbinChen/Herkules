@@ -328,7 +328,7 @@ const impl = {
     });
     return rows.map((p) => ({
       id: p.id, category: p.category, customer: p.customer, processor: p.processor,
-      priority: p.priority, deadline: p.deadline,
+      machineType: p.machineType, priority: p.priority, deadline: p.deadline,
       requirements: (p.requirements || '').slice(0, 200),
       latestUpdates: p.updates.map((u) => ({ date: u.date, by: u.author?.name, content: u.content.slice(0, 300) })),
     }));

@@ -48,6 +48,7 @@ model HotProject {
   ownerId       Int? // system user owning this record (visibility + edit rights)
   owner         User?                @relation("HotProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   forwardedOn   String?
+  machineType   String? // ProfiMill / ProfiTurn / P/PR / K/KR / T / free text
   requirements  String? // Requirements / Technical Remarks / Machine Selection
   deadline      DateTime? // Deadline for Submission
   priority      Int? // 1 high, 2 mid-time, 3 offer done
