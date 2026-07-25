@@ -38,6 +38,7 @@ export default function VisitReportModal({ report, customers = [], currentUserId
     status: report?.status || 'DRAFT',
   }))
   const [photos, setPhotos] = useState([])
+  const [docFile, setDocFile] = useState(null) // .docx to auto-import
   const [generating, setGenerating] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -75,7 +76,7 @@ export default function VisitReportModal({ report, customers = [], currentUserId
   }
 
   const generate = async () => {
-    if (!form.rawNotes.trim() && photos.length === 0) { setErr('请先填写随手记或上传照片'); return }
+    if (!form.rawNotes.trim() && photos.length === 0 && !docFile) { setErr('请先填写随手记、上传 Word 文档或照片'); return }
     setErr(''); setGenerating(true)
     try {
       const fd = new FormData()
@@ -83,6 +84,7 @@ export default function VisitReportModal({ report, customers = [], currentUserId
       if (form.customerId) fd.append('customerId', form.customerId)
       if (form.visitDate) fd.append('visitDate', form.visitDate)
       photos.forEach((p) => fd.append('images', p))
+      if (docFile) fd.append('document', docFile)
       const { data } = await visitReportsAPI.generate(fd)
       setForm((f) => ({
         ...f,
@@ -268,7 +270,18 @@ export default function VisitReportModal({ report, customers = [], currentUserId
                   ＋ 照片
                   <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setPhotos([...photos, ...Array.from(e.target.files)])} />
                 </label>
+                <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                  ＋ Word 文档
+                  <input type="file" accept=".docx" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) setDocFile(f); e.target.value = '' }} />
+                </label>
                 {photos.length > 0 && <span className="text-xs text-slate-500">{photos.length} 张照片</span>}
+                {docFile && (
+                  <span className="flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">
+                    📄 {docFile.name.length > 24 ? docFile.name.slice(0, 24) + '…' : docFile.name}
+                    <button type="button" onClick={() => setDocFile(null)} className="text-brand-400 hover:text-rose-500">✕</button>
+                  </span>
+                )}
                 <Button size="sm" onClick={generate} disabled={generating} className="ml-auto">
                   {generating ? 'AI 整理中…（约 10-30s）' : '✦ AI 生成报告'}
                 </Button>
