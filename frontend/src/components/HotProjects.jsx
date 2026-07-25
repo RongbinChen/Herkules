@@ -11,6 +11,7 @@ const CATEGORIES = [
   { key: 'OPEN', label: 'Open Projects' },
   { key: 'POTENTIAL', label: 'Potential Projects' },
 ]
+const MACHINE_TYPES = ['ProfiMill', 'ProfiTurn', 'P/PR', 'K/KR', 'T']
 // Priority legend from the WAV sheet itself: "1 - high, 2 - mid time, 3 - offer done".
 const PRIORITY = {
   1: { label: '1 · High', hint: '高优先级，紧密跟进', cls: 'bg-red-50 text-red-600 ring-red-200' },
@@ -39,6 +40,7 @@ function ProjectModal({ project, category, onClose, onSaved }) {
     dateOfReceipt: fmtDate(project?.dateOfReceipt),
     processor: project?.processor || '',
     forwardedOn: project?.forwardedOn || '',
+    machineType: project?.machineType || '',
     requirements: project?.requirements || '',
     deadline: fmtDate(project?.deadline),
     priority: project?.priority || '',
@@ -47,6 +49,10 @@ function ProjectModal({ project, category, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  // Machine Type: preset dropdown or free custom text.
+  const [machineCustom, setMachineCustom] = useState(
+    () => !!project?.machineType && !MACHINE_TYPES.includes(project.machineType)
+  )
 
   // Searchable link into the Customers module. Typing keeps the free text and
   // clears the link; picking a suggestion sets both name + customerId.
@@ -136,6 +142,26 @@ function ProjectModal({ project, category, onClose, onSaved }) {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">
+              Machine Type
+              <select
+                value={machineCustom ? '__custom' : (MACHINE_TYPES.includes(form.machineType) ? form.machineType : '')}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v === '__custom') { setMachineCustom(true); setForm((f) => ({ ...f, machineType: '' })) }
+                  else { setMachineCustom(false); setForm((f) => ({ ...f, machineType: v })) }
+                }}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">—</option>
+                {MACHINE_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
+                <option value="__custom">Custom…（自定义）</option>
+              </select>
+              {machineCustom && (
+                <Input value={form.machineType} onChange={set('machineType')}
+                  placeholder="Enter machine type" className="mt-1.5" autoFocus />
+              )}
+            </label>
+            <label className="text-xs font-semibold text-slate-600">
               Processor（负责人）
               <Input value={form.processor} onChange={set('processor')} placeholder="e.g. Chen / Bao" className="mt-1" />
             </label>
@@ -220,6 +246,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
             <span className="font-semibold text-slate-800">{p.customer}</span>
             {p.visibility === 'PRIVATE' && <span title="仅负责人+管理员可见">🔒</span>}
             {pr && <span title={pr.hint} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
+            {p.machineType && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{p.machineType}</span>}
             {(p.customerRef || p.customerId) && (
               <button
                 onClick={(e) => { e.stopPropagation(); navigate(`/customers/${p.customerRef?.id || p.customerId}?from=hotprojects`) }}
