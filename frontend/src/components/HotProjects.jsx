@@ -23,6 +23,12 @@ const fmtDate = (d) => {
   try { return new Date(d).toISOString().slice(0, 10) } catch { return '' }
 }
 
+// The date badge already shows when an update happened — drop the redundant
+// "Updated on June 16, 2026:" prefix from the displayed text (DB keeps the
+// original verbatim). Only applied when the entry actually has a date.
+const stripUpdatedOn = (s) =>
+  String(s || '').replace(/^Updated\s+on\s+[A-Za-z]+\.?\s*\d{1,2}(?:st|nd|rd|th)?(?:[,\s]+\d{4})?\s*[:：]?\s*/i, '').trim()
+
 // ── Create / edit modal ──────────────────────────────────────────────────────
 function ProjectModal({ project, category, onClose, onSaved }) {
   const isNew = !project
@@ -270,7 +276,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
                           className="text-slate-300 hover:text-rose-500">✕</button>
                       )}
                     </div>
-                    <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{u.content}</p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{u.date ? (stripUpdatedOn(u.content) || u.content) : u.content}</p>
                   </li>
                 ))}
               </ol>
