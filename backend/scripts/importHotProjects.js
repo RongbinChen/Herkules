@@ -77,8 +77,12 @@ const splitUpdates = (status) => {
   return parts.map((p) => p.trim()).filter(Boolean);
 };
 
-function rowsOf(sheet, headerRowIdx) {
+// Auto-detect the header row (the one whose 2nd cell is "Customer") — its
+// position differs between file versions (row 0 vs row 3).
+function rowsOf(sheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const headerRowIdx = rows.findIndex((r) => String(r[1] || '').trim().toLowerCase() === 'customer');
+  if (headerRowIdx === -1) return [];
   return rows.slice(headerRowIdx + 1).filter((r) => String(r[1] || '').trim()); //需要 Customer 列非空
 }
 
@@ -130,11 +134,11 @@ async function main() {
   const open = wb.Sheets['Enquiry - Open Projects'];
   const potential = wb.Sheets['Potential Projects'];
   if (open) {
-    const res = await importSheet(rowsOf(open, 3), 'OPEN', createdById);
+    const res = await importSheet(rowsOf(open), 'OPEN', createdById);
     console.log(`OPEN: ${res.projects} projects, ${res.updates} updates`);
   }
   if (potential) {
-    const res = await importSheet(rowsOf(potential, 0), 'POTENTIAL', createdById);
+    const res = await importSheet(rowsOf(potential), 'POTENTIAL', createdById);
     console.log(`POTENTIAL: ${res.projects} projects, ${res.updates} updates`);
   }
 }
