@@ -286,9 +286,9 @@ export default function CustomerDetail() {
                   <li key={p.linkId} className="rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
                     <div className="flex items-start justify-between gap-2">
                       <button
-                        onClick={() => navigate('/chinabidding/tracking')}
+                        onClick={() => navigate(`/chinabidding?q=${encodeURIComponent(p.threadKey)}`)}
                         className="min-w-0 flex-1 text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
-                        title="Open project tracking"
+                        title="View announcements for this project"
                       >
                         {p.projectName}
                       </button>
@@ -310,9 +310,6 @@ export default function CustomerDetail() {
                         <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">
                           Due {fmt(p.deadline).slice(0, 10)}
                         </span>
-                      )}
-                      {p.sourceUrl && (
-                        <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">Source↗</a>
                       )}
                     </div>
                   </li>
