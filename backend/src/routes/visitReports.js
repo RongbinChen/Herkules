@@ -68,12 +68,45 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Convert an uploaded .docx buffer to plain text via pandoc (same toolchain as export).
+async function docxToText(buffer) {
+  const stamp = `${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}`;
+  const inPath = join(tmpdir(), `vr-in-${stamp}.docx`);
+  const outPath = join(tmpdir(), `vr-in-${stamp}.txt`);
+  try {
+    await writeFile(inPath, buffer);
+    await new Promise((resolve, reject) => {
+      execFile('pandoc', [inPath, '-f', 'docx', '-t', 'plain', '-o', outPath], (err) =>
+        err ? reject(err) : resolve());
+    });
+    return await readFile(outPath, 'utf8');
+  } finally {
+    unlink(inPath).catch(() => {});
+    unlink(outPath).catch(() => {});
+  }
+}
+
 // ── AI generate (does NOT save) ────────────────────────────────────────────────
-// multipart: images[] (optional photos) + rawNotes + customerId? + threadKey? + visitDate?
-router.post('/generate', upload.array('images', 10), async (req, res) => {
+// multipart: images[] (photos) + document (one .docx) + rawNotes + customerId? + threadKey? + visitDate?
+router.post('/generate', upload.fields([{ name: 'images', maxCount: 10 }, { name: 'document', maxCount: 1 }]), async (req, res) => {
   try {
     const { rawNotes = '', customerId, threadKey, visitDate } = req.body;
-    const files = (req.files || []).filter((f) => IMAGE_RE.test(f.originalname || '') || (f.mimetype || '').startsWith('image/'));
+    const files = (req.files?.images || []).filter((f) => IMAGE_RE.test(f.originalname || '') || (f.mimetype || '').startsWith('image/'));
+
+    // Optional Word document → plain text (auto-import an existing report).
+    let docText = '';
+    const doc = (req.files?.document || [])[0];
+    if (doc) {
+      if (!/\.docx$/i.test(doc.originalname || '')) {
+        return res.status(400).json({ error: '文档导入目前支持 .docx（Word 2007+）格式' });
+      }
+      try {
+        docText = (await docxToText(doc.buffer)).trim();
+      } catch (err) {
+        console.error('[visit-report] docx convert error:', err.message);
+        return res.status(422).json({ error: 'Word 文档解析失败，请确认文件未损坏' });
+      }
+    }
 
     // OCR each photo → fold into the notes fed to the model.
     let ocrText = '';
@@ -93,8 +126,8 @@ router.post('/generate', upload.array('images', 10), async (req, res) => {
       ocrText = parts.join('\n\n');
     }
 
-    const combined = [rawNotes.trim(), ocrText].filter(Boolean).join('\n\n');
-    if (!combined) return res.status(400).json({ error: '请至少提供文字随手记或一张照片' });
+    const combined = [rawNotes.trim(), docText, ocrText].filter(Boolean).join('\n\n');
+    if (!combined) return res.status(400).json({ error: '请至少提供文字随手记、Word 文档或一张照片' });
 
     const { customerName, projectName } = await contextFor(
       customerId ? parseInt(customerId) : null, threadKey || null);
