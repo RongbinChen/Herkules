@@ -27,6 +27,7 @@ const CATEGORY_LABELS = {
   BREAK: 'Final Negotiation',
   TRAINING: 'Project Execution',
   LEAVE: 'Holidays',
+  REMINDER: 'Reminder / Target',
 }
 
 const CATEGORY_COLORS = {
@@ -37,6 +38,7 @@ const CATEGORY_COLORS = {
   BREAK: '#dc2626',
   TRAINING: '#7c3aed',
   LEAVE: '#0891b2',
+  REMINDER: '#e11d48',
 }
 
 const EVENT_STATUS_LABELS = {
@@ -360,7 +362,7 @@ export default function CustomerDetail() {
               {visitReports.map((r) => (
                 <li key={r.id} className="rounded-xl border border-slate-200 p-3">
                   <button
-                    onClick={() => navigate('/visit-reports')}
+                    onClick={() => navigate(`/visit-reports/${r.id}`)}
                     className="text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
                   >
                     {r.title}

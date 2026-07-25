@@ -328,7 +328,7 @@ export default function CommandSearch() {
                         onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)} />
                     ))}
                     {results.type === 'report' && results.results.map((r) => (
-                      <ReportCard key={r.id} r={r} onOpen={() => navigate('/visit-reports')}
+                      <ReportCard key={r.id} r={r} onOpen={() => navigate(`/visit-reports/${r.id}`)}
                         onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)}
                         onDownload={() => downloadReport(r)} downloading={downloading === r.id} />
                     ))}

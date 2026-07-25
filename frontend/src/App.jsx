@@ -13,6 +13,7 @@ import CustomerList from './components/CustomerList'
 import CustomerDetail from './components/CustomerDetail'
 import TripList from './components/TripList'
 import VisitReportList from './components/VisitReportList'
+import VisitReportDetail from './components/VisitReportDetail'
 import TripDetail from './components/TripDetail'
 import TripShare from './components/TripShare'
 import CustomerShare from './components/CustomerShare'
@@ -38,6 +39,7 @@ function App() {
       <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
       <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />
       <Route path="/visit-reports" element={token ? <VisitReportList /> : <Navigate to="/login" />} />
+      <Route path="/visit-reports/:id" element={token ? <VisitReportDetail /> : <Navigate to="/login" />} />
       <Route path="/trips/:id" element={token ? <TripDetail /> : <Navigate to="/login" />} />
       {/* Public — no login required */}
       <Route path="/trip/share/:token" element={<TripShare />} />

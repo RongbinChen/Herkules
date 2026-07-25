@@ -20,6 +20,7 @@ const CATEGORY_LABELS = {
   BREAK: 'Final Negotiation',
   TRAINING: 'Project Execution',
   LEAVE: 'Holidays',
+  REMINDER: 'Reminder / Target',
 }
 
 const FIXED_USER_COLOR_THEMES = {
@@ -55,6 +56,7 @@ const CATEGORY_COLORS = {
   BREAK: '#dc2626',
   TRAINING: '#7c3aed',
   LEAVE: '#6b7280',
+  REMINDER: '#e11d48',
 }
 
 const STATUS_LABELS = {

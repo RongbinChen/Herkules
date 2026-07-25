@@ -174,7 +174,35 @@ router.post('/', async (req, res) => {
         aiModel: aiModel || null,
       },
     });
-    res.status(201).json(report);
+
+    // AI-extracted targets with a concrete date → REMINDER calendar events for
+    // the author (create only — updates never duplicate reminders).
+    let remindersCreated = 0;
+    const targets = Array.isArray(content?.targets) ? content.targets : [];
+    for (const tg of targets) {
+      if (!tg?.title || !/^\d{4}-\d{2}-\d{2}$/.test(String(tg.date || ''))) continue;
+      try {
+        const start = new Date(`${tg.date}T09:00:00+08:00`);
+        await prisma.event.create({
+          data: {
+            title: `⏰ ${String(tg.title).slice(0, 180)}`,
+            description: [`From visit report: ${title}`, tg.note ? `“${tg.note}”` : null].filter(Boolean).join('\n'),
+            start,
+            end: new Date(start.getTime() + 60 * 60 * 1000),
+            allDay: true,
+            category: 'REMINDER',
+            color: '#e11d48',
+            customerId: report.customerId,
+            userId: req.user.userId,
+          },
+        });
+        remindersCreated++;
+      } catch (err) {
+        console.error('[visit-report] reminder event failed:', err.message);
+      }
+    }
+
+    res.status(201).json({ ...report, remindersCreated });
   } catch (error) {
     console.error('Error creating visit report:', error);
     res.status(500).json({ error: 'Failed to create visit report' });

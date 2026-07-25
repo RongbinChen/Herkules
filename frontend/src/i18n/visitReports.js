@@ -69,6 +69,13 @@ export const STRINGS = {
     importDocHint: 'Upload an existing .docx report and let AI structure it',
     aiSectionTitleImport: 'Upload a Word document → AI structuring',
     errNoDocument: 'Please upload a Word document first',
+    backToList: '← Visit Reports',
+    exportWord: '⬇ Word',
+    exportFailed: 'Failed to export Word document',
+    notFound: 'Report not found',
+    targetsTitle: 'Targets & Reminders',
+    targetNoDate: 'no date',
+    remindersCreated: (n) => `${n} calendar reminder${n === 1 ? '' : 's'} created from the report's targets.`,
   },
   zh: {
     pageTitle: '拜访报告',
@@ -126,6 +133,13 @@ export const STRINGS = {
     importDocHint: '上传已有的 .docx 报告，让 AI 自动整理',
     aiSectionTitleImport: '上传 Word 文档 → AI 整理',
     errNoDocument: '请先上传 Word 文档',
+    backToList: '← 拜访报告',
+    exportWord: '⬇ Word',
+    exportFailed: '导出 Word 失败',
+    notFound: '未找到该报告',
+    targetsTitle: '目标与提醒',
+    targetNoDate: '无日期',
+    remindersCreated: (n) => `已根据报告中的时间节点创建 ${n} 条日历提醒。`,
   },
 }
 

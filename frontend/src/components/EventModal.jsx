@@ -10,6 +10,7 @@ const CATEGORY_OPTIONS = [
   { value: 'BREAK', label: 'Final Negotiation' },
   { value: 'TRAINING', label: 'Project Execution' },
   { value: 'LEAVE', label: 'Holidays' },
+  { value: 'REMINDER', label: 'Reminder / Target' },
 ]
 
 const STATUS_OPTIONS = [
@@ -26,6 +27,7 @@ const CATEGORY_COLORS = {
   BREAK: '#dc2626',
   TRAINING: '#7c3aed',
   LEAVE: '#0891b2',
+  REMINDER: '#e11d48',
 }
 
 const FIXED_USER_COLOR_THEMES = {
