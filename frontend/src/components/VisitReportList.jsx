@@ -18,6 +18,9 @@ export default function VisitReportList() {
   const [mine, setMine] = useState(false)
   const [modal, setModal] = useState(null) // { report, createMode? } for view/edit/new
   const [chooserOpen, setChooserOpen] = useState(false)
+  // Display mode: card grid vs. detailed table. Persisted.
+  const [view, setView] = useState(() => localStorage.getItem('vrView') || 'cards')
+  const pickView = (v) => { setView(v); localStorage.setItem('vrView', v) }
 
   const load = async () => {
     setLoading(true)
@@ -62,8 +65,8 @@ export default function VisitReportList() {
           </div>
         </div>
 
-        {/* Filter */}
-        <div className="mb-4 flex items-center gap-1.5">
+        {/* Filter + view toggle */}
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
           {[{ k: false, l: t.filterAll }, { k: true, l: t.filterMine }].map((f) => (
             <button key={String(f.k)} onClick={() => setMine(f.k)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition ${mine === f.k ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
@@ -71,6 +74,14 @@ export default function VisitReportList() {
             </button>
           ))}
           <span className="ml-2 text-xs text-slate-400">{t.countReports(reports.length)}</span>
+          <div className="ml-auto flex overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-semibold shadow-sm">
+            {[{ k: 'cards', l: `▦ ${t.viewCards}` }, { k: 'list', l: `☰ ${t.viewList}` }].map((o) => (
+              <button key={o.k} onClick={() => pickView(o.k)}
+                className={`px-3 py-1.5 transition ${view === o.k ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                {o.l}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* List */}
@@ -80,7 +91,7 @@ export default function VisitReportList() {
           <Card className="py-16 text-center text-sm text-slate-400">
             {t.emptyState} <button onClick={() => setChooserOpen(true)} className="font-semibold text-brand-600 hover:underline">{t.createOne}</button>
           </Card>
-        ) : (
+        ) : view === 'cards' ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {reports.map((r) => (
               <Card key={r.id} as="button" hover onClick={() => openReport(r.id)}
@@ -97,6 +108,38 @@ export default function VisitReportList() {
                 </div>
               </Card>
             ))}
+          </div>
+        ) : (
+          /* Detailed list: table with full columns; horizontal scroll on small screens */
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-2.5">{t.colDate}</th>
+                  <th className="px-4 py-2.5">{t.colTitle}</th>
+                  <th className="whitespace-nowrap px-4 py-2.5">{t.colCustomer}</th>
+                  <th className="whitespace-nowrap px-4 py-2.5">{t.colAuthor}</th>
+                  <th className="whitespace-nowrap px-4 py-2.5">{t.colStatus}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <tr key={r.id} onClick={() => openReport(r.id)}
+                    className="cursor-pointer border-t border-slate-100 transition hover:bg-brand-50/40">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{fmtDate(r.visitDate)}</td>
+                    <td className="min-w-[240px] px-4 py-3">
+                      <div className="font-semibold text-slate-800">{r.title}</div>
+                      {r.summary && <div className="mt-0.5 line-clamp-1 text-xs text-slate-500">{r.summary}</div>}
+                    </td>
+                    <td className="max-w-[220px] truncate whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.customer?.name || '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.author?.name || t.authorFallback}</td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
