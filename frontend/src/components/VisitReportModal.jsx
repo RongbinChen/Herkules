@@ -84,6 +84,8 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
       setForm((f) => ({
         ...f,
         title: data.title || f.title,
+        // Prefer the visit date extracted from the source over the "today" default.
+        visitDate: data.visitDate || f.visitDate,
         summary: data.summary || '',
         content: data.content || {},
         rawNotes: data.rawNotes || f.rawNotes,
