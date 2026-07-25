@@ -32,11 +32,19 @@ const SYSTEM = `你是 Herkules(重型机床/轧辊磨床)中国销售团队的�
         "columns": ["列名1", "列名2"],
         "rows": [["单元格", "单元格"]]
       }
+    ],
+    "targets": [
+      {
+        "title": "要做的事/时间节点（含负责人，简短一句）",
+        "date": "YYYY-MM-DD 或 null",
+        "note": "原文依据（摘录）"
+      }
     ]
   }
 }
 
 要求：忠于原文，不臆造；找不到的字段填 null。meta 各字段找不到就填 null。原文里若有结构化表格（生产计划、产量目标、待办清单等）就整理进 tables 数组，每张表给 columns + rows；没有表格则 tables 填 []。
+targets：提取报告中所有带明确时间节点的行动/承诺/截止（如"6月30日前提交方案"、"预计10月发标"、"下周安排会议"）。date 规则：能确定到具体某天就用那天；只确定到月份就用该月最后一天；年份结合拜访日期推断；完全说不准（如"下半年"、"尽快"）就填 null。没有则 targets 填 []。
 最重要：保持原文语言与措辞。原文是英文，所有字段就用英文输出、尽量摘录原句；原文是中文就用中文。绝不要把英文内容翻译成中文，也不要改写润色。`;
 
 const SUMMARY_SYSTEM = `你是 Herkules 中国销售团队的拜访报告助手。为给定的拜访报告写一段简洁的概括总结：
@@ -91,6 +99,17 @@ export async function structureVisitReport(rawNotes, { customerName = '', projec
         }))
         .filter((t) => t.columns.length > 0 && t.rows.length > 0)
     : [];
+  // Action items with a concrete date become calendar reminders on save.
+  const targets = Array.isArray(c.targets)
+    ? c.targets
+        .map((tg) => ({
+          title: pick(tg?.title),
+          date: /^\d{4}-\d{2}-\d{2}$/.test(String(tg?.date || '')) ? tg.date : null,
+          note: pick(tg?.note),
+        }))
+        .filter((tg) => tg.title)
+        .slice(0, 10)
+    : [];
   return {
     title: pick(parsed.title) || (customerName ? `${customerName} 拜访报告` : '拜访报告'),
     summary: pick(parsed.summary),
@@ -111,6 +130,7 @@ export async function structureVisitReport(rawNotes, { customerName = '', projec
       nextSteps: pick(c.nextSteps),
       risks: pick(c.risks),
       tables,
+      targets,
     },
     aiModel: MODEL_LABEL,
   };

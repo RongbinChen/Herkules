@@ -364,6 +364,7 @@ enum ActivityCategory {
   BREAK
   TRAINING
   LEAVE
+  REMINDER // auto-created target/deadline reminders (e.g. from visit reports)
 }
 
 enum ActivityStatus {

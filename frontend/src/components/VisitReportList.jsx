@@ -29,12 +29,8 @@ export default function VisitReportList() {
   useEffect(() => { load() }, [mine])
   useEffect(() => { customersAPI.getAll().then((r) => setCustomers(r.data)).catch(() => {}) }, [])
 
-  const openReport = async (id) => {
-    try {
-      const { data } = await visitReportsAPI.get(id)
-      setModal({ report: data })
-    } catch { /* ignore */ }
-  }
+  // Reading happens on the dedicated detail page (roomier, esp. on desktop).
+  const openReport = (id) => navigate(`/visit-reports/${id}`)
 
   const onSaved = () => { setModal(null); load() }
 

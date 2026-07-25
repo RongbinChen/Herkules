@@ -5,7 +5,7 @@ import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
-export default function VisitReportModal({ report, createMode, customers = [], currentUserId, isAdmin, lang = 'en', onClose, onSaved }) {
+export default function VisitReportModal({ report, createMode, startEditing = false, customers = [], currentUserId, isAdmin, lang = 'en', onClose, onSaved }) {
   const t = STRINGS[lang]
   const SECTIONS = SECTIONS_I18N.map((s) => ({ key: s.key, label: s[lang] }))
   const META_FIELDS = META_FIELDS_I18N.map((m) => ({ key: m.key, label: m[lang] }))
@@ -18,7 +18,7 @@ export default function VisitReportModal({ report, createMode, customers = [], c
   const isManualCreate = isNew && createMode === 'manual'
   const isImportCreate = isNew && createMode === 'import'
   const canEdit = isNew || report?.canEdit || report?.author?.id === currentUserId || isAdmin
-  const [editing, setEditing] = useState(isNew)
+  const [editing, setEditing] = useState(isNew || startEditing)
   const [form, setForm] = useState(() => ({
     title: report?.title || '',
     visitDate: (report?.visitDate ? new Date(report.visitDate).toISOString() : '').slice(0, 10) || todayISO(),
@@ -125,8 +125,13 @@ export default function VisitReportModal({ report, createMode, customers = [], c
     setErr(''); setSaving(true)
     try {
       const payload = { ...form, status: status || form.status, customerId: form.customerId || null }
-      if (isNew) await visitReportsAPI.create(payload)
-      else await visitReportsAPI.update(report.id, payload)
+      if (isNew) {
+        const { data } = await visitReportsAPI.create(payload)
+        // Dated targets became calendar reminders server-side — tell the user.
+        if (data?.remindersCreated > 0) window.alert(t.remindersCreated(data.remindersCreated))
+      } else {
+        await visitReportsAPI.update(report.id, payload)
+      }
       onSaved()
     } catch (e) {
       setErr(e.response?.data?.error || t.errSaveFailed)
