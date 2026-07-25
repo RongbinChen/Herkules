@@ -78,7 +78,8 @@ function BidProjectList() {
   const [filters, setFilters] = useState({
     biddingType: searchParams.get('biddingType') || '',
     bidStage: searchParams.get('bidStage') || '',
-    keyword: '',
+    // Deep link (?q=…) — DB-side keyword filter, e.g. a project code from a customer page.
+    keyword: searchParams.get('q') || '',
     status: searchParams.get('status') || '',
     recent: searchParams.get('recent') || '',
     equipmentType: searchParams.get('equipmentType') || '',
@@ -642,6 +643,7 @@ function BidProjectList() {
                 Filter
               </button>
               {[
+                { key: 'keyword',       label: 'Keyword',   value: filters.keyword,       params: ['q'] },
                 { key: 'equipmentType', label: 'Equipment', value: filters.equipmentType, params: ['equipmentType'] },
                 { key: 'purchaser',     label: 'Purchaser', value: filters.purchaser,     params: ['purchaser'] },
                 { key: 'region',        label: 'Region',    value: filters.region,        params: ['region'] },
