@@ -76,6 +76,13 @@ export const STRINGS = {
     targetsTitle: 'Targets & Reminders',
     targetNoDate: 'no date',
     remindersCreated: (n) => `${n} calendar reminder${n === 1 ? '' : 's'} created from the report's targets.`,
+    viewCards: 'Cards',
+    viewList: 'List',
+    colDate: 'Date',
+    colTitle: 'Title',
+    colCustomer: 'Customer',
+    colAuthor: 'Author',
+    colStatus: 'Status',
   },
   zh: {
     pageTitle: '拜访报告',
@@ -140,6 +147,13 @@ export const STRINGS = {
     targetsTitle: '目标与提醒',
     targetNoDate: '无日期',
     remindersCreated: (n) => `已根据报告中的时间节点创建 ${n} 条日历提醒。`,
+    viewCards: '卡片',
+    viewList: '列表',
+    colDate: '日期',
+    colTitle: '标题',
+    colCustomer: '客户',
+    colAuthor: '作者',
+    colStatus: '状态',
   },
 }
 
