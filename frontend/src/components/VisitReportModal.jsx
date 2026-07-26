@@ -129,7 +129,15 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     if (!form.title.trim()) { setErr(t.errTitleRequired); return }
     setErr(''); setSaving(true)
     try {
-      const payload = { ...form, status: status || form.status, customerId: form.customerId || null }
+      // Typing a name without clicking a suggestion leaves customerId empty even
+      // though the field looks filled — auto-link when the text exactly matches
+      // an existing customer so the report doesn't silently save unlinked.
+      let cid = form.customerId
+      if (!cid && custQuery.trim()) {
+        const hit = custList.find((c) => c.name.trim().toLowerCase() === custQuery.trim().toLowerCase())
+        if (hit) cid = hit.id
+      }
+      const payload = { ...form, status: status || form.status, customerId: cid || null }
       if (isNew) {
         const { data } = await visitReportsAPI.create(payload)
         // Dated targets became calendar reminders server-side — tell the user.
@@ -221,7 +229,14 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
               <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => set('visitDate', e.target.value)} className="mt-1 min-w-0 max-w-full appearance-none" />
             </label>
             <div className="text-xs font-semibold text-slate-600">
-              {t.customer}
+              <div className="flex items-center justify-between">
+                <span>{t.customer}</span>
+                {custQuery.trim() && (
+                  form.customerId
+                    ? <span className="text-[10px] font-bold text-emerald-600">{t.linked}</span>
+                    : <span className="text-[10px] font-normal text-amber-600">{t.notLinked}</span>
+                )}
+              </div>
               <div className="relative mt-1">
                 <Input
                   value={custQuery}
