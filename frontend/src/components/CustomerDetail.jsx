@@ -223,8 +223,8 @@ export default function CustomerDetail() {
           )}
         </div>
 
-        {/* Visit history timeline */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        {/* Visit history timeline — min-w-0 so long content can't stretch the grid column */}
+        <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-bold text-slate-800">Activity history</h2>
             <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{events.length}</span>
@@ -266,15 +266,15 @@ export default function CustomerDetail() {
                         <span className="absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-white bg-rose-500" />
                         <button
                           onClick={() => navigate(`/visit-reports/${it.rid}`)}
-                          className="text-left text-sm font-bold text-slate-800 hover:text-brand-600"
+                          className="block w-full min-w-0 break-words text-left text-sm font-bold text-slate-800 hover:text-brand-600"
                         >
                           📝 From visit report: <span className="underline decoration-slate-300 underline-offset-2">{reportTitle(it.rid)}</span> ↗
                         </button>
-                        <ul className="mt-2 space-y-1.5 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                        <ul className="mt-2 min-w-0 space-y-1.5 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
                           {it.evs.map((ev) => (
-                            <li key={ev.id} className="flex flex-wrap items-center gap-2 text-sm">
+                            <li key={ev.id} className="flex min-w-0 items-center gap-2 text-sm">
                               <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">{fmt(ev.start).slice(0, 10)}</span>
-                              <span className="min-w-0 flex-1 truncate text-slate-700" title={noteOf(ev)}>{ev.title.replace(/^⏰\s*/, '')}</span>
+                              <span className="min-w-0 flex-1 truncate text-slate-700" title={`${ev.title.replace(/^⏰\s*/, '')} — ${noteOf(ev)}`}>{ev.title.replace(/^⏰\s*/, '')}</span>
                               <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${ev.status === 'DONE' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                                 {EVENT_STATUS_LABELS[ev.status] || ev.status}
                               </span>
