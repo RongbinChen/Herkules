@@ -272,10 +272,17 @@ export default function CustomerDetail() {
                         </button>
                         <ul className="mt-2 min-w-0 space-y-1.5 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
                           {it.evs.map((ev) => (
-                            <li key={ev.id} className="flex min-w-0 items-center gap-2 text-sm">
-                              <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">{fmt(ev.start).slice(0, 10)}</span>
-                              <span className="min-w-0 flex-1 truncate text-slate-700" title={`${ev.title.replace(/^⏰\s*/, '')} — ${noteOf(ev)}`}>{ev.title.replace(/^⏰\s*/, '')}</span>
-                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${ev.status === 'DONE' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                            // Mobile: date + status on one line, full wrapping title below.
+                            // Desktop (sm+): single row date | truncated title | status.
+                            <li key={ev.id} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+                              <span className="order-1 shrink-0 rounded bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">{fmt(ev.start).slice(0, 10)}</span>
+                              <span
+                                className="order-3 w-full min-w-0 break-words text-slate-700 sm:order-2 sm:w-auto sm:flex-1 sm:truncate"
+                                title={`${ev.title.replace(/^⏰\s*/, '')} — ${noteOf(ev)}`}
+                              >
+                                {ev.title.replace(/^⏰\s*/, '')}
+                              </span>
+                              <span className={`order-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold sm:order-3 ${ev.status === 'DONE' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                                 {EVENT_STATUS_LABELS[ev.status] || ev.status}
                               </span>
                             </li>
