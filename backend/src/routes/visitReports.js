@@ -261,6 +261,15 @@ router.put('/:id', async (req, res) => {
         ...(status !== undefined ? { status: status === 'FINAL' ? 'FINAL' : 'DRAFT' } : {}),
       },
     });
+    // Keep this report's auto-created reminders in sync with its customer link —
+    // otherwise reminders created before the customer was picked stay orphaned
+    // and never show up in the customer's activity history.
+    if (customerId !== undefined) {
+      await prisma.event.updateMany({
+        where: { visitReportId: report.id },
+        data: { customerId: report.customerId },
+      });
+    }
     res.json(report);
   } catch (error) {
     console.error('Error updating visit report:', error);
