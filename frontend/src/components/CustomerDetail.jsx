@@ -255,9 +255,17 @@ export default function CustomerDetail() {
                     </div>
                     <p className="mt-1 font-semibold text-slate-800">{ev.title}</p>
                     {ev.description && <p className="mt-0.5 text-sm text-slate-500">{ev.description}</p>}
-                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-400">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-slate-400">
                       {ev.user?.name && <span>By {ev.user.name}</span>}
                       {ev.location && <span>@ {ev.location}</span>}
+                      {ev.visitReportId && (
+                        <button
+                          onClick={() => navigate(`/visit-reports/${ev.visitReportId}`)}
+                          className="font-semibold text-brand-600 hover:underline"
+                        >
+                          📝 View report ↗
+                        </button>
+                      )}
                     </div>
                   </li>
                 )
