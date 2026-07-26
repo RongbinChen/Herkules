@@ -198,7 +198,12 @@ export default function CustomerList() {
         if (!hit) return false
       }
       if (q) {
-        const hay = [c.name, c.contactName, c.contactPhone, c.address, c.email]
+        // Name/contact search only — address keywords belong to the location
+        // filter below (otherwise "south" pulls in every "South Road" address).
+        const contactBits = Array.isArray(c.contacts)
+          ? c.contacts.flatMap((p) => [p?.name, p?.phone, p?.email])
+          : []
+        const hay = [c.name, c.contactName, c.contactPhone, c.email, ...contactBits]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -355,7 +360,7 @@ export default function CustomerList() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, contact, phone, address..."
+          placeholder="Search name / contact / phone… (address → location filter below)"
           className="min-w-[240px] flex-1 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 outline-none transition focus:border-brand-500"
         />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls}>
