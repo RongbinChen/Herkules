@@ -224,6 +224,7 @@ router.post('/', async (req, res) => {
             category: 'REMINDER',
             color: '#e11d48',
             customerId: report.customerId,
+            visitReportId: report.id, // clickable back-link to the source report
             userId: req.user.userId,
           },
         });

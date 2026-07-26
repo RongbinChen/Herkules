@@ -96,6 +96,9 @@ model Event {
   customer    Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   agentId     Int?
   agent       Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  // Auto-created reminders link back to their source visit report.
+  visitReportId Int?
+  visitReport   VisitReport?   @relation(fields: [visitReportId], references: [id], onDelete: SetNull)
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -159,6 +162,7 @@ model VisitReport {
   attachments Json?             // 附件元信息 [{ name, kind }]
   status      VisitReportStatus @default(DRAFT)
   aiModel     String?
+  reminderEvents Event[] // calendar reminders auto-created from this report's targets
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
