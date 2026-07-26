@@ -222,6 +222,66 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// ── Due reminders (owner-driven resolution) ──────────────────────────────────
+// Auto-created report reminders should be resolved by their owner, not by the
+// system: list the asking user's PLANNED reminders due within 7 days (incl.
+// overdue) so the dashboard can prompt: done / postpone / delete.
+router.get('/due-reminders', authenticateToken, async (req, res) => {
+  try {
+    const soon = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    const rows = await prisma.event.findMany({
+      where: {
+        userId: req.user.userId,
+        category: 'REMINDER',
+        status: 'PLANNED',
+        start: { lte: soon },
+      },
+      orderBy: { start: 'asc' },
+      include: { customer: { select: { id: true, name: true } } },
+    });
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch due reminders' });
+  }
+});
+
+// Resolve one reminder: {action: 'done' | 'postpone' | 'delete', newDate?: 'YYYY-MM-DD'}
+router.post('/due-reminders/:id/resolve', authenticateToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const ev = await prisma.event.findUnique({ where: { id } });
+    if (!ev) return res.status(404).json({ error: 'Not found' });
+    if (ev.userId !== req.user.userId && req.user.isAdmin !== true) {
+      return res.status(403).json({ error: 'Only the owner or an admin can resolve this reminder' });
+    }
+    const { action, newDate } = req.body || {};
+    if (action === 'done') {
+      const updated = await prisma.event.update({ where: { id }, data: { status: 'DONE' } });
+      return res.json(updated);
+    }
+    if (action === 'postpone') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(newDate || ''))) {
+        return res.status(400).json({ error: 'newDate (YYYY-MM-DD) is required for postpone' });
+      }
+      const start = new Date(`${newDate}T09:00:00+08:00`);
+      const updated = await prisma.event.update({
+        where: { id },
+        data: { start, end: new Date(start.getTime() + 3600e3), status: 'PLANNED' },
+      });
+      return res.json(updated);
+    }
+    if (action === 'delete') {
+      await prisma.event.delete({ where: { id } });
+      return res.status(204).end();
+    }
+    res.status(400).json({ error: 'action must be done | postpone | delete' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to resolve reminder' });
+  }
+});
+
 // Create event
 router.post('/', authenticateToken, async (req, res) => {
   try {
