@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { eventsAPI } from '../api/api'
 import { Button, Card } from './ui'
 
 const MODULES = [
@@ -47,9 +49,63 @@ const MODULES = [
   },
 ]
 
+// One due reminder row with owner actions: done / postpone / delete.
+function ReminderRow({ ev, onResolved }) {
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const [pickDate, setPickDate] = useState(false)
+  const overdue = new Date(ev.start) < new Date()
+
+  const resolve = async (action, newDate) => {
+    setBusy(true)
+    try {
+      await eventsAPI.resolveReminder(ev.id, { action, newDate })
+      onResolved(ev.id)
+    } catch {
+      window.alert('Action failed, please retry')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
+      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${overdue ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+        {new Date(ev.start).toISOString().slice(0, 10)}{overdue ? ' · overdue' : ''}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={ev.title}>
+        {ev.title}
+        {ev.customer && <span className="ml-2 text-xs text-slate-400">🤝 {ev.customer.name}</span>}
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5">
+        {ev.visitReportId && (
+          <button onClick={() => navigate(`/visit-reports/${ev.visitReportId}`)}
+            className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50">📝</button>
+        )}
+        <button disabled={busy} onClick={() => resolve('done')}
+          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">✓ Done</button>
+        {!pickDate ? (
+          <button disabled={busy} onClick={() => setPickDate(true)}
+            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">↻ Postpone</button>
+        ) : (
+          <input type="date" autoFocus disabled={busy}
+            className="rounded-lg border border-slate-300 px-2 py-0.5 text-xs"
+            onChange={(e) => { if (e.target.value) resolve('postpone', e.target.value) }}
+            onBlur={() => setPickDate(false)} />
+        )}
+        <button disabled={busy} onClick={() => { if (window.confirm('Delete this reminder?')) resolve('delete') }}
+          className="rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50 disabled:opacity-50">🗑</button>
+      </span>
+    </li>
+  )
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const [reminders, setReminders] = useState([])
+  useEffect(() => {
+    eventsAPI.dueReminders().then((r) => setReminders(r.data || [])).catch(() => {})
+  }, [])
+  const onResolved = (id) => setReminders((prev) => prev.filter((e) => e.id !== id))
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -82,6 +138,19 @@ export default function Dashboard() {
           </h1>
           <p className="mt-1 text-sm text-slate-500">Select a module to get started.</p>
         </div>
+
+        {/* Due reminders — owner decides: done / postpone / delete */}
+        {reminders.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/50 px-4 py-3 shadow-sm sm:mb-8">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-800">⏰ Reminders due — your decision</h2>
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">{reminders.length}</span>
+            </div>
+            <ul className="divide-y divide-amber-100">
+              {reminders.map((ev) => <ReminderRow key={ev.id} ev={ev} onResolved={onResolved} />)}
+            </ul>
+          </div>
+        )}
 
         {/* Unified command search launcher */}
         <button

@@ -47,6 +47,9 @@ export const eventsAPI = {
   update: (id, data) => api.put(`/events/${id}`, data),
   delete: (id) => api.delete(`/events/${id}`),
   exportIcs: () => api.get('/events/export.ics', { responseType: 'blob' }),
+  // Owner-driven resolution of auto-created report reminders.
+  dueReminders: () => api.get('/events/due-reminders'),
+  resolveReminder: (id, data) => api.post(`/events/due-reminders/${id}/resolve`, data),
 }
 
 export const customersAPI = {
