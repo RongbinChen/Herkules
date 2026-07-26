@@ -319,8 +319,9 @@ export default function CustomerDetail() {
         </div>
       </div>
 
-      {/* Cross-reference hub: tender projects + visit reports */}
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+      {/* Cross-reference hub — same column ratio as the grid above so the
+          vertical gutters line up */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr,1.3fr]">
         {/* Related tender projects */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
