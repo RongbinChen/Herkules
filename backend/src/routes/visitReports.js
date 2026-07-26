@@ -222,6 +222,9 @@ router.post('/', async (req, res) => {
             end: new Date(start.getTime() + 60 * 60 * 1000),
             allDay: true,
             category: 'REMINDER',
+            // Past-dated targets (e.g. from importing an old report) are history,
+            // not plans — mark them DONE so they don't read as open to-dos.
+            status: start < new Date() ? 'DONE' : 'PLANNED',
             color: '#e11d48',
             customerId: report.customerId,
             visitReportId: report.id, // clickable back-link to the source report
