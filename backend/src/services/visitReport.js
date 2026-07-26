@@ -14,6 +14,7 @@ const SYSTEM = `你是 Herkules(重型机床/轧辊磨床)中国销售团队的�
   "customerName": "被拜访的客户公司名（报头 Company 或正文，保留原文写法）；找不到填 null",
   "content": {
     "meta": {
+      "author": "报告撰写人（报头 From 字段的人名）；无则 null",
       "recipients": "报告收件人（To），逗号分隔；无则 null",
       "cc": "抄送（CC），逗号分隔；无则 null",
       "location": "拜访地点 / 城市国家",
@@ -121,6 +122,7 @@ export async function structureVisitReport(rawNotes, { customerName = '', projec
     customerName: pick(parsed.customerName),
     content: {
       meta: {
+        author: pick(m.author),
         recipients: pick(m.recipients),
         cc: pick(m.cc),
         location: pick(m.location),

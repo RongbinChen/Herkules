@@ -185,18 +185,34 @@ router.post('/summarize', async (req, res) => {
   }
 });
 
+// Resolve the report's actual author (the docx "From" field) to a system user.
+// Unique case-insensitive contains-match; otherwise fall back to the uploader.
+async function resolveAuthorId(content, fallbackId) {
+  const name = String(content?.meta?.author || '').trim().toLowerCase();
+  if (name.length < 3) return fallbackId;
+  const users = await prisma.user.findMany({ select: { id: true, name: true } });
+  const hits = users.filter((u) => {
+    const un = u.name.trim().toLowerCase();
+    return un.includes(name) || name.includes(un);
+  });
+  return hits.length === 1 ? hits[0].id : fallbackId;
+}
+
 // ── Create ─────────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
     const { title, visitDate, customerId, threadKey, summary, content, rawNotes, attachments, status, aiModel } = req.body;
     if (!title || !visitDate) return res.status(400).json({ error: 'title 与 visitDate 必填' });
+    // Imported reports are often written by someone else — credit the "From"
+    // person when they map to a system user (uploader stays the fallback).
+    const authorId = await resolveAuthorId(content, req.user.userId);
     const report = await prisma.visitReport.create({
       data: {
         title,
         visitDate: new Date(visitDate),
         customerId: customerId ? parseInt(customerId) : null,
         threadKey: threadKey || null,
-        authorId: req.user.userId,
+        authorId,
         summary: summary || null,
         content: content ?? null,
         rawNotes: rawNotes || null,
@@ -229,7 +245,7 @@ router.post('/', async (req, res) => {
             color: '#e11d48',
             customerId: report.customerId,
             visitReportId: report.id, // clickable back-link to the source report
-            userId: req.user.userId,
+            userId: authorId, // reminders belong to the report's actual author
           },
         });
         remindersCreated++;
