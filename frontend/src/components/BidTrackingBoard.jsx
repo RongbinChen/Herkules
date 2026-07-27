@@ -13,8 +13,8 @@ const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.key, i]));
 
 // ── Our manual bid status (sales-team view) ──
 const OUR_STATUSES = [
-  // Watching is the "we're actively monitoring this" flag — make it pop.
-  { key: 'WATCHING', en: '👁 Watching', cls: 'bg-violet-600 text-white shadow-sm' },
+  // Watching stands out from the other statuses via its own tint, same soft style.
+  { key: 'WATCHING', en: 'Watching', cls: 'bg-violet-100 text-violet-700' },
   { key: 'PREPARING', en: 'Preparing', cls: 'bg-amber-100 text-amber-700' },
   { key: 'SUBMITTED', en: 'Submitted', cls: 'bg-brand-100 text-brand-700' },
   { key: 'SHORTLISTED', en: 'Shortlisted', cls: 'bg-indigo-100 text-indigo-700' },
