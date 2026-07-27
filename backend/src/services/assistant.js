@@ -54,11 +54,17 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_projects',
-      description: '搜索招投标项目线索（ChinaBidding 抓取的招标/变更/评标/中标公告，按项目归并）。可按项目名/采购单位/编号/设备类型关键字。返回阶段、截止日、中标方、我方跟踪状态、关联客户。',
+      description: '搜索招投标项目线索（ChinaBidding 抓取的招标/变更/评标/中标公告，按项目归并）。可按项目名/采购单位/编号/设备类型关键字，和/或按我方跟踪状态过滤。返回阶段、截止日、中标方、我方跟踪状态、关联客户。用户问"watching 列表/我们在盯的/投了的项目"时必须用 ourStatus 过滤而不是把状态词当关键字。',
       parameters: {
         type: 'object',
-        properties: { q: { type: 'string', description: '关键字' } },
-        required: ['q'],
+        properties: {
+          q: { type: 'string', description: '关键字（可选，可与 ourStatus 组合）' },
+          ourStatus: {
+            type: 'string',
+            enum: ['WATCHING', 'PREPARING', 'SUBMITTED', 'SHORTLISTED', 'WON', 'LOST', 'ABANDONED'],
+            description: '我方跟踪状态过滤：WATCHING=在盯，PREPARING=备标，SUBMITTED=已投标，SHORTLISTED=入围，WON=中标，LOST=落标，ABANDONED=放弃',
+          },
+        },
       },
     },
   },
@@ -248,11 +254,15 @@ const impl = {
     };
   },
 
-  async search_projects({ q }, ctx) {
-    const threads = await listProjectThreads(ctx.userId, { q: String(q || '') });
+  async search_projects({ q, ourStatus }, ctx) {
+    const threads = await listProjectThreads(ctx.userId, {
+      q: String(q || '') || null,
+      ourStatus: ourStatus || null,
+    });
     return threads.slice(0, 10).map((t) => ({
       threadKey: t.threadKey, projectName: t.projectName, purchaser: t.purchaser,
       region: t.region, equipmentType: t.equipmentType, stage: t.currentStage,
+      retendered: t.retendered || false,
       deadline: t.deadline, winner: t.winner, winningPrice: t.winningPrice,
       ourStatus: t.tracking?.ourStatus || null,
       customers: (t.customers || []).map((c) => c.name),
