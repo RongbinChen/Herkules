@@ -140,6 +140,16 @@ export function infoClassToStage(infoClass = '') {
 // Furthest stage reached, for aggregating a project thread's current stage.
 export const STAGE_ORDER = { TENDER: 0, CHANGE: 1, EVALUATION: 2, AWARD: 3 };
 
+// The site suffixes project names with the tender round: "...(1)", "...(2)".
+// No suffix → round 1. Used to order same-day announcements (a round-1
+// cancellation and the round-2 re-tender are often published the same day)
+// and to detect re-tenders reliably.
+const ROUND_RE = /[（(](\d+)[)）]\s*$/;
+export const roundOf = (name) => {
+  const m = ROUND_RE.exec(name || '');
+  return m ? parseInt(m[1], 10) : 1;
+};
+
 // ── Competitor matching ──────────────────────────────────────────────────────
 let competitorCache = { list: null, loadedAt: 0 };
 
@@ -913,6 +923,11 @@ export async function getProjectThread(projectId) {
     where: { threadKey: project.threadKey },
     orderBy: { publishDate: 'asc' },
   });
+  // Same-day tie-break by tender round (title "(n)" suffix), then id.
+  thread.sort((a, b) =>
+    (new Date(a.publishDate || 0) - new Date(b.publishDate || 0)) ||
+    (roundOf(a.projectName) - roundOf(b.projectName)) ||
+    (a.id - b.id));
   return { project, thread };
 }
 
@@ -938,6 +953,15 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
     const key = p.threadKey || `p:${p.id}`; // ungrouped announcements stand alone
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(p);
+  }
+  // Chronological order with round as tie-breaker: on the same publish day the
+  // previous round's notices come before the next round's re-tender.
+  const msOf = (d) => (d ? new Date(d).getTime() : 0);
+  for (const arr of groups.values()) {
+    arr.sort((a, b) =>
+      (msOf(a.publishDate) - msOf(b.publishDate)) ||
+      (roundOf(a.projectName) - roundOf(b.projectName)) ||
+      (a.id - b.id));
   }
 
   const keys = [...groups.keys()];
@@ -976,16 +1000,21 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
   let threads = keys.map((key) => {
     const anns = groups.get(key);
     // Walk announcements chronologically. Stages only advance within one
-    // bidding round; a fresh TENDER published after later stages means the
-    // project was RE-TENDERED — the lifecycle restarts from Tender.
+    // bidding round; a higher round number (title "(n)" suffix) or a fresh
+    // TENDER after later stages means the project was RE-TENDERED — the
+    // lifecycle restarts.
     let currentStage = null;
     let currentOrder = -1;
     let cycleStart = 0; // index of the first announcement of the current round
+    let lastRound = 0;
     anns.forEach((a, i) => {
+      const r = roundOf(a.projectName);
+      const isNewRound = lastRound > 0 && r > lastRound;
+      if (r > lastRound) lastRound = r;
       const ord = a.bidStage ? (STAGE_ORDER[a.bidStage] ?? -1) : -1;
       if (ord === -1) return;
-      if (a.bidStage === 'TENDER' && currentOrder > STAGE_ORDER.TENDER) {
-        currentStage = 'TENDER'; currentOrder = STAGE_ORDER.TENDER; cycleStart = i;
+      if (isNewRound || (a.bidStage === 'TENDER' && currentOrder > STAGE_ORDER.TENDER)) {
+        currentStage = a.bidStage; currentOrder = ord; cycleStart = i;
       } else if (ord > currentOrder) { currentOrder = ord; currentStage = a.bidStage; }
     });
     const rep = anns[anns.length - 1]; // latest announcement is representative
@@ -1021,7 +1050,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       customers: [...linked, ...inferred],
       announcements: anns.map((a) => ({
         id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
-        publishDate: a.publishDate, sourceUrl: a.sourceUrl,
+        publishDate: a.publishDate, sourceUrl: a.sourceUrl, round: roundOf(a.projectName),
         winner: a.winner, winningPrice: a.winningPrice,
       })),
     };

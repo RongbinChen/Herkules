@@ -218,9 +218,12 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
 
         {showTimeline && (
           <ol className="mt-2 space-y-1.5 border-l-2 border-slate-100 pl-3">
-            {/* newest first */}
+            {/* newest first; same-day ties break by tender round then id */}
             {[...thread.announcements]
-              .sort((a, b) => new Date(b.publishDate || 0) - new Date(a.publishDate || 0))
+              .sort((a, b) =>
+                (new Date(b.publishDate || 0) - new Date(a.publishDate || 0)) ||
+                ((b.round || 1) - (a.round || 1)) ||
+                (b.id - a.id))
               .map((a) => (
               <li key={a.id} className="text-xs text-slate-600">
                 <span className="text-slate-400">{fmtDate(a.publishDate)}</span>{' '}
