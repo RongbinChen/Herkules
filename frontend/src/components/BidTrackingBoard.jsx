@@ -217,7 +217,10 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
 
         {showTimeline && (
           <ol className="mt-2 space-y-1.5 border-l-2 border-slate-100 pl-3">
-            {thread.announcements.map((a) => (
+            {/* newest first */}
+            {[...thread.announcements]
+              .sort((a, b) => new Date(b.publishDate || 0) - new Date(a.publishDate || 0))
+              .map((a) => (
               <li key={a.id} className="text-xs text-slate-600">
                 <span className="text-slate-400">{fmtDate(a.publishDate)}</span>{' '}
                 <span className="font-semibold text-slate-700">{a.infoClass || a.bidStage || 'Notice'}</span>
