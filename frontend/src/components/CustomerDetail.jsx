@@ -413,10 +413,26 @@ export default function CustomerDetail() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-bold text-slate-800">Visit reports</h2>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{visitReports.length}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate(`/visit-reports?new=1&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`)}
+                className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
+              >
+                ＋ Add report
+              </button>
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{visitReports.length}</span>
+            </div>
           </div>
           {visitReports.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No visit reports for this customer yet.</p>
+            <p className="py-8 text-center text-sm text-slate-400">
+              No visit reports for this customer yet.{' '}
+              <button
+                onClick={() => navigate(`/visit-reports?new=1&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`)}
+                className="font-semibold text-brand-600 hover:underline"
+              >
+                Add one
+              </button>
+            </p>
           ) : (
             <ul className="space-y-2">
               {visitReports.map((r) => (

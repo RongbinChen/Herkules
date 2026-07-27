@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Card, Badge } from './ui'
@@ -18,6 +18,18 @@ export default function VisitReportList() {
   const [mine, setMine] = useState(false)
   const [modal, setModal] = useState(null) // { report, createMode? } for view/edit/new
   const [chooserOpen, setChooserOpen] = useState(false)
+  // Deep link from a customer page: /visit-reports?new=1&customerId=..&customerName=..
+  // opens the create chooser with that customer pre-linked.
+  const [searchParams] = useSearchParams()
+  const [initialCustomer, setInitialCustomer] = useState(null)
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    const cid = parseInt(searchParams.get('customerId'), 10)
+    const cname = searchParams.get('customerName') || ''
+    if (cid) setInitialCustomer({ id: cid, name: cname })
+    setChooserOpen(true)
+    navigate('/visit-reports', { replace: true }) // don't reopen on refresh
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // Display mode: card grid vs. detailed table. Persisted.
   const [view, setView] = useState(() => localStorage.getItem('vrView') || 'cards')
   const pickView = (v) => { setView(v); localStorage.setItem('vrView', v) }
@@ -184,6 +196,7 @@ export default function VisitReportList() {
         <VisitReportModal
           report={modal.report}
           createMode={modal.createMode}
+          initialCustomer={modal.report ? null : initialCustomer}
           customers={customers}
           currentUserId={user?.id}
           isAdmin={user?.isAdmin}
