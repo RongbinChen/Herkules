@@ -32,7 +32,11 @@ export const KEYWORD_JOBS = [
 export const COMPETITOR_KEYWORDS = ['georg', 'pomini', 'INNSE', 'DANIELI', 'waldrich'];
 
 // All tender types: New Tenders + Tender Changes + Evaluation Results + Tender Awards
-const ALL_TENDER_CODES = 'e0905 e0906 e0907 e0908';
+// 2026-07: DO NOT restrict by infoClassCodes — the site's filter is unreliable
+// (verified: two same-class "New Tenders" notices for one project, the filtered
+// search returned only one). We fetch all classes and read the type from the
+// list-page label instead; relevance filtering handles the noise.
+const ALL_TENDER_CODES = '';
 
 const SEARCH_URL = `${BASE_URL}/info/search.htm`;
 
@@ -310,16 +314,8 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
       update: createData,
     });
   } catch (err) {
-    // projectCode is @unique; a different sourceUrl can derive a colliding code
-    // (or an old projectCode-keyed row predates the sourceUrl dedup). Update that
-    // row instead of dropping the item to a swallowed P2002.
-    if (err.code === 'P2002' && project.projectCode) {
-      await prisma.bidProject.update({
-        where: { projectCode: project.projectCode },
-        data: createData,
-      });
-      return { isNew: false, isUpdated: true };
-    }
+    // projectCode is no longer unique (re-tenders share it) — identity is
+    // sourceUrl alone; anything else here is a real error worth surfacing.
     throw err;
   }
 

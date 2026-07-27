@@ -31,11 +31,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Scrape jobs don't survive a process restart — any RUNNING row at boot is a
-// zombie that would spin the UI forever. Close them out.
+// Scrape jobs don't survive a process restart — but only reap rows that are
+// clearly stale (>4h): utility scripts import this module too, and an
+// unconditional sweep would mark the main server's live job as failed.
 prisma.scrapeJob
   .updateMany({
-    where: { status: 'RUNNING' },
+    where: { status: 'RUNNING', startedAt: { lt: new Date(Date.now() - 4 * 3600 * 1000) } },
     data: { status: 'FAILED', error: 'interrupted by server restart', finishedAt: new Date() },
   })
   .then((r) => { if (r.count) console.log(`[chinabidding] closed ${r.count} zombie RUNNING job(s) on boot`); })
