@@ -478,11 +478,12 @@ router.get('/projects/:id/thread', async (req, res) => {
 // Aggregated project threads: auto-derived stage + team's manual tracking layer.
 router.get('/threads', async (req, res) => {
   try {
-    const { ourStatus, stage, q } = req.query;
+    const { ourStatus, stage, q, myCustomers } = req.query;
     const threads = await listProjectThreads(req.user.userId, {
       ourStatus: ourStatus || null,
       stage: stage || null,
       q: q || null,
+      myCustomers: myCustomers === '1',
     });
     res.json(threads);
   } catch (error) {
