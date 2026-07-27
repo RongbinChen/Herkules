@@ -155,7 +155,17 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
 
         {/* Auto progress */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <StageProgress current={thread.currentStage} />
+          <div className="flex flex-wrap items-center gap-2">
+            <StageProgress current={thread.currentStage} />
+            {thread.retendered && (
+              <span
+                title="A new tender was published after a later stage — the lifecycle restarted"
+                className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+              >
+                ↻ Re-tendered
+              </span>
+            )}
+          </div>
           <span className="text-[11px] text-slate-400">Updated {fmtDate(thread.lastUpdate)}</span>
         </div>
 
