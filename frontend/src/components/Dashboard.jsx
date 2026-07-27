@@ -26,10 +26,12 @@ function WatchingRow({ t }) {
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-left transition hover:bg-brand-50/50"
       >
         {/* Mobile: badges on line 1, full project name wraps on line 2; ≥sm: single truncated row */}
-        {stage && (
-          <span className={`order-1 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${stage.cls}`}>
+        {stage ? (
+          <span className={`order-1 min-w-[5.5rem] shrink-0 rounded px-1.5 py-0.5 text-center text-[11px] font-bold ${stage.cls}`}>
             {stage.en}{t.retendered ? ' ↻' : ''}
           </span>
+        ) : (
+          <span className="order-1 min-w-[5.5rem] shrink-0" aria-hidden="true" />
         )}
         <span className="order-3 w-full min-w-0 text-sm font-medium text-slate-700 sm:order-2 sm:w-auto sm:flex-1 sm:truncate" title={t.projectName}>
           {t.projectName}
