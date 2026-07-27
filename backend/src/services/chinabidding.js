@@ -975,14 +975,23 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
 
   let threads = keys.map((key) => {
     const anns = groups.get(key);
+    // Walk announcements chronologically. Stages only advance within one
+    // bidding round; a fresh TENDER published after later stages means the
+    // project was RE-TENDERED — the lifecycle restarts from Tender.
     let currentStage = null;
     let currentOrder = -1;
-    for (const a of anns) {
+    let cycleStart = 0; // index of the first announcement of the current round
+    anns.forEach((a, i) => {
       const ord = a.bidStage ? (STAGE_ORDER[a.bidStage] ?? -1) : -1;
-      if (ord > currentOrder) { currentOrder = ord; currentStage = a.bidStage; }
-    }
+      if (ord === -1) return;
+      if (a.bidStage === 'TENDER' && currentOrder > STAGE_ORDER.TENDER) {
+        currentStage = 'TENDER'; currentOrder = STAGE_ORDER.TENDER; cycleStart = i;
+      } else if (ord > currentOrder) { currentOrder = ord; currentStage = a.bidStage; }
+    });
     const rep = anns[anns.length - 1]; // latest announcement is representative
-    const winnerAnn = anns.find((a) => a.winner);
+    // Winner only counts within the current round — a pre-re-tender award is
+    // history (still visible in the timeline), not the project's current state.
+    const winnerAnn = anns.slice(cycleStart).find((a) => a.winner);
     const purchaser = rep.purchaser || anns.find((a) => a.purchaser)?.purchaser || null;
     // Confirmed links first; if the purchaser name uniquely matches a Customer
     // that isn't linked yet, surface it too (flagged inferred, display-only —
@@ -1002,6 +1011,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       budget: rep.budget || anns.find((a) => a.budget)?.budget || null,
       deadline: rep.deadline,
       currentStage,
+      retendered: cycleStart > 0,
       winner: winnerAnn?.winner || null,
       winningPrice: winnerAnn?.winningPrice || null,
       firstPublish: anns[0].publishDate,
