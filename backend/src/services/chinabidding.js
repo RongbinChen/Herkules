@@ -420,6 +420,29 @@ async function scrapeAllPages({ tradeClassCode = null, keyword = '', infoClassCo
 // landing on a still-running manual trigger) which would double-create
 // win/STATUS_CHANGE notifications.
 let dailyJobRunning = false;
+// Project codes the team actually cares about: tracked, customer-linked, or
+// followed threads. These get a per-code re-search in the daily job so their
+// threads stay complete even when a list-page sweep misses an announcement
+// (same-code re-tenders bit us in 2026-07 — see git history of this file).
+export async function getKeyProjectCodes(limit = 40) {
+  const [trackings, links, follows] = await Promise.all([
+    prisma.bidTracking.findMany({ select: { threadKey: true } }),
+    prisma.customerProjectLink.findMany({ select: { threadKey: true } }),
+    prisma.projectFollow.findMany({ select: { project: { select: { threadKey: true, projectCode: true } } } }),
+  ]);
+  const codes = new Set();
+  for (const t of trackings) if (t.threadKey) codes.add(t.threadKey);
+  for (const l of links) if (l.threadKey) codes.add(l.threadKey);
+  for (const f of follows) {
+    const p = f.project;
+    if (p?.projectCode) codes.add(p.projectCode);
+    else if (p?.threadKey) codes.add(p.threadKey);
+  }
+  const all = [...codes];
+  if (all.length > limit) console.log(`[chinabidding] key-thread refresh capped: ${all.length} codes → ${limit}`);
+  return all.slice(0, limit);
+}
+
 export async function runDailyJob(triggeredBy = null) {
   if (dailyJobRunning) {
     const running = await prisma.scrapeJob.findFirst({
@@ -527,6 +550,27 @@ export async function runDailyJob(triggeredBy = null) {
           failures.push(`saved search ${s.name}: ${err.message}`);
         }
         await sleep(3000);
+      }
+
+      // Integrity refresh: re-search each key project by its code so tracked/
+      // followed/customer-linked threads stay complete even if the sweeps
+      // above missed an announcement. searchAndSave skips known sourceUrls,
+      // so this is cheap when nothing changed.
+      try {
+        const keyCodes = await getKeyProjectCodes();
+        console.log(`[chinabidding] key-thread refresh: ${keyCodes.length} code(s)`);
+        for (const code of keyCodes) {
+          try {
+            await searchAndSave(code);
+          } catch (err) {
+            console.error(`[chinabidding] key-thread refresh "${code}" failed: ${err.message}`);
+            failures.push(`refresh ${code}: ${err.message}`);
+          }
+          await sleep(3000);
+        }
+      } catch (err) {
+        console.error(`[chinabidding] key-thread refresh failed: ${err.message}`);
+        failures.push(`key-thread refresh: ${err.message}`);
       }
 
       // Partial failures don't fail the run; FAILED only when nothing worked.
