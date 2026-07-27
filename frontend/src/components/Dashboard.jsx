@@ -134,6 +134,9 @@ function ReminderRow({ ev, onResolved }) {
             onChange={(e) => { if (e.target.value) resolve('postpone', e.target.value) }}
             onBlur={() => setPickDate(false)} />
         )}
+        <button disabled={busy} onClick={() => resolve('hold')}
+          title="Keep the reminder without a due date — it leaves this list but stays on record (on hold)"
+          className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">⏸ No timeframe</button>
         <button disabled={busy} onClick={() => { if (window.confirm('Delete this reminder?')) resolve('delete') }}
           className="rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-500 hover:bg-red-50 disabled:opacity-50">🗑</button>
       </span>
