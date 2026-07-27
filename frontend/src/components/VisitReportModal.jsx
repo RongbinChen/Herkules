@@ -5,7 +5,7 @@ import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
-export default function VisitReportModal({ report, createMode, startEditing = false, customers = [], currentUserId, isAdmin, lang = 'en', onClose, onSaved }) {
+export default function VisitReportModal({ report, createMode, startEditing = false, initialCustomer = null, customers = [], currentUserId, isAdmin, lang = 'en', onClose, onSaved }) {
   const t = STRINGS[lang]
   const SECTIONS = SECTIONS_I18N.map((s) => ({ key: s.key, label: s[lang] }))
   const META_FIELDS = META_FIELDS_I18N.map((m) => ({ key: m.key, label: m[lang] }))
@@ -22,7 +22,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const [form, setForm] = useState(() => ({
     title: report?.title || '',
     visitDate: (report?.visitDate ? new Date(report.visitDate).toISOString() : '').slice(0, 10) || todayISO(),
-    customerId: report?.customer?.id || report?.customerId || '',
+    customerId: report?.customer?.id || report?.customerId || initialCustomer?.id || '',
     summary: report?.summary || '',
     content: report?.content || {},
     rawNotes: report?.rawNotes || '',
@@ -36,7 +36,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const [err, setErr] = useState('')
   // Searchable customer picker (477+ customers — a plain dropdown is unusable).
   const [custList, setCustList] = useState(customers)
-  const [custQuery, setCustQuery] = useState(report?.customer?.name || '')
+  const [custQuery, setCustQuery] = useState(report?.customer?.name || (!report && initialCustomer?.name) || '')
   const [custOpen, setCustOpen] = useState(false)
   const [creatingCust, setCreatingCust] = useState(false)
   const q = custQuery.trim().toLowerCase()
