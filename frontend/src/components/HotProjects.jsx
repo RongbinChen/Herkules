@@ -208,6 +208,8 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
   const [note, setNote] = useState('')
   const [posting, setPosting] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [summary, setSummary] = useState('')
+  const [summarizing, setSummarizing] = useState(false)
   const pr = PRIORITY[p.priority]
   const canManage = isAdmin || p.ownerId === currentUserId
 
@@ -215,6 +217,20 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
     try { const { data } = await hotProjectsAPI.get(p.id); setDetail(data) } catch { /* noop */ }
   }
   const toggle = () => { const next = !open; setOpen(next); if (next && !detail) loadDetail() }
+
+  // Ephemeral AI digest of the update history (nothing is persisted).
+  const runSummary = async (e) => {
+    e.stopPropagation()
+    if (summarizing) return
+    if (!open) { setOpen(true); if (!detail) loadDetail() }
+    setSummarizing(true)
+    try {
+      const { data } = await hotProjectsAPI.summarize(p.id)
+      setSummary(data.summary || 'No updates to summarize yet.')
+    } catch (err) {
+      window.alert(err.response?.data?.error || 'AI summary failed, please retry')
+    } finally { setSummarizing(false) }
+  }
 
   const addNote = async () => {
     if (!note.trim() || posting) return
@@ -255,6 +271,15 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
                 👤 Customer ↗
               </button>
             )}
+            {(p._count?.updates ?? 0) > 0 && (
+              <button
+                onClick={runSummary}
+                disabled={summarizing}
+                title="AI digest of the status-update history"
+                className="rounded-full border border-brand-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50">
+                {summarizing ? '✦ Summarizing…' : '✦ AI Summary'}
+              </button>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
             {p.processor && <span>👤 {p.processor}</span>}
@@ -272,6 +297,15 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
       {/* Expanded detail */}
       {open && (
         <div className="space-y-4 border-t border-slate-100 px-4 pb-4 pt-3">
+          {summary && (
+            <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-3">
+              <div className="mb-1 flex items-center justify-between">
+                <h4 className="text-[11px] font-bold uppercase tracking-wide text-brand-600">✦ AI Summary</h4>
+                <button onClick={() => setSummary('')} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{summary}</p>
+            </div>
+          )}
           {p.requirements && (
             <div>
               <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Requirements / Machine Selection</h4>
