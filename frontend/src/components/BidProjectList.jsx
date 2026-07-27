@@ -213,20 +213,25 @@ function BidProjectList() {
     try {
       const { jobId } = await runDailyJob();
       setDailyStatus('Running…');
+      let settled = false;
       for (let i = 0; i < 120; i++) {
         await new Promise(r => setTimeout(r, 5000));
         const job = await getScrapeJob(jobId);
         if (job.status === 'DONE') {
-          setDailyStatus(`Done — ${job.itemsSaved} new projects`);
+          setDailyStatus(`Done — ${job.itemsSaved} new projects${job.error ? ' (some sub-jobs failed)' : ''}`);
           await fetchProjects();
           await loadUpdates();
+          settled = true;
           break;
         }
         if (job.status === 'FAILED') {
-          setDailyStatus('Failed: ' + (job.error || 'unknown error'));
+          setDailyStatus('Failed: ' + (job.error || 'unknown error').slice(0, 120));
+          settled = true;
           break;
         }
       }
+      // A full run can take >10 min — tell the user instead of spinning forever.
+      if (!settled) setDailyStatus('Still running in background — refresh the page later to see new items.');
     } catch (err) {
       setDailyStatus('Error: ' + err.message);
     } finally {

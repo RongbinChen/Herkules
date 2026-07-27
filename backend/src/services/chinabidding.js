@@ -70,7 +70,7 @@ async function getSession(forceRefresh = false) {
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
-async function fetchWithAuth(url, postBody = null, retryCount = 0) {
+async function fetchWithAuth(url, postBody = null, retryCount = 0, netRetry = 0) {
   const session = await getSession(retryCount > 0);
   const opts = {
     headers: { 'User-Agent': session.userAgent, Accept: 'text/html', Cookie: session.cookies },
@@ -80,8 +80,20 @@ async function fetchWithAuth(url, postBody = null, retryCount = 0) {
     opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
     opts.body = postBody;
   }
-  const res = await fetch(url, opts);
-  const text = await res.text();
+  let res, text;
+  try {
+    res = await fetch(url, opts);
+    text = await res.text();
+  } catch (err) {
+    // Transient network failure (connection reset / 'fetch failed') — the link
+    // to chinabidding.com is flaky from this host; back off and retry instead
+    // of letting one blip kill a whole scrape run.
+    if (netRetry < 3) {
+      await sleep([2000, 5000, 12000][netRetry]);
+      return fetchWithAuth(url, postBody, retryCount, netRetry + 1);
+    }
+    throw err;
+  }
   // Re-solve on anti-bot challenge or 403 (expired/blocked clearance).
   if ((isAntiBotChallenge(res.status, text) || res.status === 403 || text.includes('403 Forbidden')) && retryCount < 2) {
     invalidateSession();
@@ -438,21 +450,35 @@ export async function runDailyJob(triggeredBy = null) {
         throw probeErr;
       }
 
+      // Sub-jobs are isolated: one failing scrape (flaky network) must not kill
+      // the whole run — record it and keep going.
+      const failures = [];
+
       // Industry-based scrapes
       for (const { tradeClassCode, label } of INDUSTRY_JOBS) {
         console.log(`[chinabidding] scraping industry: ${label}`);
-        const r = await scrapeAllPages({ tradeClassCode });
-        console.log(`[chinabidding] ${label}: ${r.totalNew} new, ${r.pages} pages scanned`);
-        totalNew += r.totalNew;
+        try {
+          const r = await scrapeAllPages({ tradeClassCode });
+          console.log(`[chinabidding] ${label}: ${r.totalNew} new, ${r.pages} pages scanned`);
+          totalNew += r.totalNew;
+        } catch (err) {
+          console.error(`[chinabidding] industry "${label}" failed: ${err.message}`);
+          failures.push(`industry ${label}: ${err.message}`);
+        }
         await sleep(3000);
       }
 
       // Keyword-based scrapes
       for (const keyword of KEYWORD_JOBS) {
         console.log(`[chinabidding] scraping keyword: ${keyword}`);
-        const r = await scrapeAllPages({ keyword });
-        console.log(`[chinabidding] "${keyword}": ${r.totalNew} new, ${r.pages} pages scanned`);
-        totalNew += r.totalNew;
+        try {
+          const r = await scrapeAllPages({ keyword });
+          console.log(`[chinabidding] "${keyword}": ${r.totalNew} new, ${r.pages} pages scanned`);
+          totalNew += r.totalNew;
+        } catch (err) {
+          console.error(`[chinabidding] keyword "${keyword}" failed: ${err.message}`);
+          failures.push(`keyword ${keyword}: ${err.message}`);
+        }
         await sleep(3000);
       }
 
@@ -468,29 +494,46 @@ export async function runDailyJob(triggeredBy = null) {
       }
 
       // Check deadlines of followed projects (notify if within 3 days)
-      await checkDeadlines();
+      try {
+        await checkDeadlines();
+      } catch (err) {
+        console.error(`[chinabidding] checkDeadlines failed: ${err.message}`);
+        failures.push(`checkDeadlines: ${err.message}`);
+      }
 
       // Also run all active SavedSearches
       const savedSearches = await prisma.savedSearch.findMany({ where: { autoMonitor: true } });
       for (const s of savedSearches) {
         console.log(`[chinabidding] saved search: ${s.name} (${s.keyword})`);
-        const runStart = new Date();
-        const r = await scrapeAllPages({
-          keyword: s.keyword,
-          infoClassCodes: s.infoClassCode || ALL_TENDER_CODES,
-          ...(s.tradeClassCode ? { tradeClassCode: s.tradeClassCode } : {}),
-        });
-        await prisma.savedSearch.update({ where: { id: s.id }, data: { lastRunAt: new Date() } });
-        if (r.totalNew > 0) await notifySearchOwner(s, runStart);
-        totalNew += r.totalNew;
+        try {
+          const runStart = new Date();
+          const r = await scrapeAllPages({
+            keyword: s.keyword,
+            infoClassCodes: s.infoClassCode || ALL_TENDER_CODES,
+            ...(s.tradeClassCode ? { tradeClassCode: s.tradeClassCode } : {}),
+          });
+          await prisma.savedSearch.update({ where: { id: s.id }, data: { lastRunAt: new Date() } });
+          if (r.totalNew > 0) await notifySearchOwner(s, runStart);
+          totalNew += r.totalNew;
+        } catch (err) {
+          console.error(`[chinabidding] saved search "${s.name}" failed: ${err.message}`);
+          failures.push(`saved search ${s.name}: ${err.message}`);
+        }
         await sleep(3000);
       }
 
+      // Partial failures don't fail the run; FAILED only when nothing worked.
+      const allFailed = failures.length > 0 && totalNew === 0;
       await prisma.scrapeJob.update({
         where: { id: job.id },
-        data: { status: 'DONE', itemsSaved: totalNew, finishedAt: new Date() },
+        data: {
+          status: allFailed ? 'FAILED' : 'DONE',
+          itemsSaved: totalNew,
+          error: failures.length ? `partial failures (${failures.length}): ${failures.join(' | ')}`.slice(0, 2000) : null,
+          finishedAt: new Date(),
+        },
       });
-      console.log(`[chinabidding] daily job done: ${totalNew} new projects total`);
+      console.log(`[chinabidding] daily job done: ${totalNew} new projects total${failures.length ? `, ${failures.length} sub-jobs failed` : ''}`);
     } catch (err) {
       console.error('[chinabidding] daily job failed:', err.message);
       await prisma.scrapeJob.update({
