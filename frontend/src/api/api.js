@@ -100,6 +100,7 @@ export const hotProjectsAPI = {
   update: (id, data) => api.put(`/hotprojects/${id}`, data),
   delete: (id) => api.delete(`/hotprojects/${id}`),
   addUpdate: (id, data) => api.post(`/hotprojects/${id}/updates`, data),
+  summarize: (id) => api.post(`/hotprojects/${id}/summarize`),
   deleteUpdate: (id, updateId) => api.delete(`/hotprojects/${id}/updates/${updateId}`),
 }
 

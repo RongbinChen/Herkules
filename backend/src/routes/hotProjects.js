@@ -6,6 +6,7 @@
 import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { callDeepSeek } from '../services/deepseek.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -174,6 +175,50 @@ router.delete('/:id/updates/:updateId', async (req, res) => {
   } catch (error) {
     console.error('Error deleting hot project update:', error);
     res.status(500).json({ error: 'Failed to delete update' });
+  }
+});
+
+// ── AI summary of the status-update history (visibility-filtered, ephemeral) ──
+router.post('/:id/summarize', async (req, res) => {
+  try {
+    const project = await prisma.hotProject.findFirst({
+      where: { id: parseInt(req.params.id), ...visibleWhere(req.user) },
+      include: {
+        updates: { orderBy: [{ date: 'asc' }, { id: 'asc' }], include: { author: { select: { name: true } } } },
+        customerRef: { select: { name: true } },
+      },
+    });
+    if (!project) return res.status(404).json({ error: 'Not found' });
+    if (!project.updates.length) return res.json({ summary: '' });
+
+    const text = [
+      `Customer: ${project.customerRef?.name || project.customer || '-'}`,
+      `Requirements / machine: ${project.requirements || '-'}${project.machineType ? ` (${project.machineType})` : ''}`,
+      'Status updates, oldest first:',
+      ...project.updates.map((u) =>
+        `${u.date ? u.date.toISOString().slice(0, 10) : '(undated)'} [${u.author?.name || '-'}]: ${u.content}`),
+    ].join('\n');
+
+    // Match the summary's language to the updates (they're mostly English).
+    const cjk = (text.match(/[一-鿿]/g) || []).length;
+    const latin = (text.match(/[A-Za-z]/g) || []).length;
+    const directive = cjk > latin
+      ? '请用中文输出。'
+      : 'Write the summary in English (the updates are in English).';
+    const reply = await callDeepSeek(
+      [
+        {
+          role: 'system',
+          content: '你是销售团队助理。根据一个销售项目的跟进记录，输出简明现状总结：当前状态与阶段、关键进展/变化、竞争对手情况（如有）、下一步与时间点。3-5 句话或短要点，不要复述全部历史，只讲现在最有用的。',
+        },
+        { role: 'user', content: `${directive}\n\n${text.slice(0, 8000)}` },
+      ],
+      600,
+    );
+    res.json({ summary: String(reply || '').trim() });
+  } catch (error) {
+    console.error('Error summarizing hot project:', error);
+    res.status(500).json({ error: 'AI summary failed, please retry' });
   }
 });
 
