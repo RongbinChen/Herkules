@@ -245,7 +245,9 @@ model Agent {
 model BidProject {
   id          Int       @id @default(autoincrement())
   projectName String
-  projectCode String?   @unique
+  // NOT unique: re-tenders/multiple announcements of one project share the code
+  // (e.g. "...(1)" and "...(2)"); identity is sourceUrl, project grain is threadKey.
+  projectCode String?
   region      String?
   industry    String?
   biddingType BidType   @default(NEW)
@@ -274,6 +276,7 @@ model BidProject {
 
   @@index([threadKey])
   @@index([publishDate])
+  @@index([projectCode])
 }
 
 // 被追踪公司档案：本集团 / 竞争对手 / 关注公司
