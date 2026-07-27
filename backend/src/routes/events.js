@@ -271,11 +271,17 @@ router.post('/due-reminders/:id/resolve', authenticateToken, async (req, res) =>
       });
       return res.json(updated);
     }
+    if (action === 'hold') {
+      // "No timeframe": keep the reminder but shelve it — BLOCKED drops it
+      // from the due list without pretending it's done.
+      const updated = await prisma.event.update({ where: { id }, data: { status: 'BLOCKED' } });
+      return res.json(updated);
+    }
     if (action === 'delete') {
       await prisma.event.delete({ where: { id } });
       return res.status(204).end();
     }
-    res.status(400).json({ error: 'action must be done | postpone | delete' });
+    res.status(400).json({ error: 'action must be done | postpone | hold | delete' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to resolve reminder' });
