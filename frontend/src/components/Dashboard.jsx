@@ -2,7 +2,47 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { eventsAPI } from '../api/api'
+import { listProjectThreads } from '../api/chinabidding'
 import { Button, Card } from './ui'
+
+// Lifecycle stage → compact badge for the Watching panel.
+const WATCH_STAGES = {
+  TENDER: { en: 'Tender', cls: 'bg-sky-50 text-sky-600' },
+  CHANGE: { en: 'Change', cls: 'bg-slate-100 text-slate-500' },
+  EVALUATION: { en: 'Evaluation', cls: 'bg-indigo-50 text-indigo-600' },
+  AWARD: { en: 'Award', cls: 'bg-emerald-50 text-emerald-600' },
+}
+
+// One watched project row: stage, name, purchaser, deadline. Click → tracking board.
+function WatchingRow({ t }) {
+  const navigate = useNavigate()
+  const stage = WATCH_STAGES[t.currentStage] || null
+  const deadline = t.deadline ? new Date(t.deadline) : null
+  const overdue = deadline && deadline < new Date()
+  return (
+    <li>
+      <button
+        onClick={() => navigate(`/chinabidding/tracking?q=${encodeURIComponent(t.projectCode || t.projectName || '')}`)}
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-left transition hover:bg-brand-50/50"
+      >
+        {stage && (
+          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${stage.cls}`}>
+            {stage.en}{t.retendered ? ' ↻' : ''}
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={t.projectName}>
+          {t.projectName}
+          {t.purchaser && <span className="ml-2 hidden text-xs text-slate-400 sm:inline">{t.purchaser}</span>}
+        </span>
+        {deadline && (
+          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${overdue ? 'bg-slate-100 text-slate-400' : 'bg-amber-50 text-amber-600'}`}>
+            Deadline {deadline.toISOString().slice(0, 10)}
+          </span>
+        )}
+      </button>
+    </li>
+  )
+}
 
 const MODULES = [
   {
@@ -102,8 +142,10 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [reminders, setReminders] = useState([])
+  const [watching, setWatching] = useState([])
   useEffect(() => {
     eventsAPI.dueReminders().then((r) => setReminders(r.data || [])).catch(() => {})
+    listProjectThreads({ ourStatus: 'WATCHING' }).then((t) => setWatching(t || [])).catch(() => {})
   }, [])
   const onResolved = (id) => setReminders((prev) => prev.filter((e) => e.id !== id))
 
@@ -149,6 +191,30 @@ export default function Dashboard() {
             <ul className="divide-y divide-amber-100">
               {reminders.map((ev) => <ReminderRow key={ev.id} ev={ev} onResolved={onResolved} />)}
             </ul>
+          </div>
+        )}
+
+        {/* Watching projects — the bids we're actively monitoring, front and center */}
+        {watching.length > 0 && (
+          <div className="mb-6 rounded-2xl border-2 border-brand-200 bg-white px-4 py-3 shadow-sm sm:mb-8">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-800">
+                👁 Watching Projects
+                <span className="ml-2 rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-bold text-brand-700">{watching.length}</span>
+              </h2>
+              <button
+                onClick={() => navigate('/chinabidding/tracking?ourStatus=WATCHING')}
+                className="text-xs font-semibold text-brand-600 hover:underline"
+              >
+                View all →
+              </button>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {watching.slice(0, 5).map((t) => <WatchingRow key={t.threadKey} t={t} />)}
+            </ul>
+            {watching.length > 5 && (
+              <div className="pt-1 text-xs text-slate-400">+{watching.length - 5} more — View all</div>
+            )}
           </div>
         )}
 

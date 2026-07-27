@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listProjectThreads, saveBidTracking } from '../api/chinabidding';
 
 // ── Lifecycle stages (auto, derived from announcements) ──
@@ -236,14 +236,16 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
 
 export default function BidTrackingBoard() {
   const navigate = useNavigate();
+  // Deep-linkable filters: /chinabidding/tracking?ourStatus=WATCHING&q=...
+  const [searchParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [stage, setStage] = useState('');
-  const [ourStatus, setOurStatus] = useState('');
-  const [myCustomers, setMyCustomers] = useState(false);
-  const [q, setQ] = useState('');
-  const [qDebounced, setQDebounced] = useState('');
+  const [stage, setStage] = useState(searchParams.get('stage') || '');
+  const [ourStatus, setOurStatus] = useState(searchParams.get('ourStatus') || '');
+  const [myCustomers, setMyCustomers] = useState(searchParams.get('myCustomers') === '1');
+  const [q, setQ] = useState(searchParams.get('q') || '');
+  const [qDebounced, setQDebounced] = useState(searchParams.get('q') || '');
 
   useEffect(() => {
     const id = setTimeout(() => setQDebounced(q), 300);
