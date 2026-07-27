@@ -166,10 +166,14 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
               <button
                 key={c.id}
                 onClick={() => onCustomer(c.id)}
-                title="Open customer"
-                className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-100"
+                title={c.inferred ? 'Matched by purchaser name (not linked yet)' : 'Open customer'}
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition ${
+                  c.inferred
+                    ? 'border-dashed border-brand-300 bg-white text-brand-600 hover:bg-brand-50'
+                    : 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'
+                }`}
               >
-                👤 {c.name}
+                👤 {c.name}{c.inferred ? ' ≈' : ''}
               </button>
             ))}
           </div>
@@ -182,7 +186,7 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
               <span>🏆 Winner: <span className="font-semibold text-slate-800">{thread.winner}</span>
                 {thread.winningPrice ? `（${thread.winningPrice}）` : ''}</span>
             )}
-            {thread.budget && <span>Budget: {thread.budget}</span>}
+            {thread.budget && <span>Price of Bidding Documents: {thread.budget}</span>}
           </div>
         )}
 
@@ -227,6 +231,7 @@ export default function BidTrackingBoard() {
   const [error, setError] = useState('');
   const [stage, setStage] = useState('');
   const [ourStatus, setOurStatus] = useState('');
+  const [myCustomers, setMyCustomers] = useState(false);
   const [q, setQ] = useState('');
   const [qDebounced, setQDebounced] = useState('');
 
@@ -239,14 +244,14 @@ export default function BidTrackingBoard() {
     setLoading(true);
     setError('');
     try {
-      const data = await listProjectThreads({ stage, ourStatus, q: qDebounced });
+      const data = await listProjectThreads({ stage, ourStatus, q: qDebounced, myCustomers: myCustomers ? '1' : '' });
       setThreads(data);
     } catch (e) {
       setError(e.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [stage, ourStatus, qDebounced]);
+  }, [stage, ourStatus, qDebounced, myCustomers]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -303,6 +308,15 @@ export default function BidTrackingBoard() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setMyCustomers((v) => !v)}
+              title="Only projects whose purchaser is (or matches) a customer in the Customers module"
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                myCustomers ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              👤 My customers
+            </button>
             <select value={ourStatus} onChange={(e) => setOurStatus(e.target.value)}
               className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
               <option value="">Our status: All</option>

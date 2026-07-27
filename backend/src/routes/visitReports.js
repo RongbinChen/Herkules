@@ -9,6 +9,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { structureVisitReport, summarizeVisitReport } from '../services/visitReport.js';
 import { ocrImage, isGeminiConfigured } from '../services/gemini.js';
 import { reportToMarkdown } from '../services/visitReportExport.js';
+import { normalizeCompany } from '../services/companyName.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -69,18 +70,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // Conservative customer matching for AI-extracted company names: normalize
-// (case/punctuation/common suffixes/parentheticals) and require a UNIQUE
-// contains-match either way — ambiguous or missing → null (leave unlinked).
-function normalizeCompany(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/[（(][^）)]*[）)]/g, ' ') // drop parenthetical qualifiers e.g. "(Shanghai)"
-    .replace(/[.,()（）\-–—&]/g, ' ')
-    .replace(/\b(co|ltd|co ltd|company|limited|gmbh|inc|corp|corporation)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
+// via shared companyName helper and require a UNIQUE contains-match either
+// way — ambiguous or missing → null (leave unlinked).
 async function matchCustomerByName(name) {
   const target = normalizeCompany(name);
   if (!target || target.length < 3) return null;

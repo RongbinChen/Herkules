@@ -4,6 +4,7 @@ import { analyzeProject, generateMarketReport } from './deepseek.js';
 import { COMPETITOR_SEED } from '../data/competitors.js';
 import { sendMail } from './mailer.js';
 import { solveSession, SCRAPER_UA } from './browserSolver.js';
+import { normalizeCompany } from './companyName.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -921,7 +922,7 @@ export async function getProjectThread(projectId) {
 // the team's manual BidTracking record and whether the user follows the thread.
 const OUR_BID_STATUSES = ['WATCHING', 'PREPARING', 'SUBMITTED', 'SHORTLISTED', 'WON', 'LOST', 'ABANDONED'];
 
-export async function listProjectThreads(userId, { ourStatus = null, stage = null, q = null } = {}) {
+export async function listProjectThreads(userId, { ourStatus = null, stage = null, q = null, myCustomers = false } = {}) {
   const projects = await prisma.bidProject.findMany({
     orderBy: { publishDate: 'asc' },
     select: {
@@ -940,13 +941,14 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
   }
 
   const keys = [...groups.keys()];
-  const [trackings, follows, custLinks] = await Promise.all([
+  const [trackings, follows, custLinks, allCustomers] = await Promise.all([
     prisma.bidTracking.findMany({ where: { threadKey: { in: keys } } }),
     prisma.projectFollow.findMany({ where: { userId }, select: { projectId: true } }),
     prisma.customerProjectLink.findMany({
       where: { threadKey: { in: keys } },
       select: { threadKey: true, customer: { select: { id: true, name: true } } },
     }),
+    prisma.customer.findMany({ select: { id: true, name: true } }),
   ]);
   const trackingByKey = new Map(trackings.map((t) => [t.threadKey, t]));
   const followedIds = new Set(follows.map((f) => f.projectId));
@@ -959,6 +961,18 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
 
   const ms = (d) => (d ? new Date(d).getTime() : 0);
 
+  // Same conservative rule as visit-report matching: a purchaser maps to a
+  // Customer only on a UNIQUE contains-match of normalized names.
+  const normCustomers = allCustomers
+    .map((c) => ({ ...c, norm: normalizeCompany(c.name) }))
+    .filter((c) => c.norm.length >= 3);
+  const matchCustomer = (purchaser) => {
+    const pn = normalizeCompany(purchaser);
+    if (pn.length < 3) return null;
+    const hits = normCustomers.filter((c) => c.norm.includes(pn) || pn.includes(c.norm));
+    return hits.length === 1 ? hits[0] : null;
+  };
+
   let threads = keys.map((key) => {
     const anns = groups.get(key);
     let currentStage = null;
@@ -969,13 +983,22 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
     }
     const rep = anns[anns.length - 1]; // latest announcement is representative
     const winnerAnn = anns.find((a) => a.winner);
+    const purchaser = rep.purchaser || anns.find((a) => a.purchaser)?.purchaser || null;
+    // Confirmed links first; if the purchaser name uniquely matches a Customer
+    // that isn't linked yet, surface it too (flagged inferred, display-only —
+    // no link row is written).
+    const linked = customersByKey.get(key) || [];
+    const nameMatch = purchaser ? matchCustomer(purchaser) : null;
+    const inferred = nameMatch && !linked.some((c) => c.id === nameMatch.id)
+      ? [{ id: nameMatch.id, name: nameMatch.name, inferred: true }]
+      : [];
     return {
       threadKey: key,
       projectName: rep.projectName,
       projectCode: rep.projectCode,
       region: rep.region,
       equipmentType: rep.equipmentType,
-      purchaser: rep.purchaser || anns.find((a) => a.purchaser)?.purchaser || null,
+      purchaser,
       budget: rep.budget || anns.find((a) => a.budget)?.budget || null,
       deadline: rep.deadline,
       currentStage,
@@ -985,7 +1008,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       lastUpdate: anns.reduce((m, a) => (ms(a.updatedAt) > ms(m) ? a.updatedAt : m), anns[0].updatedAt),
       following: anns.some((a) => followedIds.has(a.id)),
       tracking: trackingByKey.get(key) || null,
-      customers: customersByKey.get(key) || [],
+      customers: [...linked, ...inferred],
       announcements: anns.map((a) => ({
         id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
         publishDate: a.publishDate, sourceUrl: a.sourceUrl,
@@ -998,6 +1021,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
 
   if (stage) threads = threads.filter((t) => t.currentStage === stage);
   if (ourStatus) threads = threads.filter((t) => (t.tracking?.ourStatus || null) === ourStatus);
+  if (myCustomers) threads = threads.filter((t) => t.customers.length > 0);
   if (q) {
     const needle = String(q).toLowerCase();
     threads = threads.filter((t) =>

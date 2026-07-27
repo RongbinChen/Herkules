@@ -117,6 +117,9 @@ export function parseDetailPage(html, detailUrl) {
 
   // Price is a currency token (e.g. "￥1500/$250"); match only currency
   // symbols + digits so we stop at any glued label like "Additional".
+  // NOTE: the `budget` column actually holds the SALE PRICE of the bidding
+  // documents (标书售价), not the project budget — the UI must label it
+  // "Price of Bidding Documents".
   const budget = body.match(/Price of Bidding Documents[:：]\s*([￥$][\d,]+(?:\s*\/\s*[￥$][\d,]+)*)/i);
   if (budget && !/free/i.test(budget[1])) project.budget = budget[1].trim();
 
