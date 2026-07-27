@@ -401,8 +401,10 @@ async function scrapeAllPages({ tradeClassCode = null, keyword = '', infoClassCo
       await sleep(800);
       try {
         const detailHtml = await fetchWithAuth(item.sourceUrl);
-        await upsertProject(item, detailHtml);
-        totalNew++;
+        const r = await upsertProject(item, detailHtml);
+        // Count only rows actually inserted — AI-rejected candidates used to
+        // inflate itemsSaved (job 68: "3180 saved" for 13 real inserts).
+        if (r?.isNew) totalNew++;
       } catch (err) {
         console.error(`[chinabidding] detail error ${item.sourceUrl}: ${err.message}`);
       }
