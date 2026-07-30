@@ -1,0 +1,75 @@
+name: Deploy to VPS
+
+# PR 合并进 main 时自动部署到生产 VPS。
+# 直接 push 到 main 不会触发 —— 本项目的工作流是走 PR 合并。
+# 也可以在 Actions 页面手动点 "Run workflow" 重新部署。
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时刻只允许一个部署在跑，且排队而不是取消
+# (取消一个跑到一半的部署会让线上停在中间状态)
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # workflow_dispatch 直接放行；pull_request 只有真正合并了才部署（关闭但未合并的 PR 跳过）
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 配置 SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: 上传部署脚本
+        # 从本次 checkout 传一份脚本到 VPS 临时目录再执行，
+        # 这样脚本内部 git pull 时不会把自己正在执行的文件覆盖掉。
+        run: |
+          scp -i ~/.ssh/deploy_key \
+              scripts/deploy-vps.sh \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/deploy-${{ github.sha }}.sh
+
+      - name: 执行部署
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+              "bash /tmp/deploy-${{ github.sha }}.sh origin/main"
+
+      - name: 线上探活
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+                 https://www.herkulesgroup-china.com/api/health)
+          echo "GET /api/health → $code"
+          test "$code" = "200"
+
+      - name: 部署摘要
+        if: always()
+        run: |
+          {
+            echo "### 部署到生产 VPS"
+            echo
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 结果 | ${{ job.status }} |"
+            echo "| 提交 | \`${{ github.sha }}\` |"
+            echo "| 触发 | ${{ github.event_name }} |"
+            if [ -n "${{ github.event.pull_request.number }}" ]; then
+              echo "| PR | #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }} |"
+            fi
+            echo "| 站点 | https://www.herkulesgroup-china.com |"
+          } >> "$GITHUB_STEP_SUMMARY"
