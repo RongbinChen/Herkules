@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { visitReportsAPI, customersAPI } from '../api/api'
+import { visitReportsAPI, customersAPI, usersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Card, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
@@ -14,8 +14,10 @@ export default function VisitReportList() {
   const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-GB') : '—')
   const [reports, setReports] = useState([])
   const [customers, setCustomers] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
-  const [mine, setMine] = useState(false)
+  const [team, setTeam] = useState('ALL') // 'ALL' | 'WRC' | 'HRC'
+  const [personId, setPersonId] = useState(null) // author filter within a team tab
   const [modal, setModal] = useState(null) // { report, createMode? } for view/edit/new
   const [chooserOpen, setChooserOpen] = useState(false)
   // Deep link from a customer page: /visit-reports?new=1&customerId=..&customerName=..
@@ -37,12 +39,27 @@ export default function VisitReportList() {
   const load = async () => {
     setLoading(true)
     try {
-      const { data } = await visitReportsAPI.list(mine ? { mine: 'true' } : {})
+      const { data } = await visitReportsAPI.list({})
       setReports(data)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
-  useEffect(() => { load() }, [mine])
+  useEffect(() => { load() }, [])
   useEffect(() => { customersAPI.getAll().then((r) => setCustomers(r.data)).catch(() => {}) }, [])
+  useEffect(() => { usersAPI.getVisible().then((r) => setUsers(r.data)).catch(() => {}) }, [])
+
+  const pickTeam = (teamKey) => { setTeam(teamKey); setPersonId(null) }
+
+  // Users assigned to the active team tab (WRC/HRC), for the person sub-filter.
+  const teamMembers = useMemo(
+    () => users.filter((u) => u.team === team),
+    [users, team],
+  )
+  const teamMemberIds = useMemo(() => new Set(teamMembers.map((u) => u.id)), [teamMembers])
+
+  const visibleReports = useMemo(() => {
+    if (team === 'ALL') return reports
+    return reports.filter((r) => teamMemberIds.has(r.authorId) && (!personId || r.authorId === personId))
+  }, [reports, team, teamMemberIds, personId])
 
   // Reading happens on the dedicated detail page (roomier, esp. on desktop).
   const openReport = (id) => navigate(`/visit-reports/${id}`)
@@ -77,15 +94,15 @@ export default function VisitReportList() {
           </div>
         </div>
 
-        {/* Filter + view toggle */}
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          {[{ k: false, l: t.filterAll }, { k: true, l: t.filterMine }].map((f) => (
-            <button key={String(f.k)} onClick={() => setMine(f.k)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${mine === f.k ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+        {/* Team tabs + view toggle */}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {[{ k: 'ALL', l: t.filterAll }, { k: 'WRC', l: t.filterWRC }, { k: 'HRC', l: t.filterHRC }].map((f) => (
+            <button key={f.k} onClick={() => pickTeam(f.k)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${team === f.k ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               {f.l}
             </button>
           ))}
-          <span className="ml-2 text-xs text-slate-400">{t.countReports(reports.length)}</span>
+          <span className="ml-2 text-xs text-slate-400">{t.countReports(visibleReports.length)}</span>
           <div className="ml-auto flex overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-semibold shadow-sm">
             {[{ k: 'cards', l: `▦ ${t.viewCards}` }, { k: 'list', l: `☰ ${t.viewList}` }].map((o) => (
               <button key={o.k} onClick={() => pickView(o.k)}
@@ -96,16 +113,32 @@ export default function VisitReportList() {
           </div>
         </div>
 
+        {/* Person sub-filter, only within a team tab */}
+        {team !== 'ALL' && (
+          <div className="mb-4 flex flex-wrap items-center gap-1.5">
+            <button onClick={() => setPersonId(null)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${personId === null ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              {t.filterPersonAll}
+            </button>
+            {teamMembers.map((u) => (
+              <button key={u.id} onClick={() => setPersonId(u.id)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${personId === u.id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {u.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* List */}
         {loading ? (
           <div className="py-16 text-center text-sm text-slate-400">{t.loading}</div>
-        ) : reports.length === 0 ? (
+        ) : visibleReports.length === 0 ? (
           <Card className="py-16 text-center text-sm text-slate-400">
             {t.emptyState} <button onClick={() => setChooserOpen(true)} className="font-semibold text-brand-600 hover:underline">{t.createOne}</button>
           </Card>
         ) : view === 'cards' ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {reports.map((r) => (
+            {visibleReports.map((r) => (
               <Card key={r.id} as="button" hover onClick={() => openReport(r.id)}
                 className="p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200">
                 <div className="flex items-start justify-between gap-2">
@@ -135,7 +168,7 @@ export default function VisitReportList() {
                 </tr>
               </thead>
               <tbody>
-                {reports.map((r) => (
+                {visibleReports.map((r) => (
                   <tr key={r.id} onClick={() => openReport(r.id)}
                     className="cursor-pointer border-t border-slate-100 transition hover:bg-brand-50/40">
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{fmtDate(r.visitDate)}</td>

@@ -14,6 +14,7 @@ const createUserSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   name: z.string().min(1, 'Name is required'),
   isAdmin: z.boolean().default(false),
+  team: z.enum(['WRC', 'HRC', 'OTHER']).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -21,6 +22,7 @@ const updateUserSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
   name: z.string().min(1, 'Name is required').optional(),
   isAdmin: z.boolean().optional(),
+  team: z.enum(['WRC', 'HRC', 'OTHER']).optional(),
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'At least one field must be provided',
 });
@@ -152,6 +154,7 @@ router.get('/visible', authenticateToken, async (req, res) => {
         name: true,
         email: true,
         isAdmin: true,
+        team: true,
       },
       orderBy: { name: 'asc' },
     });
@@ -175,6 +178,7 @@ router.get('/', authenticateToken, async (req, res) => {
         name: true,
         email: true,
         isAdmin: true,
+        team: true,
         _count: {
           select: {
             events: true,
@@ -406,7 +410,7 @@ router.post('/', authenticateToken, async (req, res) => {
       return;
     }
 
-    const { email, password, name, isAdmin } = createUserSchema.parse(req.body);
+    const { email, password, name, isAdmin, team } = createUserSchema.parse(req.body);
 
     const existingUser = await prisma.user.findUnique({
       where: { email },
@@ -423,6 +427,7 @@ router.post('/', authenticateToken, async (req, res) => {
         password: hashedPassword,
         name,
         isAdmin,
+        ...(team ? { team } : {}),
         calendarFeedToken: crypto.randomUUID(),
       },
       select: {
@@ -430,6 +435,7 @@ router.post('/', authenticateToken, async (req, res) => {
         name: true,
         email: true,
         isAdmin: true,
+        team: true,
         _count: {
           select: {
             events: true,
@@ -483,6 +489,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       ...(data.email ? { email: data.email } : {}),
       ...(data.name ? { name: data.name } : {}),
       ...(typeof data.isAdmin === 'boolean' ? { isAdmin: data.isAdmin } : {}),
+      ...(data.team ? { team: data.team } : {}),
       ...(data.password ? { password: await bcrypt.hash(data.password, 10) } : {}),
     };
 
@@ -494,6 +501,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         name: true,
         email: true,
         isAdmin: true,
+        team: true,
         _count: {
           select: {
             events: true,

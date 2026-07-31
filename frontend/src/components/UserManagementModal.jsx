@@ -10,8 +10,15 @@ function emptyForm() {
     email: '',
     password: '',
     isAdmin: false,
+    team: 'HRC',
   }
 }
+
+const TEAM_OPTIONS = [
+  { value: 'WRC', label: 'WRC' },
+  { value: 'HRC', label: 'HRC' },
+  { value: 'OTHER', label: 'Other (hidden from WRC/HRC tabs)' },
+]
 
 export default function UserManagementModal({
   isOpen,
@@ -52,6 +59,7 @@ export default function UserManagementModal({
       email: selectedUser.email,
       password: '',
       isAdmin: selectedUser.isAdmin,
+      team: selectedUser.team || 'HRC',
     })
   }, [selectedUser])
 
@@ -78,6 +86,7 @@ export default function UserManagementModal({
           name: form.name,
           email: form.email,
           isAdmin: form.isAdmin,
+          team: form.team,
           ...(form.password ? { password: form.password } : {}),
         }
         await onUpdateUser(selectedUser.id, payload)
@@ -87,6 +96,7 @@ export default function UserManagementModal({
           email: form.email,
           password: form.password,
           isAdmin: form.isAdmin,
+          team: form.team,
         })
         setForm(emptyForm())
       }
@@ -164,12 +174,20 @@ export default function UserManagementModal({
                         <p className="font-semibold">{user.name}</p>
                         <p className={classNames('text-sm', selectedUserId === user.id ? 'text-slate-300' : 'text-slate-500')}>{user.email}</p>
                       </div>
-                      <span className={classNames(
-                        'rounded-full px-2 py-1 text-xs font-semibold',
-                        selectedUserId === user.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700',
-                      )}>
-                        {user.isAdmin ? 'Admin' : 'Employee'}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={classNames(
+                          'rounded-full px-2 py-1 text-xs font-semibold',
+                          selectedUserId === user.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700',
+                        )}>
+                          {user.isAdmin ? 'Admin' : 'Employee'}
+                        </span>
+                        <span className={classNames(
+                          'rounded-full px-2 py-1 text-xs font-semibold',
+                          selectedUserId === user.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500',
+                        )}>
+                          {user.team || 'HRC'}
+                        </span>
+                      </div>
                     </div>
                     <div className={classNames('mt-3 flex items-center gap-3 text-xs', selectedUserId === user.id ? 'text-slate-300' : 'text-slate-500')}>
                       <span>{user._count?.events ?? 0} activities</span>
@@ -265,6 +283,20 @@ export default function UserManagementModal({
                 required={!selectedUser}
                 minLength={6}
               />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Team</span>
+              <select
+                value={form.team}
+                onChange={(event) => updateField('team', event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500 focus:bg-white"
+              >
+                {TEAM_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-400">Used to split Visit Reports into WRC / HRC tabs.</span>
             </label>
 
             <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
