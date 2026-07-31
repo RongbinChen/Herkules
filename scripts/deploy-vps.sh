@@ -16,7 +16,9 @@
 #      index.html —— 它引用的旧 assets 仍在原地。
 #   2. schema.prisma 有变更时直接中止。本项目没有 migration 文件(用 db push),
 #      自动跑 schema 同步有丢生产数据的风险, 必须人工处理。
-#   3. 任何一步失败自动回滚到部署前的 commit 和 index.html。
+#   3. 有抓取任务正在跑时中止。部署会 pm2 reload, 会把跑到一半的抓取打断
+#      (日报任务要跑约 3 小时)。急着上线时用 SKIP_SCRAPE_CHECK=1 跳过。
+#   4. 任何一步失败自动回滚到部署前的 commit 和 index.html。
 #
 set -euo pipefail
 
@@ -26,6 +28,11 @@ BACKUP_DIR="/home/ubuntu/deploy-backups"
 PM2_APP="calendar-backend"
 HEALTH_URL="http://127.0.0.1:3001/api/health"
 TARGET_REF="${1:-origin/main}"
+SKIP_SCRAPE_CHECK="${SKIP_SCRAPE_CHECK:-0}"
+
+# 与 backend/src/index.js 的僵尸任务清理保持一致: 超过这个时长的 RUNNING 行
+# 视为上次重启留下的孤儿, 不该再挡住部署。
+SCRAPE_STALE_HOURS=4
 
 log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m!  %s\033[0m\n' "$*"; }
@@ -36,7 +43,7 @@ cd "$APP_DIR" || die "找不到 $APP_DIR"
 # --------------------------------------------------------------------------
 # 0. 前置检查
 # --------------------------------------------------------------------------
-log "[0/8] 前置检查"
+log "[0/9] 前置检查"
 
 if [ -n "$(git status --porcelain)" ]; then
   git status --short
@@ -60,7 +67,7 @@ fi
 # --------------------------------------------------------------------------
 # 1. 数据库 schema 守门
 # --------------------------------------------------------------------------
-log "[1/8] 检查数据库 schema 是否变更"
+log "[1/9] 检查数据库 schema 是否变更"
 
 if ! git diff --quiet "$OLD_SHA" "$NEW_SHA" -- backend/prisma/schema.prisma; then
   echo
@@ -77,9 +84,58 @@ fi
 echo "    schema.prisma 无变更 ✓"
 
 # --------------------------------------------------------------------------
-# 2. 拉取代码
+# 2. 抓取任务守门
 # --------------------------------------------------------------------------
-log "[2/8] 拉取代码"
+# 部署最后会 pm2 reload, 抓取是在后端进程里跑的, 一重启就断。日报任务约 3 小时
+# (北京时间 08:00 起, 即 00:00-03:00 UTC), 这个窗口里部署会白白废掉一整天的抓取。
+log "[2/9] 检查是否有抓取任务在跑"
+
+if [ "$SKIP_SCRAPE_CHECK" = "1" ]; then
+  warn "SKIP_SCRAPE_CHECK=1, 跳过检查(正在跑的抓取任务会被打断)"
+else
+  # 读 .env 只为拿 DATABASE_URL; 用子 shell 隔离, 不污染部署脚本自身的环境。
+  RUNNING_JOBS="$(
+    (
+      set -a; . "$APP_DIR/.env"; set +a
+      psql "$DATABASE_URL" -tAc \
+        "SELECT count(*) FROM \"ScrapeJob\"
+          WHERE status = 'RUNNING'
+            AND \"startedAt\" > now() - interval '$SCRAPE_STALE_HOURS hours';"
+    ) 2>/dev/null | tr -d '[:space:]'
+  )"
+
+  if ! [[ "$RUNNING_JOBS" =~ ^[0-9]+$ ]]; then
+    # 查不到就放行 —— 这道闸是排期卫生, 不是数据安全(那是第 1 步的职责),
+    # 不该因为 psql 连不上就把所有部署都堵死。
+    warn "无法查询 ScrapeJob 状态, 跳过本项检查"
+  elif [ "$RUNNING_JOBS" -gt 0 ]; then
+    echo
+    (
+      set -a; . "$APP_DIR/.env"; set +a
+      psql "$DATABASE_URL" -c \
+        "SELECT id, \"triggeredBy\", \"startedAt\"
+           FROM \"ScrapeJob\"
+          WHERE status = 'RUNNING'
+            AND \"startedAt\" > now() - interval '$SCRAPE_STALE_HOURS hours'
+          ORDER BY \"startedAt\";" 2>/dev/null
+    ) || true
+    die "有 $RUNNING_JOBS 个抓取任务正在跑, 已中止部署。
+    部署会 pm2 reload, 跑到一半的抓取会被打断, 当天的数据就白抓了。
+    日报任务每天北京时间 08:00 启动, 约 3 小时跑完(00:00-03:00 UTC)。
+    可选做法:
+      1. 等它跑完, 再到 Actions 页面点 'Run workflow' 重跑部署(推荐)
+      2. 确实要立刻上线, 二选一:
+         - Actions 页面手动触发, 把 skip_scrape_check 勾成 true
+         - ssh 上来跑: SKIP_SCRAPE_CHECK=1 bash $APP_DIR/scripts/deploy-vps.sh $TARGET_REF"
+  else
+    echo "    没有进行中的抓取任务 ✓"
+  fi
+fi
+
+# --------------------------------------------------------------------------
+# 3. 拉取代码
+# --------------------------------------------------------------------------
+log "[3/9] 拉取代码"
 git merge --ff-only "$NEW_SHA"
 
 # 失败后回滚到部署前状态
@@ -98,9 +154,9 @@ rollback() {
 trap rollback ERR
 
 # --------------------------------------------------------------------------
-# 3. 依赖
+# 4. 依赖
 # --------------------------------------------------------------------------
-log "[3/8] 同步依赖"
+log "[4/9] 同步依赖"
 
 for pkg in backend frontend; do
   if ! git diff --quiet "$OLD_SHA" "$NEW_SHA" -- "$pkg/package-lock.json" "$pkg/package.json"; then
@@ -112,23 +168,23 @@ for pkg in backend frontend; do
 done
 
 # --------------------------------------------------------------------------
-# 4. Prisma client
+# 5. Prisma client
 # --------------------------------------------------------------------------
-log "[4/8] 生成 Prisma client"
+log "[5/9] 生成 Prisma client"
 (cd backend && npx prisma generate >/dev/null)
 echo "    完成 ✓"
 
 # --------------------------------------------------------------------------
-# 5. 构建前端
+# 6. 构建前端
 # --------------------------------------------------------------------------
-log "[5/8] 构建前端 (vite build)"
+log "[6/9] 构建前端 (vite build)"
 (cd frontend && npm run build)
 [ -f frontend/dist/index.html ] || die "构建失败: 未找到 frontend/dist/index.html"
 
 # --------------------------------------------------------------------------
-# 6. 备份当前线上产物
+# 7. 备份当前线上产物
 # --------------------------------------------------------------------------
-log "[6/8] 备份当前线上 index.html"
+log "[7/9] 备份当前线上 index.html"
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 ROLLBACK_INDEX="$BACKUP_DIR/index-${STAMP}-${OLD_SHA:0:7}.html"
@@ -136,9 +192,9 @@ cp "$WEBROOT/index.html" "$ROLLBACK_INDEX"
 echo "    $ROLLBACK_INDEX"
 
 # --------------------------------------------------------------------------
-# 7. 发布前端
+# 8. 发布前端
 # --------------------------------------------------------------------------
-log "[7/8] 发布前端到 $WEBROOT"
+log "[8/9] 发布前端到 $WEBROOT"
 # 只做增量拷贝: 新产物文件名带 hash, 不会覆盖旧文件, 也不删除任何东西。
 # 旧 assets 保留是有意为之 —— 回滚时旧 index.html 依然能加载到它引用的资源。
 sudo cp -r frontend/dist/assets/. "$WEBROOT/assets/"
@@ -148,9 +204,9 @@ echo "    index.html 引用:"
 grep -oE 'assets/[^"]+' "$WEBROOT/index.html" | sed 's/^/      /'
 
 # --------------------------------------------------------------------------
-# 8. 重启后端 + 健康检查
+# 9. 重启后端 + 健康检查
 # --------------------------------------------------------------------------
-log "[8/8] 重启后端并健康检查"
+log "[9/9] 重启后端并健康检查"
 pm2 reload "$PM2_APP" --update-env
 
 for i in $(seq 1 15); do

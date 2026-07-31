@@ -9,6 +9,11 @@ on:
     types: [closed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      skip_scrape_check:
+        description: "跳过「抓取任务进行中」检查（会打断正在跑的抓取，慎用）"
+        type: boolean
+        default: false
 
 # 同一时刻只允许一个部署在跑，且排队而不是取消
 # (取消一个跑到一半的部署会让线上停在中间状态)
@@ -45,10 +50,14 @@ jobs:
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/deploy-${{ github.sha }}.sh
 
       - name: 执行部署
+        # skip_scrape_check 只在手动触发时可选; PR 合并走的路径永远是 0，
+        # 也就是抓取跑到一半时会中止，不会被自动打断。
+        env:
+          SKIP_SCRAPE_CHECK: ${{ inputs.skip_scrape_check && '1' || '0' }}
         run: |
           ssh -i ~/.ssh/deploy_key \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-              "bash /tmp/deploy-${{ github.sha }}.sh origin/main"
+              "SKIP_SCRAPE_CHECK='$SKIP_SCRAPE_CHECK' bash /tmp/deploy-${{ github.sha }}.sh origin/main"
 
       - name: 线上探活
         run: |
