@@ -14,7 +14,7 @@ function toLocalInput(value) {
 // Create / edit a trip. `trip` null → create mode.
 export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClose, onSaved }) {
   const [title, setTitle] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
+  const [assigneeIds, setAssigneeIds] = useState([])
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [notes, setNotes] = useState('')
@@ -39,7 +39,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
     )
     if (trip) {
       setTitle(trip.title || '')
-      setAssigneeId(trip.assignee?.id ? String(trip.assignee.id) : '')
+      setAssigneeIds((trip.assignees || []).map((a) => a.id))
       setStartTime(toLocalInput(trip.startTime))
       setEndTime(toLocalInput(trip.endTime))
       setNotes(trip.notes || '')
@@ -51,7 +51,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
       const now = new Date()
       const tomorrow = new Date(now.getTime() + 24 * 3600 * 1000)
       setTitle('')
-      setAssigneeId('')
+      setAssigneeIds([])
       setStartTime(toLocalInput(now))
       setEndTime(toLocalInput(tomorrow))
       setNotes('')
@@ -77,6 +77,10 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
+  function toggleAssignee(id) {
+    setAssigneeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
   function addFlight() {
     setFlights((prev) => [...prev, { date: '', flightNo: '', routing: '', time: '', notes: '' }])
   }
@@ -97,7 +101,7 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
     const payload = {
       title: title.trim(),
       notes: notes.trim() || undefined,
-      assigneeId: assigneeId ? Number(assigneeId) : null,
+      assigneeIds,
       hidePhoneOnShare: hidePhone,
       flights: flights.filter((f) => f.flightNo || f.routing || f.date),
       constraints: constraints.trim() || null,
@@ -139,17 +143,30 @@ export default function TripModal({ isOpen, trip, initialCustomerIds = [], onClo
             <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="e.g. East China customer visits" required />
           </label>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">Assignee (colleague)</span>
-              <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={inputCls}>
-                <option value="">— Unassigned —</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            </label>
-            <div />
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Assignees (colleagues)</span>
+              <span className="text-xs text-slate-400">{assigneeIds.length} selected</span>
+            </div>
+            {users.length === 0 ? (
+              <p className="text-xs text-slate-400">No colleagues available</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {users.map((u) => {
+                  const checked = assigneeIds.includes(u.id)
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => toggleAssignee(u.id)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${checked ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {u.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

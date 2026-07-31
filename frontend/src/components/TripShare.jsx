@@ -51,7 +51,7 @@ export default function TripShare() {
           <h1 className="mt-1 text-2xl font-bold text-slate-800 sm:text-3xl">{trip.title}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {new Date(trip.startTime).toLocaleString('en-US')} → {new Date(trip.endTime).toLocaleString('en-US')}
-            {trip.assignee?.name ? ` · Assignee ${trip.assignee.name}` : ''}
+            {trip.assignees?.length ? ` · Assignees ${trip.assignees.map((a) => a.name).join(', ')}` : ''}
           </p>
           {trip.notes && (
             <p className="mt-2 rounded-xl bg-white px-3.5 py-2.5 text-sm text-slate-600 ring-1 ring-slate-200">{trip.notes}</p>

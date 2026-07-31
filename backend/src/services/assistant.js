@@ -410,7 +410,7 @@ const impl = {
             { notes: { contains: s, mode: 'insensitive' } },
             { constraints: { contains: s, mode: 'insensitive' } },
             { stops: { some: { customer: { name: { contains: s, mode: 'insensitive' } } } } },
-            { assignee: { name: { contains: s, mode: 'insensitive' } } },
+            { assignees: { some: { name: { contains: s, mode: 'insensitive' } } } },
             { createdBy: { name: { contains: s, mode: 'insensitive' } } },
           ],
         }
@@ -421,7 +421,7 @@ const impl = {
       take: 8,
       include: {
         createdBy: { select: { name: true } },
-        assignee: { select: { name: true } },
+        assignees: { select: { name: true } },
         stops: {
           orderBy: { order: 'asc' },
           include: { customer: { select: { id: true, name: true } } },
@@ -434,7 +434,7 @@ const impl = {
       startTime: t.startTime,
       endTime: t.endTime,
       shareUrl: t.shareToken ? `${SITE_ORIGIN}/trip/share/${t.shareToken}` : null,
-      assignee: t.assignee?.name || null,
+      assignees: t.assignees.map((a) => a.name),
       createdBy: t.createdBy?.name || null,
       notes: (t.notes || '').slice(0, 200),
       stops: t.stops.map((st) => ({

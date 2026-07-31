@@ -90,7 +90,7 @@ router.get('/trip/share/:token', async (req, res) => {
       where: { shareToken: req.params.token },
       select: {
         title: true, startTime: true, endTime: true,
-        assignee: { select: { name: true } },
+        assignees: { select: { name: true } },
         _count: { select: { stops: true } },
       },
     });
@@ -99,7 +99,7 @@ router.get('/trip/share/:token', async (req, res) => {
       const description = [
         `${fmtDate(trip.startTime)} → ${fmtDate(trip.endTime)}`,
         `${trip._count.stops} stop(s)`,
-        trip.assignee?.name ? `Assignee ${trip.assignee.name}` : null,
+        trip.assignees?.length ? `Assignee ${trip.assignees.map((a) => a.name).join(', ')}` : null,
       ].filter(Boolean).join(' · ');
       html = withMeta(html, { title, description, url: `${SITE_ORIGIN}${req.originalUrl}` });
     }
