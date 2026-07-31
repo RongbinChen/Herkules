@@ -68,9 +68,13 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// ── Daily chinabidding scrape — runs at 08:00 China time every day ──
+// ── Daily chinabidding scrape — runs at 06:00 China time every day ──
+// A full run takes ~3h, so results are in before the workday starts. Deploys
+// are blocked while it runs (scripts/deploy-vps.sh), and 06:00-09:00 keeps that
+// window clear of working hours. Note 06:00 China = 22:00 UTC the day before,
+// so a run shows up under the previous date when reading timestamps in UTC.
 // runDailyJob guards against overlapping runs internally.
-cron.schedule('0 8 * * *', async () => {
+cron.schedule('0 6 * * *', async () => {
   console.log('[cron] Starting daily chinabidding scrape...');
   try {
     const { runDailyJob } = await import('./services/chinabidding.js');
