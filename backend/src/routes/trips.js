@@ -30,7 +30,7 @@ const tripSchema = z
     notes: z.string().optional(),
     startTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid startTime'),
     endTime: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid endTime'),
-    assigneeId: z.number().int().nullable().optional(),
+    assigneeIds: z.array(z.number().int()).optional(),
     hidePhoneOnShare: z.boolean().optional(),
     flights: z.array(flightSchema).optional(),
     constraints: z.string().nullable().optional(),
@@ -176,7 +176,7 @@ const stopInclude = {
       },
     },
   },
-  assignee: { select: { id: true, name: true, email: true } },
+  assignees: { select: { id: true, name: true, email: true } },
   createdBy: { select: { id: true, name: true } },
 };
 
@@ -196,7 +196,7 @@ router.get('/share/:token', async (req, res) => {
         hidePhoneOnShare: true,
         flights: true,
         itinerary: true,
-        assignee: { select: { name: true } },
+        assignees: { select: { name: true } },
         stops: {
           orderBy: { order: 'asc' },
           select: {
@@ -242,7 +242,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const trips = await prisma.trip.findMany({
       orderBy: { startTime: 'desc' },
       include: {
-        assignee: { select: { id: true, name: true } },
+        assignees: { select: { id: true, name: true } },
         _count: { select: { stops: true } },
       },
     });
@@ -287,7 +287,7 @@ router.post('/', authenticateToken, async (req, res) => {
         notes: data.notes,
         startTime: start,
         endTime: end,
-        assigneeId: data.assigneeId ?? null,
+        assignees: { connect: (data.assigneeIds ?? []).map((id) => ({ id })) },
         hidePhoneOnShare: data.hidePhoneOnShare ?? false,
         flights: data.flights ?? undefined,
         constraints: data.constraints ?? undefined,
@@ -331,7 +331,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
           notes: data.notes,
           startTime: start,
           endTime: end,
-          assigneeId: data.assigneeId ?? null,
+          assignees: { set: (data.assigneeIds ?? []).map((assigneeId) => ({ id: assigneeId })) },
           hidePhoneOnShare: data.hidePhoneOnShare ?? false,
           flights: data.flights ?? undefined,
           constraints: data.constraints ?? undefined,

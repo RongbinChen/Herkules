@@ -144,7 +144,7 @@ export default function TripDetail() {
       const payload = {
         title: trip.title,
         notes: trip.notes || undefined,
-        assigneeId: trip.assignee?.id ?? null,
+        assigneeIds: (trip.assignees || []).map((a) => a.id),
         hidePhoneOnShare: trip.hidePhoneOnShare === true,
         startTime: trip.startTime,
         endTime: trip.endTime,
@@ -195,7 +195,7 @@ export default function TripDetail() {
             <h1 className="text-2xl font-bold text-slate-800">{trip.title}</h1>
             <p className="text-sm text-slate-500">
               {new Date(trip.startTime).toLocaleString('en-US')} → {new Date(trip.endTime).toLocaleString('en-US')}
-              {trip.assignee?.name ? ` · Assignee ${trip.assignee.name}` : ''}
+              {trip.assignees?.length ? ` · Assignees ${trip.assignees.map((a) => a.name).join(', ')}` : ''}
             </p>
           </div>
         </div>

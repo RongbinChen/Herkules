@@ -72,8 +72,8 @@ export default function TripList() {
                 </span>
               </div>
               <p className="mt-1 text-sm text-slate-500">{fmtRange(t.startTime, t.endTime)}</p>
-              {t.assignee?.name && (
-                <p className="mt-1 text-xs text-slate-400">Assignee: {t.assignee.name}</p>
+              {t.assignees?.length > 0 && (
+                <p className="mt-1 text-xs text-slate-400">Assignees: {t.assignees.map((a) => a.name).join(', ')}</p>
               )}
             </button>
           ))}
