@@ -56,7 +56,7 @@ function buildUserPrompt(trip) {
   const fmt = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
   const lines = [];
   lines.push(`出差窗口：${fmt(trip.startTime)} 至 ${fmt(trip.endTime)}`);
-  if (trip.assignee?.name) lines.push(`出差同事：${trip.assignee.name}`);
+  if (trip.assignees?.length) lines.push(`出差同事：${trip.assignees.map((a) => a.name).join('、')}`);
 
   if (Array.isArray(trip.flights) && trip.flights.length) {
     lines.push('\n航班（已预订）：');

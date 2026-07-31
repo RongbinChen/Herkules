@@ -71,7 +71,7 @@
 关键关系/字段：
 - `Event.customerId / agentId`（可空，`onDelete: SetNull`）——事件关联客户/代理。
 - `Customer`: `latitude/longitude`（WGS-84）、`status(CustomerStatus)`、`tier(CustomerTier)`、`tags[]`。
-- `Trip`: `startTime/endTime`、`shareToken`(唯一,公开访问)、`hidePhoneOnShare`、`flights(Json)`、`constraints`、`itinerary(Json: {days,notes,transports})`、`itineraryModel`、`itineraryAt`；关系 `createdBy` / `assignee`(User) / `stops`。
+- `Trip`: `startTime/endTime`、`shareToken`(唯一,公开访问)、`hidePhoneOnShare`、`flights(Json)`、`constraints`、`itinerary(Json: {days,notes,transports})`、`itineraryModel`、`itineraryAt`；关系 `createdBy` / `assignees`(User[]，多对多) / `stops`。
 - `TripStop`: `customerId`、`order`(地理路线序)、`plannedArrival`、`priority(PRIORITY/NORMAL/BACKUP)`、`visitDuration`、`notes`。
 - `BidProject`: 结构化字段 `purchaser/winner/winningPrice/equipmentType/infoClass/threadKey`（DeepSeek 抽取）、`competitorId`。
 
