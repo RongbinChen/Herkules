@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { tripsAPI } from '../api/api'
 import { sortStopsByArrival } from '../utils/trips'
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
+import ShareLinkBar from './ShareLinkBar'
 import TripMap from './TripMap'
 import TripModal from './TripModal'
 import TripPlanView from './TripPlanView'
@@ -20,7 +22,6 @@ export default function TripDetail() {
   const [trip, setTrip] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
 
   // Editable copy of the stops (manual reorder + arrival-time tuning).
   const [stops, setStops] = useState([])
@@ -28,20 +29,7 @@ export default function TripDetail() {
   const [savingStops, setSavingStops] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [planError, setPlanError] = useState('')
-  const [elapsed, setElapsed] = useState(0)
-
-  // Tick a visible seconds counter while the AI is planning, so a long
-  // (20–60s) request doesn't look frozen. Uses a wall-clock baseline so the
-  // count stays accurate even if the tab is throttled in the background.
-  useEffect(() => {
-    if (!planning) return
-    setElapsed(0)
-    const started = Date.now()
-    const timer = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - started) / 1000))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [planning])
+  const elapsed = useElapsedSeconds(planning)
 
   async function load() {
     setLoading(true)
@@ -63,21 +51,9 @@ export default function TripDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  const shareUrl = trip ? `${window.location.origin}/trip/share/${trip.shareToken}` : ''
-
   // Show stops ordered by recommended arrival; shared with the public share page
   // (utils/trips) so both maps number the stops identically.
   const sortByArrival = sortStopsByArrival
-
-  async function copyShare() {
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      window.prompt('Copy this link:', shareUrl)
-    }
-  }
 
   async function handleDelete() {
     if (!window.confirm(`Delete trip “${trip.title}”? This cannot be undone.`)) return
@@ -210,22 +186,7 @@ export default function TripDetail() {
       </div>
 
       {/* Share link */}
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/60 p-3">
-        <span className="text-sm font-semibold text-brand-700">Public share link</span>
-        <input
-          readOnly
-          value={shareUrl}
-          onFocus={(e) => e.target.select()}
-          className="min-w-[220px] flex-1 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm text-slate-600 outline-none"
-        />
-        <button onClick={copyShare} className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700">
-          {copied ? 'Copied ✓' : 'Copy link'}
-        </button>
-        <p className="w-full text-xs text-brand-600/80">
-          Anyone with this link can view the trip and map without logging in (Google Maps by default; switch to AMap for China access).
-          {trip.hidePhoneOnShare ? ' Phone numbers are hidden from the public page.' : ''}
-        </p>
-      </div>
+      <ShareLinkBar shareToken={trip.shareToken} hidePhoneOnShare={trip.hidePhoneOnShare} className="mb-5" />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div>
