@@ -118,7 +118,13 @@ export const tripsAPI = {
   create: (data) => api.post('/trips', data),
   update: (id, data) => api.put(`/trips/${id}`, data),
   delete: (id) => api.delete(`/trips/${id}`),
-  plan: (id) => api.post(`/trips/${id}/plan`),
+  // planItinerary tries v4-pro then v4-flash, each with a 150s abort, so the
+  // worst case is ~300s. Say so rather than relying on axios' default of none.
+  plan: (id) => api.post(`/trips/${id}/plan`, null, { timeout: 300000 }),
+  // Wizard step 3: constraint-gathering interview, and the pass that condenses
+  // it into `constraints`.
+  planChat: (payload) => api.post('/trips/plan-chat', payload, { timeout: 90000 }),
+  planChatSummary: (payload) => api.post('/trips/plan-chat/summary', payload, { timeout: 90000 }),
   // Public — no auth required (interceptor simply omits the header when logged out).
   getShared: (token) => api.get(`/trips/share/${token}`),
 }

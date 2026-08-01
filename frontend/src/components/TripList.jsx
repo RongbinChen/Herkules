@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { tripsAPI } from '../api/api'
-import TripModal from './TripModal'
 
 function fmtRange(start, end) {
   const s = new Date(start)
@@ -14,7 +13,6 @@ export default function TripList() {
   const navigate = useNavigate()
   const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -46,7 +44,7 @@ export default function TripList() {
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-sm font-semibold text-slate-500">{trips.length}</span>
         </div>
         <button
-          onClick={() => setModalOpen(true)}
+          onClick={() => navigate('/trips/new')}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
         >
           + Schedule trip
@@ -79,13 +77,6 @@ export default function TripList() {
           ))}
         </div>
       )}
-
-      <TripModal
-        isOpen={modalOpen}
-        trip={null}
-        onClose={() => setModalOpen(false)}
-        onSaved={(created) => navigate(`/trips/${created.id}`)}
-      />
     </div>
   )
 }
