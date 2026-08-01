@@ -4,7 +4,6 @@ import { customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import CustomerModal from './CustomerModal'
 import CustomerMap from './CustomerMap'
-import TripModal from './TripModal'
 import {
   STATUS_ORDER,
   TIER_ORDER,
@@ -105,7 +104,6 @@ export default function CustomerList() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [tripOpen, setTripOpen] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -338,13 +336,20 @@ export default function CustomerList() {
               {sharing ? 'Creating…' : `Share ${selectedIds.size} selected`}
             </button>
           )}
+          {/* Ticked customers win over the filter. The Share button next to
+              this one already works off the selection, and having the two read
+              the same list is less surprising than one meaning "checked" and
+              the other "everything currently shown". */}
           <button
-            onClick={() => setTripOpen(true)}
-            disabled={filtered.length === 0}
-            title="Schedule the currently filtered customers into a trip"
+            onClick={() => {
+              const ids = selectedIds.size ? [...selectedIds] : filtered.map((c) => c.id)
+              navigate('/trips/new', { state: { customerIds: ids } })
+            }}
+            disabled={filtered.length === 0 && selectedIds.size === 0}
+            title={selectedIds.size ? 'Schedule the selected customers into a trip' : 'Schedule the currently filtered customers into a trip'}
             className="whitespace-nowrap rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
           >
-            Schedule trip
+            Schedule trip ({selectedIds.size || filtered.length})
           </button>
           <button
             onClick={openCreate}
@@ -581,14 +586,6 @@ export default function CustomerList() {
             setLocationInput('')
           }
         }}
-      />
-
-      <TripModal
-        isOpen={tripOpen}
-        trip={null}
-        initialCustomerIds={filtered.map((c) => c.id)}
-        onClose={() => setTripOpen(false)}
-        onSaved={(created) => navigate(`/trips/${created.id}`)}
       />
 
       {shareUrl && (

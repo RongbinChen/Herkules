@@ -15,6 +15,7 @@ import TripList from './components/TripList'
 import VisitReportList from './components/VisitReportList'
 import VisitReportDetail from './components/VisitReportDetail'
 import TripDetail from './components/TripDetail'
+import TripWizard from './components/trip-wizard/TripWizard'
 import TripShare from './components/TripShare'
 import CustomerShare from './components/CustomerShare'
 import CommandSearch from './components/CommandSearch'
@@ -38,6 +39,9 @@ function App() {
       <Route path="/customers" element={token ? <CustomerList /> : <Navigate to="/login" />} />
       <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
       <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />
+      {/* Literal segments before /trips/:id so "new" is never parsed as an id */}
+      <Route path="/trips/new" element={token ? <TripWizard mode="create" /> : <Navigate to="/login" />} />
+      <Route path="/trips/:id/edit" element={token ? <TripWizard mode="edit" /> : <Navigate to="/login" />} />
       <Route path="/visit-reports" element={token ? <VisitReportList /> : <Navigate to="/login" />} />
       <Route path="/visit-reports/:id" element={token ? <VisitReportDetail /> : <Navigate to="/login" />} />
       <Route path="/trips/:id" element={token ? <TripDetail /> : <Navigate to="/login" />} />
