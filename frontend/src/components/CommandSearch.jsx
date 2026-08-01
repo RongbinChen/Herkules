@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { searchAPI, visitReportsAPI, assistantAPI } from '../api/api'
 import { statusMeta, tierMeta } from '../constants/customer'
+import ChatThread from './chat/ChatThread'
+import ChatComposer from './chat/ChatComposer'
 
 // Slash commands = instant structured search (no LLM, fast path).
 // Anything else typed into the box goes to the AI assistant (DeepSeek tool
@@ -44,87 +46,9 @@ function parseInput(raw) {
   return { mode: 'palette', partial: s.slice(1).toLowerCase() }
 }
 
-// ── Minimal markdown rendering for assistant replies ─────────────────────────
-// Handles: **bold**, [text](url) + bare URLs (break-all so long share links
-// can't overflow the bubble), headings, lists, hr, and pipe tables (rendered
-// as real tables inside a horizontal-scroll container).
-function bold(s, key) {
-  return s.split(/(\*\*[^*]+\*\*)/g).map((p, i) =>
-    p.startsWith('**') && p.endsWith('**') ? <strong key={`${key}b${i}`}>{p.slice(2, -2)}</strong> : p)
-}
-
-function inline(s) {
-  const parts = String(s).split(/(\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s)]+)/g)
-  return parts.map((p, i) => {
-    if (!p) return null
-    const md = p.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
-    if (md) return <a key={i} href={md[2]} target="_blank" rel="noreferrer" className="break-all font-semibold text-brand-600 underline">{md[1]}</a>
-    if (/^https?:\/\//.test(p)) return <a key={i} href={p} target="_blank" rel="noreferrer" className="break-all text-brand-600 underline">{p}</a>
-    return bold(p, i)
-  })
-}
-
-const TABLE_SEP_RE = /^\|?[\s:|-]+\|?$/
-const parseRow = (ln) => ln.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
-
-function Md({ text }) {
-  const lines = String(text || '').split('\n')
-  const out = []
-  let list = []
-  const flush = (k) => {
-    if (list.length) { out.push(<ul key={`l${k}`} className="ml-4 list-disc space-y-0.5">{list}</ul>); list = [] }
-  }
-  let i = 0
-  while (i < lines.length) {
-    const t = lines[i].trim()
-    // Pipe table: header row + separator row (+ data rows) → real scrollable table.
-    if (t.startsWith('|') && (lines[i + 1] || '').trim().startsWith('|') && TABLE_SEP_RE.test((lines[i + 1] || '').trim())) {
-      flush(i)
-      const header = parseRow(t)
-      let j = i + 2
-      const rows = []
-      while (j < lines.length && lines[j].trim().startsWith('|')) { rows.push(parseRow(lines[j])); j++ }
-      out.push(
-        <div key={`t${i}`} className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50">
-                {header.map((c, ci) => <th key={ci} className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600">{bold(c, ci)}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, ri) => (
-                <tr key={ri} className="even:bg-slate-50/50">
-                  {header.map((_, ci) => <td key={ci} className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700">{inline(r[ci] ?? '')}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )
-      i = j
-      continue
-    }
-    if (/^[-*•] /.test(t)) { list.push(<li key={i}>{inline(t.slice(2))}</li>); i++; continue }
-    flush(i)
-    if (t) {
-      if (/^-{3,}$/.test(t)) { out.push(<hr key={i} className="my-2 border-slate-100" />) }
-      else {
-        const h = t.match(/^#{1,4}\s+(.*)/)
-        if (h) out.push(<p key={i} className="mt-1.5 font-bold text-slate-800">{inline(h[1])}</p>)
-        else out.push(<p key={i}>{inline(t)}</p>)
-      }
-    }
-    i++
-  }
-  flush('end')
-  return <div className="min-w-0 space-y-1.5 break-words text-sm leading-relaxed text-slate-700">{out}</div>
-}
-
 export default function CommandSearch() {
   const navigate = useNavigate()
   const inputRef = useRef(null)
-  const endRef = useRef(null)
   const [raw, setRaw] = useState('')
   // Slash structured search
   const [results, setResults] = useState(null)
@@ -140,13 +64,8 @@ export default function CommandSearch() {
 
   const parsed = parseInput(raw)
 
-  // Auto-focus on desktop only — on iOS focusing a <16px input on mount
-  // triggers viewport auto-zoom (page looks blown-up and overflows) and pops
-  // the keyboard before the user asked for it.
-  useEffect(() => {
-    if (window.matchMedia?.('(min-width: 640px)').matches) inputRef.current?.focus()
-  }, [])
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat, chatLoading])
+  // Desktop-only autofocus and scroll-to-bottom now live in ChatComposer /
+  // ChatThread.
 
   // Debounced structured search for "/type query".
   useEffect(() => {
@@ -265,45 +184,22 @@ export default function CommandSearch() {
 
         {/* Chat thread */}
         {chat.length > 0 && (
-          <div className="mb-4 flex-1 space-y-3">
-            {chat.map((m, i) => (
-              m.role === 'user' ? (
-                <div key={i} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand-600 px-4 py-2.5 text-sm text-white">
-                    {m.content}
-                  </div>
-                </div>
-              ) : (
-                <div key={i} className="flex min-w-0 justify-start">
-                  <div className={`min-w-0 max-w-[95%] overflow-hidden rounded-2xl rounded-bl-md border bg-white px-4 py-3 shadow-sm ${m.isError ? 'border-rose-200' : 'border-slate-200'}`}>
-                    <Md text={m.content} />
-                    {m.steps?.length > 0 && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-50 pt-2">
-                        <span className="text-[10px] text-slate-300">Queried</span>
-                        {m.steps.map((s, si) => (
-                          <span key={si} className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">
-                            {TOOL_LABEL[s.tool] || s.tool}{s.count != null ? ` ${s.count}` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            ))}
-            {chatLoading && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-sm">
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Querying data…
-                </div>
+          <ChatThread
+            messages={chat}
+            loading={chatLoading}
+            loadingLabel="Querying data…"
+            className="mb-4"
+            renderMeta={(m) => m.steps?.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-50 pt-2">
+                <span className="text-[10px] text-slate-300">Queried</span>
+                {m.steps.map((s, si) => (
+                  <span key={si} className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+                    {TOOL_LABEL[s.tool] || s.tool}{s.count != null ? ` ${s.count}` : ''}
+                  </span>
+                ))}
               </div>
             )}
-            <div ref={endRef} />
-          </div>
+          />
         )}
 
         {/* Slash structured results */}
@@ -340,53 +236,37 @@ export default function CommandSearch() {
         )}
 
         {/* Input (sticky at bottom) */}
-        <div className="sticky bottom-3 mt-auto">
-          <div className="relative">
-            <form
-              onSubmit={(e) => { e.preventDefault(); send() }}
-              className="flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-lg focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100"
-            >
-              {parsed.mode === 'search' && (
-                <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">
-                  {CMD_BY_KEY[parsed.type].icon} {parsed.type}
-                </span>
-              )}
-              <input
-                ref={inputRef}
-                value={raw}
-                onChange={(e) => setRaw(e.target.value)}
-                placeholder={chat.length ? 'Ask a follow-up…' : 'Ask anything, or type / for quick search…'}
-                className="w-full bg-transparent text-base outline-none placeholder:text-slate-400 sm:text-sm"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {raw && (
-                <button type="button" onClick={() => { setRaw(''); setResults(null); inputRef.current?.focus() }}
-                  className="shrink-0 text-slate-300 hover:text-slate-500" aria-label="Clear">✕</button>
-              )}
-              {!raw.startsWith('/') && (
-                <button type="submit" disabled={!raw.trim() || chatLoading}
-                  className="shrink-0 rounded-full bg-brand-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-brand-700 disabled:opacity-40">
-                  Send
+        <ChatComposer
+          value={raw}
+          onChange={setRaw}
+          onSubmit={send}
+          inputRef={inputRef}
+          placeholder={chat.length ? 'Ask a follow-up…' : 'Ask anything, or type / for quick search…'}
+          onClear={() => { setRaw(''); setResults(null) }}
+          // A slash command is dispatched by the debounced search effect, not by
+          // submitting — hide Send while the box holds one.
+          showSend={!raw.startsWith('/')}
+          sendDisabled={!raw.trim() || chatLoading}
+          leftSlot={parsed.mode === 'search' && (
+            <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">
+              {CMD_BY_KEY[parsed.type].icon} {parsed.type}
+            </span>
+          )}
+        >
+          {/* Command palette (above the input) */}
+          {parsed.mode === 'palette' && paletteItems.length > 0 && (
+            <div className="absolute bottom-full left-0 z-20 mb-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+              {paletteItems.map((c) => (
+                <button key={c.key} onClick={() => pickCommand(c.key)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50">
+                  <span className="text-lg">{c.icon}</span>
+                  <span className="font-mono text-sm font-semibold text-slate-700">{c.label}</span>
+                  <span className="text-xs text-slate-400">{c.hint}</span>
                 </button>
-              )}
-            </form>
-
-            {/* Command palette (above the input) */}
-            {parsed.mode === 'palette' && paletteItems.length > 0 && (
-              <div className="absolute bottom-full left-0 z-20 mb-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                {paletteItems.map((c) => (
-                  <button key={c.key} onClick={() => pickCommand(c.key)}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50">
-                    <span className="text-lg">{c.icon}</span>
-                    <span className="font-mono text-sm font-semibold text-slate-700">{c.label}</span>
-                    <span className="text-xs text-slate-400">{c.hint}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+              ))}
+            </div>
+          )}
+        </ChatComposer>
       </div>
     </div>
   )
