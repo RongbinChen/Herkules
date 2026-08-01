@@ -52,8 +52,17 @@ transports 字段：列出行程中跨城转场的建议交通（已被上方"�
 - mode 取 "flight" 或 "train"；service 为航班号或高铁车次；depart/arrive 为参考出发/到达时刻（"HH:mm"）；duration 为大致时长；note 用英文简述（自行建议的班次须注明 "Reference only — verify before booking"）。
 - 同城或无需城际交通则无需列出。`;
 
-function buildUserPrompt(trip) {
-  const fmt = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+// Customers are all in China and parseAiArrival (below) reads the model's
+// output as +08:00, so the dates we hand it must use the same clock. Formatting
+// in UTC made a trip starting 00:00 China time look like the previous day to
+// the model, which then planned around the wrong window. en-CA gives YYYY-MM-DD.
+const CN_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' });
+
+// Exported for tripChat.js: the interview must describe the trip to the model
+// exactly the way the planner will, so the constraints it collects line up with
+// what actually gets planned.
+export function buildUserPrompt(trip) {
+  const fmt = (d) => (d ? CN_DATE.format(new Date(d)) : '');
   const lines = [];
   lines.push(`出差窗口：${fmt(trip.startTime)} 至 ${fmt(trip.endTime)}`);
   if (trip.assignees?.length) lines.push(`出差同事：${trip.assignees.map((a) => a.name).join('、')}`);
@@ -100,7 +109,8 @@ const tryParse = (s) => {
 
 // Robustly pull a JSON object out of an LLM reply that may wrap it in prose or
 // ```json fences (the reasoner model sometimes does this).
-function extractJson(text) {
+// Exported for tripChat.js.
+export function extractJson(text) {
   if (!text) return null;
   let r = tryParse(text.trim());
   if (r) return r;
@@ -168,7 +178,7 @@ async function callModel(model, userPrompt) {
   }
 }
 
-// Returns { itinerary: {days, notes}, model } or throws.
+// Returns { itinerary: {days, notes, transports}, stopArrivals, model } or throws.
 export async function planItinerary(trip) {
   if (!API_KEY) throw new DeepSeekError(deepseekFailureMessage(401), 401);
   const userPrompt = buildUserPrompt(trip);
