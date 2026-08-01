@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { planItinerary } from '../services/tripPlanner.js';
+import { runTripChat, summariseTripChat } from '../services/tripChat.js';
 
 const router = express.Router();
 
@@ -34,6 +35,10 @@ const tripSchema = z
     hidePhoneOnShare: z.boolean().optional(),
     flights: z.array(flightSchema).optional(),
     constraints: z.string().nullable().optional(),
+    // Explicit opt-in for the wizard: a reordered trip invalidates a saved plan
+    // even when the customer set is unchanged. Arrival-time tweaks from
+    // TripDetail must not, so this is never sent from there.
+    clearItinerary: z.boolean().optional(),
     // Provide either customerIds (auto-ordered by distance) OR explicit stops
     // (manual order + arrival times). stops wins when both are present.
     customerIds: z.array(z.number().int()).optional(),
@@ -180,6 +185,66 @@ const stopInclude = {
   createdBy: { select: { id: true, name: true } },
 };
 
+// ── Trip-planning interview (wizard step 3) ──────────────────────────────────
+// Kept above the `/:id` routes so a literal path segment is never parsed as an
+// id, matching the convention the share endpoint below already follows.
+//
+// The trip does not exist yet while the wizard runs, so the client sends the
+// draft's shape as `context`. That context is prompt content, not a credential:
+// it is only used to phrase questions back to the same user, and nothing here
+// reads or writes the database. The zod caps exist to stop anyone stuffing
+// megabytes into a prompt.
+const chatContextSchema = z.object({
+  startTime: z.string(),
+  endTime: z.string(),
+  assignees: z.array(z.object({ name: z.string() })).max(20).optional(),
+  flights: z.array(flightSchema).max(20).optional(),
+  constraints: z.string().max(4000).nullable().optional(),
+  stops: z
+    .array(
+      z.object({
+        customer: z.object({
+          name: z.string(),
+          address: z.string().nullable().optional(),
+          latitude: z.number().nullable().optional(),
+          longitude: z.number().nullable().optional(),
+        }),
+        priority: z.string().nullable().optional(),
+        visitDuration: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }),
+    )
+    .max(60)
+    .default([]),
+});
+
+const chatBodySchema = z.object({
+  messages: z
+    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) }))
+    .min(1)
+    .max(40),
+  context: chatContextSchema,
+});
+
+function chatHandler(fn) {
+  return async (req, res) => {
+    try {
+      const { messages, context } = chatBodySchema.parse(req.body);
+      res.json(await fn(messages, context));
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      // 502 keeps DeepSeek's own classification (out of balance / bad key /
+      // rate limited / unreachable) intact so the wizard can show it verbatim.
+      if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+      console.error('[trips] plan-chat error:', error.message);
+      return res.status(500).json({ error: 'Planning chat failed' });
+    }
+  };
+}
+
+router.post('/plan-chat', authenticateToken, chatHandler(runTripChat));
+router.post('/plan-chat/summary', authenticateToken, chatHandler(summariseTripChat));
+
 // ── Public share endpoint (NO auth) ──────────────────────────────────────────
 // Defined before the authenticated routes. Anyone with the token can view the
 // itinerary without logging in.
@@ -316,11 +381,29 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (end <= start) {
       return res.status(400).json({ error: 'endTime must be after startTime' });
     }
-    const existing = await prisma.trip.findUnique({ where: { id } });
+    const existing = await prisma.trip.findUnique({
+      where: { id },
+      include: { stops: { select: { customerId: true } } },
+    });
     if (!existing) {
       return res.status(404).json({ error: 'Trip not found' });
     }
     const stops = await buildStops(data, start, end);
+
+    // A saved itinerary that still names customers no longer on the trip is
+    // worse than no itinerary at all — the day-by-day plan silently describes
+    // visits that will never happen. Drop it when the customer set changes, or
+    // when the client says the plan is stale (the wizard does this after a
+    // reorder). TripDetail's arrival-time editing sends neither, so tuning
+    // times keeps the plan.
+    const before = new Set(existing.stops.map((s) => s.customerId));
+    const after = new Set(stops.map((s) => s.customerId));
+    const customerSetChanged = before.size !== after.size || [...after].some((c) => !before.has(c));
+    const itineraryReset =
+      customerSetChanged || data.clearItinerary === true
+        ? { itinerary: null, itineraryModel: null, itineraryAt: null }
+        : {};
+
     // Rebuild stops to reflect the new selection / ordering.
     const trip = await prisma.$transaction(async (tx) => {
       await tx.tripStop.deleteMany({ where: { tripId: id } });
@@ -335,6 +418,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
           hidePhoneOnShare: data.hidePhoneOnShare ?? false,
           flights: data.flights ?? undefined,
           constraints: data.constraints ?? undefined,
+          ...itineraryReset,
           stops: { create: stops },
         },
         include: stopInclude,
