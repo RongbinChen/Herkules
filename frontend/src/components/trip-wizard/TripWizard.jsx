@@ -16,7 +16,7 @@ import StepCustomers from './StepCustomers'
 import StepGenerate from './StepGenerate'
 import StepOrder from './StepOrder'
 import WizardShell from './WizardShell'
-import { canLeave, maxReachable, stepErrors } from './context'
+import { buildChatContext, canLeave, maxReachable, stepErrors } from './context'
 
 const clampStep = (n) => Math.min(4, Math.max(1, Number(n) || 1))
 
@@ -46,6 +46,7 @@ export default function TripWizard({ mode = 'create' }) {
   const [loadError, setLoadError] = useState('')
   const [conflict, setConflict] = useState(null)
   const [showErrors, setShowErrors] = useState(false)
+  const [summarising, setSummarising] = useState(false)
 
   const patch = useCallback((fn) => setDraft((d) => (d ? fn(d) : d)), [])
 
@@ -138,8 +139,42 @@ export default function TripWizard({ mode = 'create' }) {
   const reachable = maxReachable(draft)
   const stepBlocked = !canLeave(draft, step)
 
+  // Condense the interview into `constraints` on the way out of step 3 — that
+  // free text is the only part of the conversation the planner ever sees.
+  // Never blocking: a failure falls back to the user's own words, because the
+  // alternative is losing everything they just told the assistant.
+  async function summariseThenAdvance() {
+    const needsSummary =
+      draft.chat.length > 0 &&
+      !draft.constraintsEdited &&
+      draft.chat.length !== draft.summarisedChatLen
+    if (!needsSummary) return goStep(4)
+
+    setSummarising(true)
+    let constraints = ''
+    try {
+      const { data } = await tripsAPI.planChatSummary({
+        messages: draft.chat.map(({ role, content }) => ({ role, content })),
+        context: buildChatContext(draft, customerById),
+      })
+      constraints = (data.constraints || '').trim()
+    } catch {
+      /* fall through to the local summary below */
+    }
+    if (!constraints) {
+      constraints = draft.chat
+        .filter((m) => m.role === 'user')
+        .map((m) => `- ${m.content}`)
+        .join('\n')
+    }
+    patch((d) => ({ ...d, constraints, summarisedChatLen: d.chat.length }))
+    setSummarising(false)
+    goStep(4)
+  }
+
   const next = () => {
     if (stepBlocked) return setShowErrors(true)
+    if (step === 3) return summariseThenAdvance()
     goStep(step + 1)
   }
 
@@ -170,7 +205,9 @@ export default function TripWizard({ mode = 'create' }) {
           : <Button variant="secondary" onClick={() => navigate('/trips')}>Cancel</Button>}
         <div className="flex items-center gap-2">
           <span className="hidden text-xs text-slate-400 sm:inline">Step {step} of 4</span>
-          <Button onClick={next}>{step === 3 ? 'Review and generate →' : 'Next →'}</Button>
+          <Button onClick={next} disabled={summarising}>
+            {summarising ? 'Summarising…' : step === 3 ? 'Review and generate →' : 'Next →'}
+          </Button>
         </div>
       </div>
     )
