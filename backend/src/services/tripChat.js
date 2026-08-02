@@ -49,7 +49,8 @@ ${CHECKLIST}
 - 当清单中至少 5 项已确认，或用户明确表示说完了，把 ready 置为 true，并在 reply 里明确说信息已经足够、现在可以生成行程计划了。
 - 你不能生成行程计划本身，生成由用户点按钮触发。
 
-只输出 JSON：{"reply":"给用户看的话","ready":true|false,"covered":[清单编号],"missing":[清单编号]}`;
+只输出 JSON。covered 与 missing 都是清单编号的数字数组。示例（照这个形状回，内容换成你的）：
+{"reply":"好的，已记录航班 CA4501。每家客户预计待多久？","ready":false,"covered":[1],"missing":[2,3,4,5,6,7,8,9]}`;
 
 const SUMMARY_SYSTEM = `把下面这段"差旅规划访谈"浓缩成给行程规划模型看的约束清单。
 - 只写用户明确说过的事实，绝不推断或补全。
@@ -106,21 +107,40 @@ const toMessages = (history) =>
 // inside a sentence like "I'll say [[READY]] when I have enough" — and then
 // has to be stripped before rendering. A field can't do any of that.
 export async function runTripChat(history, context) {
-  const raw = await call([
+  const messages = [
     { role: 'system', content: systemPrompt(buildUserPrompt(context)) },
     ...toMessages(history),
-  ]);
-  const parsed = extractJson(raw);
-  // A parse hiccup must never kill the conversation — show the raw text and
-  // let the user keep talking (or skip the interview entirely).
-  if (!parsed || typeof parsed.reply !== 'string') {
-    return { reply: String(raw || '').trim() || '（无回复）', ready: false, missing: [] };
+  ];
+
+  // Once the conversation is a few turns long this model intermittently returns
+  // a few spaces instead of JSON — finish_reason 'stop', a handful of
+  // completion tokens, nothing usable. It is stochastic, so one more attempt
+  // almost always lands. Two tries, then give up honestly.
+  let raw = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    raw = await call(messages);
+    const parsed = extractJson(raw);
+    if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+      return {
+        reply: parsed.reply.trim(),
+        ready: parsed.ready === true,
+        // The model sometimes answers with labels rather than the checklist
+        // numbers; keep only the numbers so the UI's lookup stays meaningful.
+        missing: Array.isArray(parsed.missing)
+          ? parsed.missing.filter((n) => Number.isInteger(n))
+          : [],
+      };
+    }
+    console.warn(`[tripChat] unusable reply on attempt ${attempt + 1}: ${JSON.stringify(raw).slice(0, 120)}`);
   }
-  return {
-    reply: parsed.reply.trim(),
-    ready: parsed.ready === true,
-    missing: Array.isArray(parsed.missing) ? parsed.missing : [],
-  };
+
+  // Reaching here means two blank replies. Returning a placeholder message
+  // would dress a failure up as a normal answer, hiding it from the user and
+  // from the logs — surface it so the wizard shows its Retry path instead.
+  throw new DeepSeekError(
+    'The planning assistant returned an empty reply. Please try again. (助手返回了空回复，请重试)',
+    502,
+  );
 }
 
 // Condense the whole transcript into the single free-text blob tripPlanner
