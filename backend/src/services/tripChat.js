@@ -46,11 +46,9 @@ ${CHECKLIST}
 - 绝不编造航班号、时刻、地名、公司名。用户不确定就记为"无特别要求"并推进。
 - 用用户所使用的语言回答。
 - 航班会由用户在界面上单独录入结构化条目，你只需问清是否已订、大致时间，不要代填航班号。
-- 当清单中至少 5 项已确认，或用户明确表示说完了，把 ready 置为 true，并在 reply 里明确说信息已经足够、现在可以生成行程计划了。
-- 你不能生成行程计划本身，生成由用户点按钮触发。
-
-只输出 JSON。covered 与 missing 都是清单编号的数字数组。示例（照这个形状回，内容换成你的）：
-{"reply":"好的，已记录航班 CA4501。每家客户预计待多久？","ready":false,"covered":[1],"missing":[2,3,4,5,6,7,8,9]}`;
+- 只回一段自然语言，不要 JSON、不要 markdown、不要编号列表。
+- 清单基本问完，或用户表示说完了，就明确告诉他信息已经足够、可以生成行程计划了。
+- 你不能生成行程计划本身，生成由用户点按钮触发。`;
 
 const SUMMARY_SYSTEM = `把下面这段"差旅规划访谈"浓缩成给行程规划模型看的约束清单。
 - 只写用户明确说过的事实，绝不推断或补全。
@@ -60,7 +58,7 @@ const SUMMARY_SYSTEM = `把下面这段"差旅规划访谈"浓缩成给行程规
 - 用户没提到的清单项直接省略，不要写"未提及"。
 只输出 JSON：{"constraints":"- 第一条\\n- 第二条"}`;
 
-async function call(messages, { maxTokens = 900 } = {}) {
+async function call(messages, { maxTokens = 900, json = true } = {}) {
   if (!API_KEY) throw new DeepSeekError(deepseekFailureMessage(401), 401);
   const controller = new AbortController();
   // assistant.js has no timeout here and a hung DeepSeek leaves the request
@@ -78,15 +76,9 @@ async function call(messages, { maxTokens = 900 } = {}) {
         messages,
         thinking: { type: 'disabled' },
         max_tokens: maxTokens,
-        // MUST stay 0. With response_format json_object, this model wanders
-        // into emitting nothing but spaces once the conversation is a few turns
-        // long — finish_reason 'stop', a handful of whitespace tokens, no JSON.
-        // Measured on the same prompt and history: temperature 0.4 fails every
-        // time from turn 5 onwards, temperature 0 returns valid JSON. Dropping
-        // json_object also fixes it, but then every reply needs salvaging from
-        // prose. Asking the next interview question needs no randomness anyway.
-        temperature: 0,
-        response_format: { type: 'json_object' },
+        temperature: 0.3,
+        // JSON mode is opt-out for a reason — see runTripChat below.
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: controller.signal,
     });
@@ -107,47 +99,38 @@ const toMessages = (history) =>
     content: String(m.content || '').slice(0, 4000),
   }));
 
-// One interview turn → { reply, ready, missing }.
+// One interview turn → { reply }.
 //
-// `ready` is a JSON boolean rather than a sentinel string in the reply text:
-// a sentinel gets translated ("【READY】"), escaped by markdown, or echoed
-// inside a sentence like "I'll say [[READY]] when I have enough" — and then
-// has to be stripped before rendering. A field can't do any of that.
+// Plain prose, NOT JSON mode. With this long a system prompt, asking v4-flash
+// for response_format json_object makes it answer with nothing but whitespace
+// from about the fifth turn on — finish_reason 'stop', a handful of space
+// tokens, no JSON, every single time. Measured against the same prompt and
+// history: json_object fails at temperature 0 and 0.4 alike, while dropping it
+// answers correctly at 5, 7 and 9 turns. A short prompt survives json_object,
+// which is why the summary pass below still uses it and this does not.
+//
+// The cost is the structured `ready` / `missing` fields, which drove a badge
+// and a checklist. No loss worth chasing: the wizard never gated on them, and
+// the user deciding when they have said enough is better than a model guessing.
 export async function runTripChat(history, context) {
-  const messages = [
-    { role: 'system', content: systemPrompt(buildUserPrompt(context)) },
-    ...toMessages(history),
-  ];
-
-  // Once the conversation is a few turns long this model intermittently returns
-  // a few spaces instead of JSON — finish_reason 'stop', a handful of
-  // completion tokens, nothing usable. It is stochastic, so one more attempt
-  // almost always lands. Two tries, then give up honestly.
-  let raw = '';
-  for (let attempt = 0; attempt < 2; attempt++) {
-    raw = await call(messages);
-    const parsed = extractJson(raw);
-    if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
-      return {
-        reply: parsed.reply.trim(),
-        ready: parsed.ready === true,
-        // The model sometimes answers with labels rather than the checklist
-        // numbers; keep only the numbers so the UI's lookup stays meaningful.
-        missing: Array.isArray(parsed.missing)
-          ? parsed.missing.filter((n) => Number.isInteger(n))
-          : [],
-      };
-    }
-    console.warn(`[tripChat] unusable reply on attempt ${attempt + 1}: ${JSON.stringify(raw).slice(0, 120)}`);
-  }
-
-  // Reaching here means two blank replies. Returning a placeholder message
-  // would dress a failure up as a normal answer, hiding it from the user and
-  // from the logs — surface it so the wizard shows its Retry path instead.
-  throw new DeepSeekError(
-    'The planning assistant returned an empty reply. Please try again. (助手返回了空回复，请重试)',
-    502,
+  const raw = await call(
+    [
+      { role: 'system', content: systemPrompt(buildUserPrompt(context)) },
+      ...toMessages(history),
+    ],
+    { json: false, maxTokens: 600 },
   );
+  const reply = String(raw || '').trim();
+  if (!reply) {
+    // Never dress a blank answer up as a normal reply — that is exactly what
+    // hid this bug for a whole release. Let the wizard show its retry path.
+    console.warn('[tripChat] blank reply from the interview call');
+    throw new DeepSeekError(
+      'The planning assistant returned an empty reply. Please try again. (助手返回了空回复，请重试)',
+      502,
+    );
+  }
+  return { reply };
 }
 
 // Condense the whole transcript into the single free-text blob tripPlanner

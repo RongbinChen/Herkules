@@ -5,20 +5,6 @@ import ChatThread from '../chat/ChatThread'
 import { Button, Card, Textarea } from '../ui'
 import { buildChatContext } from './context'
 
-// Mirrors the checklist in backend/src/services/tripChat.js. The interview
-// returns the numbers it still needs; these are the labels for them.
-const CHECKLIST = [
-  'Flights / trains booked',
-  'Time needed per customer',
-  'Fixed appointments',
-  'Working hours & weekends',
-  'Departure / return city',
-  'Intercity transport preference',
-  'Companions & bookings to make',
-  'Daily intensity / budget',
-  'Anything else',
-]
-
 // Shown before the first request so the panel is never blank — and so the first
 // real call happens after the user has typed something, which means a DeepSeek
 // outage cannot leave them staring at an empty screen with no way in.
@@ -54,12 +40,7 @@ export default function StepChat({ draft, patch, customerById }) {
         messages: next.map(({ role, content: c }) => ({ role, content: c })),
         context: buildChatContext(draft, customerById),
       })
-      patch((d) => ({
-        ...d,
-        chat: [...next, { role: 'assistant', content: data.reply }],
-        ready: data.ready === true,
-        missing: Array.isArray(data.missing) ? data.missing : [],
-      }))
+      patch((d) => ({ ...d, chat: [...next, { role: 'assistant', content: data.reply }] }))
     } catch (e) {
       setAiError(e.response?.data?.error || 'The planning assistant is temporarily unavailable.')
     } finally {
@@ -87,8 +68,6 @@ export default function StepChat({ draft, patch, customerById }) {
     }))
   const removeFlight = (i) =>
     patch((d) => ({ ...d, meta: { ...d.meta, flights: d.meta.flights.filter((_, idx) => idx !== i) } }))
-
-  const missing = new Set(draft.missing || [])
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -141,15 +120,6 @@ export default function StepChat({ draft, patch, customerById }) {
              actually reaches the planner, so they are editable at all times
              rather than hidden behind the conversation. ── */}
       <div className="space-y-3">
-        {draft.ready && (
-          <Card className="border-emerald-200 bg-emerald-50 p-3">
-            <p className="text-sm font-semibold text-emerald-700">Enough to work with</p>
-            <p className="mt-0.5 text-xs text-emerald-600">
-              The assistant has what it needs. Continue whenever you like.
-            </p>
-          </Card>
-        )}
-
         <Card className="p-3.5">
           <h3 className="mb-1 text-sm font-semibold text-slate-700">Planning constraints</h3>
           <p className="mb-2 text-xs text-slate-400">
@@ -195,21 +165,6 @@ export default function StepChat({ draft, patch, customerById }) {
           )}
         </Card>
 
-        {draft.chat.length > 0 && (
-          <Card className="p-3.5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-700">Still to cover</h3>
-            <ul className="space-y-1 text-xs">
-              {CHECKLIST.map((label, i) => {
-                const open = missing.has(i + 1)
-                return (
-                  <li key={label} className={open ? 'text-slate-500' : 'text-emerald-600'}>
-                    <span className="mr-1.5">{open ? '○' : '✓'}</span>{label}
-                  </li>
-                )
-              })}
-            </ul>
-          </Card>
-        )}
       </div>
     </div>
   )
