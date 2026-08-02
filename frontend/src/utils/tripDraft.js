@@ -54,11 +54,8 @@ export function emptyDraft(mode = 'create', tripId = null) {
     // Once the user edits the constraints by hand, the AI summary stops
     // overwriting them.
     constraintsEdited: false,
-    // Interview state: whether the assistant says it has enough, which
-    // checklist items it still wants, and how long the transcript was when we
-    // last condensed it (so re-entering step 3 doesn't re-summarise for free).
-    ready: false,
-    missing: [],
+    // Transcript length at the last summarise, so re-entering step 3 without
+    // saying anything new doesn't pay for another summary.
     summarisedChatLen: 0,
     // Set the moment POST /trips succeeds. This is what stops a retry after a
     // failed plan from creating a second trip.
