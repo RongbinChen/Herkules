@@ -78,7 +78,14 @@ async function call(messages, { maxTokens = 900 } = {}) {
         messages,
         thinking: { type: 'disabled' },
         max_tokens: maxTokens,
-        temperature: 0.4,
+        // MUST stay 0. With response_format json_object, this model wanders
+        // into emitting nothing but spaces once the conversation is a few turns
+        // long — finish_reason 'stop', a handful of whitespace tokens, no JSON.
+        // Measured on the same prompt and history: temperature 0.4 fails every
+        // time from turn 5 onwards, temperature 0 returns valid JSON. Dropping
+        // json_object also fixes it, but then every reply needs salvaging from
+        // prose. Asking the next interview question needs no randomness anyway.
+        temperature: 0,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
