@@ -111,11 +111,15 @@
 - Calendar, EventModal
 - BidProjectList, BidStatistics
 - CustomerList, CustomerDetail, CustomerModal, CustomerMap
-- **Trip**: TripList, TripDetail, TripModal, TripMap, TripShare, TripItinerary, TripPlanView
+- **Trip**: TripList, TripDetail, TripMap, TripShare, TripItinerary, TripPlanView
+  - **新建与编辑走分步向导**（`components/trip-wizard/`，路由 `/trips/new` 与 `/trips/:id/edit`）：选客户 → 拖拽排序 → AI 访谈收集约束 → 生成并给分享链接。草稿存 localStorage（`utils/tripDraft.js`），只有最后一步才真正建 trip。原来的 TripModal 弹窗已删除。
+  - 向导提交时**永远发 `stops` 而非 `customerIds`**。发 customerIds 会让后端走 `buildAutoStops`，清掉 priority/visitDuration/notes 并用均分时间覆盖 AI 排好的到达时间——这是 TripModal 的老 bug（改个标题就毁掉整个行程安排）。
+- **chat 原语**（`components/chat/`）：`ChatMarkdown` / `ChatThread` / `ChatComposer`，由 CommandSearch 与向导第 3 步共用。
 
 **共享工具**：
 - `utils/mapTiles.js` — `PROVIDERS`（**Google** 与 **AMap 高德** 两个底图）、`projectForProvider()`（**WGS-84→GCJ-02 坐标转换**）、`loadLeaflet()`、marker 图标。
-- `utils/trips.js` — `sortStopsByArrival()`：**站点显示顺序的唯一来源**（按 `plannedArrival` 升序）。TripDetail 与 TripShare 都用它，保证详情页/分享页地图编号一致（DB `order` 是地理路线，会与时间序不同，不用于展示）。
+- `utils/trips.js` — `sortStopsByArrival()`：**站点显示顺序的唯一来源**（按 `plannedArrival` 升序）。TripDetail 与 TripShare 都用它，保证详情页/分享页地图编号一致。另有 `orderByNearestNeighbour()`，是后端 `routes/trips.js` 同名函数的客户端等价实现，供向导第 2 步的「Suggest geographic order」使用（向导阶段 trip 还不存在，没有后端可调）。
+  - 两个字段的分工：**`order` 是用户在向导里拖出来的意愿顺序**，`plannedArrival` 是 AI 排出来的实际日程。展示按后者，喂给规划模型的编号按前者。
 
 ---
 

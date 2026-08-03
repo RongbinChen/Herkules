@@ -118,6 +118,15 @@ function shareToken() {
 
 // Build stop rows by auto-ordering a set of customer ids (nearest-neighbour)
 // and spreading arrival times evenly across the window.
+//
+// LEGACY. The trip wizard always sends explicit `stops`, so nothing in the app
+// reaches this any more; it stays for API compatibility. Be careful before
+// routing anything back through it: it writes only customerId/order/
+// plannedArrival, so priority, visitDuration and notes silently fall back to
+// defaults and any arrival times the planner computed are replaced by an even
+// split. That is exactly how editing a trip's title used to destroy its
+// schedule. It also carries the off-by-one below (denominator `count` rather
+// than `count - 1`), so the last stop never reaches endTime.
 async function buildAutoStops(customerIds, start, end) {
   const customers = await prisma.customer.findMany({
     where: { id: { in: customerIds } },

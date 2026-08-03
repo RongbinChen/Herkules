@@ -44,9 +44,13 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
         setTrip(data)
         patch((d) => ({ ...d, createdTripId: data.id }))
       } else {
-        // Reordering invalidates a saved plan even when the customer set is
-        // unchanged, so say so explicitly.
-        const { data } = await tripsAPI.update(id, { ...payload, clearItinerary: true })
+        // Only tell the backend the plan is stale when the order actually
+        // moved. Changing the title or a note must leave the itinerary alone;
+        // a customer-set change is detected server-side regardless.
+        const order = draft.stops.map((s) => s.customerId)
+        const base = draft.baseStopOrder || order
+        const reordered = order.length !== base.length || order.some((c, i) => c !== base[i])
+        const { data } = await tripsAPI.update(id, { ...payload, clearItinerary: reordered })
         setTrip(data)
       }
 

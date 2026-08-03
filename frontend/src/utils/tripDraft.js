@@ -134,6 +134,11 @@ export function draftFromTrip(trip, sortedStops) {
       hidePhoneOnShare: trip.hidePhoneOnShare === true,
       flights: Array.isArray(trip.flights) ? trip.flights : [],
     },
+    // The stop order this draft started from. Reordering invalidates a saved
+    // itinerary; renaming the trip does not. Without this baseline we would
+    // have to assume every edit is a reorder and throw the plan away each time
+    // — which is the same class of silent data loss the wizard exists to fix.
+    baseStopOrder: (sortedStops || []).map((s) => s.customer.id),
     stops: (sortedStops || []).map((s) => ({
       customerId: s.customer.id,
       priority: s.priority || 'NORMAL',

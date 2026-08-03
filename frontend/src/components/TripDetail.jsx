@@ -5,7 +5,6 @@ import { sortStopsByArrival } from '../utils/trips'
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import ShareLinkBar from './ShareLinkBar'
 import TripMap from './TripMap'
-import TripModal from './TripModal'
 import TripPlanView from './TripPlanView'
 
 // datetime-local needs "YYYY-MM-DDTHH:mm" in local time.
@@ -21,7 +20,6 @@ export default function TripDetail() {
   const navigate = useNavigate()
   const [trip, setTrip] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [editOpen, setEditOpen] = useState(false)
 
   // Editable copy of the stops (manual reorder + arrival-time tuning).
   const [stops, setStops] = useState([])
@@ -176,7 +174,7 @@ export default function TripDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setEditOpen(true)} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50">
+          <button onClick={() => navigate(`/trips/${trip.id}/edit`)} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50">
             Edit
           </button>
           <button onClick={handleDelete} className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50">
@@ -330,8 +328,6 @@ export default function TripDetail() {
           </p>
         )}
       </div>
-
-      <TripModal isOpen={editOpen} trip={trip} onClose={() => setEditOpen(false)} onSaved={() => load()} />
     </div>
   )
 }
