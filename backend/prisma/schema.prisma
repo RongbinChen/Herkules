@@ -41,6 +41,7 @@ model User {
 enum HotProjectCategory {
   OPEN      // Enquiry - Open Projects
   POTENTIAL // Potential Projects
+  REVAMP    // Revamp — upgrades / retrofits of machines already in the field
 }
 
 enum HotProjectVisibility {
