@@ -5,6 +5,7 @@ import { customersAPI } from '../api/api'
 import { listProjectThreads } from '../api/chinabidding'
 import { useAuth } from '../context/AuthContext'
 import CustomerModal from './CustomerModal'
+import CustomerContracts from './CustomerContracts'
 import CustomerNotes from './CustomerNotes'
 import { statusMeta, tierMeta } from '../constants/customer'
 
@@ -379,6 +380,8 @@ export default function CustomerDetail() {
             currentUser={user}
             onChanged={load}
           />
+
+          <CustomerContracts customerId={customer.id} currentUser={user} />
 
           {/* Visit reports */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5">

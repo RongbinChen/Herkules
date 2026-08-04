@@ -132,6 +132,26 @@ export const tripsAPI = {
   getShared: (token) => api.get(`/trips/share/${token}`),
 }
 
+// Contract files. Every call except unlock/pin carries the short-lived token
+// minted by unlock — the server rejects the request without it, so this is not
+// a UI convenience but the actual gate.
+const withUnlock = (token, extra = {}) => ({
+  ...extra,
+  headers: { ...(extra.headers || {}), 'X-Contract-Token': token },
+})
+
+export const contractsAPI = {
+  unlock: (team, pin) => api.post('/contracts/unlock', { team, pin }),
+  pinStatus: () => api.get('/contracts/pin-status'),
+  setPin: (team, pin) => api.put('/contracts/pin', { team, pin }),
+  list: (customerId, token) => api.get(`/contracts/customer/${customerId}`, withUnlock(token)),
+  upload: (customerId, token, formData, onUploadProgress) =>
+    api.post(`/contracts/customer/${customerId}`, formData, withUnlock(token, { onUploadProgress })),
+  download: (fileId, token) =>
+    api.get(`/contracts/files/${fileId}/download`, withUnlock(token, { responseType: 'blob' })),
+  remove: (fileId, token) => api.delete(`/contracts/files/${fileId}`, withUnlock(token)),
+}
+
 export const usersAPI = {
   getAll: () => api.get('/users'),
   getVisible: () => api.get('/users/visible'),
