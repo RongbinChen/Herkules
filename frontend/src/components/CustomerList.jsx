@@ -336,20 +336,23 @@ export default function CustomerList() {
               {sharing ? 'Creating…' : `Share ${selectedIds.size} selected`}
             </button>
           )}
-          {/* Ticked customers win over the filter. The Share button next to
-              this one already works off the selection, and having the two read
-              the same list is less surprising than one meaning "checked" and
-              the other "everything currently shown". */}
+          {/* Seeds the wizard with the ticked customers only. Falling back to
+              "everything currently shown" meant an unfiltered list handed the
+              wizard all 487 customers — a trip nobody would take, and 484 rows
+              to delete by hand. With nothing ticked, open the wizard empty and
+              let its own search pick the stops. */}
           <button
-            onClick={() => {
-              const ids = selectedIds.size ? [...selectedIds] : filtered.map((c) => c.id)
-              navigate('/trips/new', { state: { customerIds: ids } })
-            }}
-            disabled={filtered.length === 0 && selectedIds.size === 0}
-            title={selectedIds.size ? 'Schedule the selected customers into a trip' : 'Schedule the currently filtered customers into a trip'}
-            className="whitespace-nowrap rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50"
+            onClick={() =>
+              navigate('/trips/new', selectedIds.size ? { state: { customerIds: [...selectedIds] } } : undefined)
+            }
+            title={
+              selectedIds.size
+                ? `Start a trip with the ${selectedIds.size} selected customer${selectedIds.size === 1 ? '' : 's'}`
+                : 'Start a trip and choose the customers in the wizard'
+            }
+            className="whitespace-nowrap rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-600 transition hover:bg-brand-50"
           >
-            Schedule trip ({selectedIds.size || filtered.length})
+            Schedule trip{selectedIds.size ? ` (${selectedIds.size})` : ''}
           </button>
           <button
             onClick={openCreate}
