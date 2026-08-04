@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { hotProjectsAPI, customersAPI } from '../api/api'
+import { usersAPI, hotProjectsAPI, customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Input, Textarea, Badge } from './ui'
 
@@ -385,6 +385,28 @@ export default function HotProjects() {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  // Team tabs, same shape as Visit Reports: WRC/HRC narrow the list to records
+  // owned by that team, with an optional per-person filter inside the tab.
+  const [team, setTeam] = useState('ALL') // 'ALL' | 'WRC' | 'HRC'
+  const [personId, setPersonId] = useState(null)
+  const [users, setUsers] = useState([])
+
+  useEffect(() => { usersAPI.getVisible().then((r) => setUsers(r.data)).catch(() => {}) }, [])
+
+  const pickTeam = (key) => { setTeam(key); setPersonId(null) }
+
+  // Filtering happens client-side against the owner already in each row, so no
+  // backend change is needed. Users on team OTHER are reachable only via All —
+  // same rule as Visit Reports.
+  const teamMembers = useMemo(() => users.filter((u) => u.team === team), [users, team])
+  const teamMemberIds = useMemo(() => new Set(teamMembers.map((u) => u.id)), [teamMembers])
+
+  const visibleProjects = useMemo(() => {
+    if (team === 'ALL') return projects
+    return projects.filter(
+      (p) => teamMemberIds.has(p.owner?.id) && (!personId || p.owner?.id === personId),
+    )
+  }, [projects, team, teamMemberIds, personId])
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q), 300)
@@ -446,14 +468,44 @@ export default function HotProjects() {
           </div>
         </div>
 
+        {/* Team tabs + person sub-filter */}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {[{ k: 'ALL', l: 'All' }, { k: 'WRC', l: 'WRC' }, { k: 'HRC', l: 'HRC' }].map((f) => (
+            <button key={f.k} onClick={() => pickTeam(f.k)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${team === f.k ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              {f.l}
+            </button>
+          ))}
+          <span className="ml-2 text-xs text-slate-400">
+            {visibleProjects.length} project{visibleProjects.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {team !== 'ALL' && (
+          <div className="mb-4 flex flex-wrap items-center gap-1.5">
+            <button onClick={() => setPersonId(null)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${personId === null ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              Everyone
+            </button>
+            {teamMembers.map((u) => (
+              <button key={u.id} onClick={() => setPersonId(u.id)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${personId === u.id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {u.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* List */}
         {loading ? (
           <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
-        ) : projects.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-400">No projects.</div>
+        ) : visibleProjects.length === 0 ? (
+          <div className="py-16 text-center text-sm text-slate-400">
+            {team === 'ALL' ? 'No projects.' : `No projects owned by ${personId ? teamMembers.find((u) => u.id === personId)?.name : team}.`}
+          </div>
         ) : (
           <div className="space-y-3">
-            {projects.map((p) => (
+            {visibleProjects.map((p) => (
               <ProjectRow key={p.id} p={p} onChanged={load} currentUserId={user?.id} isAdmin={isAdmin} />
             ))}
           </div>
