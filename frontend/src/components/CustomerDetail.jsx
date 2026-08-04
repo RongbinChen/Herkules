@@ -241,96 +241,6 @@ export default function CustomerDetail() {
             )}
           </div>
 
-          {/* Related tender projects */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-800">Tender projects</h2>
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{projects.length}</span>
-            </div>
-
-            <ProjectLinker linkedKeys={projects.map((p) => p.threadKey)} onLink={handleLinkProject} />
-
-            {projects.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">No tender projects linked yet.</p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {projects.map((p) => {
-                  const st = p.tracking?.ourStatus ? OUR_STATUS[p.tracking.ourStatus] : null
-                  return (
-                    <li key={p.linkId} className="rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
-                      <div className="flex items-start justify-between gap-2">
-                        <button
-                          onClick={() => navigate(`/chinabidding?q=${encodeURIComponent(p.threadKey)}`)}
-                          className="min-w-0 flex-1 text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
-                          title="View announcements for this project"
-                        >
-                          {p.projectName}
-                        </button>
-                        <button
-                          onClick={() => handleUnlinkProject(p.linkId)}
-                          className="shrink-0 text-slate-300 transition hover:text-rose-500"
-                          title="Remove link"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-                        {p.bidStage && (
-                          <span className="rounded-full bg-brand-50 px-2 py-0.5 font-semibold text-brand-700">{STAGE_LABEL[p.bidStage] || p.bidStage}</span>
-                        )}
-                        {st && <span className={`rounded-full px-2 py-0.5 font-semibold ${st.cls}`}>{st.label}</span>}
-                        {p.equipmentType && <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">{p.equipmentType}</span>}
-                        {p.deadline && (
-                          <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">
-                            Due {fmt(p.deadline).slice(0, 10)}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-
-          {/* Hot projects (sensitive — server already visibility-filtered) */}
-          {hotProjects.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-base font-bold text-slate-800">🔥 Hot projects</h2>
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{hotProjects.length}</span>
-              </div>
-              <ul className="space-y-2">
-                {hotProjects.map((h) => (
-                  <li key={h.id} className="rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
-                    <button onClick={() => navigate('/hotprojects')} className="w-full text-left">
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                        <span className={`rounded-full px-2 py-0.5 font-semibold ${h.category === 'OPEN' ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {h.category === 'OPEN' ? 'Open' : 'Potential'}
-                        </span>
-                        {h.priority && <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">P{h.priority}</span>}
-                        {h.processor && <span className="text-slate-400">👤 {h.processor}</span>}
-                        {h.visibility === 'PRIVATE' && <span>🔒</span>}
-                      </div>
-                      {h.requirements && <p className="mt-1 truncate text-sm font-medium text-slate-700">{h.requirements}</p>}
-                      {h.updates?.[0] && <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{h.updates[0].content}</p>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-        </div>
-
-        <div className="min-w-0 space-y-5">
-          <CustomerNotes
-            customerId={customer.id}
-            notes={customer.noteEntries || []}
-            currentUser={user}
-            onChanged={load}
-          />
-
           {/* Visit history timeline — min-w-0 so long content can't stretch the grid column */}
           <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -432,6 +342,96 @@ export default function CustomerDetail() {
               )
             })()}
           </div>
+          {/* Hot projects (sensitive — server already visibility-filtered) */}
+          {hotProjects.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-base font-bold text-slate-800">🔥 Hot projects</h2>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{hotProjects.length}</span>
+              </div>
+              <ul className="space-y-2">
+                {hotProjects.map((h) => (
+                  <li key={h.id} className="rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
+                    <button onClick={() => navigate('/hotprojects')} className="w-full text-left">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className={`rounded-full px-2 py-0.5 font-semibold ${h.category === 'OPEN' ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {h.category === 'OPEN' ? 'Open' : 'Potential'}
+                        </span>
+                        {h.priority && <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">P{h.priority}</span>}
+                        {h.processor && <span className="text-slate-400">👤 {h.processor}</span>}
+                        {h.visibility === 'PRIVATE' && <span>🔒</span>}
+                      </div>
+                      {h.requirements && <p className="mt-1 truncate text-sm font-medium text-slate-700">{h.requirements}</p>}
+                      {h.updates?.[0] && <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{h.updates[0].content}</p>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+        </div>
+
+        <div className="min-w-0 space-y-5">
+          <CustomerNotes
+            customerId={customer.id}
+            notes={customer.noteEntries || []}
+            currentUser={user}
+            onChanged={load}
+          />
+
+          {/* Related tender projects */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-800">Tender projects</h2>
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{projects.length}</span>
+            </div>
+
+            <ProjectLinker linkedKeys={projects.map((p) => p.threadKey)} onLink={handleLinkProject} />
+
+            {projects.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">No tender projects linked yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {projects.map((p) => {
+                  const st = p.tracking?.ourStatus ? OUR_STATUS[p.tracking.ourStatus] : null
+                  return (
+                    <li key={p.linkId} className="rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          onClick={() => navigate(`/chinabidding?q=${encodeURIComponent(p.threadKey)}`)}
+                          className="min-w-0 flex-1 text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
+                          title="View announcements for this project"
+                        >
+                          {p.projectName}
+                        </button>
+                        <button
+                          onClick={() => handleUnlinkProject(p.linkId)}
+                          className="shrink-0 text-slate-300 transition hover:text-rose-500"
+                          title="Remove link"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {p.bidStage && (
+                          <span className="rounded-full bg-brand-50 px-2 py-0.5 font-semibold text-brand-700">{STAGE_LABEL[p.bidStage] || p.bidStage}</span>
+                        )}
+                        {st && <span className={`rounded-full px-2 py-0.5 font-semibold ${st.cls}`}>{st.label}</span>}
+                        {p.equipmentType && <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">{p.equipmentType}</span>}
+                        {p.deadline && (
+                          <span className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">
+                            Due {fmt(p.deadline).slice(0, 10)}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+
           {/* Visit reports */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between">
