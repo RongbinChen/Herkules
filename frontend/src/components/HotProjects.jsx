@@ -9,6 +9,7 @@ import { Button, Input, Textarea, Badge } from './ui'
 
 const CATEGORIES = [
   { key: 'OPEN', label: 'Open Projects' },
+  { key: 'REVAMP', label: 'Revamp' },
   { key: 'POTENTIAL', label: 'Potential Projects' },
 ]
 const MACHINE_TYPES = ['ProfiMill', 'ProfiTurn', 'P/PR', 'K/KR', 'T']
@@ -283,6 +284,11 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
             {p.processor && <span>👤 {p.processor}</span>}
+            {/* The processor written on the sheet is not always someone with an
+                account (external partners, colleagues without a login). Saying
+                so is more useful than leaving the reader to wonder why the
+                record never shows up under a team tab. */}
+            {!p.owner && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">owner t.b.d.</span>}
             {p.deadline && <span className="font-semibold text-red-500">Due {fmtDate(p.deadline)}</span>}
             {p.dateOfReceipt && <span>Received {fmtDate(p.dateOfReceipt)}</span>}
             <span>{p._count?.updates ?? 0} updates</span>

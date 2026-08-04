@@ -9,6 +9,12 @@ import { authenticateToken } from '../middleware/auth.js';
 import { callDeepSeek } from '../services/deepseek.js';
 
 const router = express.Router();
+
+// Mirrors the HotProjectCategory enum. Anything unrecognised falls back to OPEN
+// rather than erroring — the sheet these records come from has always been the
+// source of truth for which list a project sits in.
+const CATEGORIES = new Set(['OPEN', 'POTENTIAL', 'REVAMP']);
+const toCategory = (v) => (CATEGORIES.has(v) ? v : 'OPEN');
 router.use(authenticateToken);
 
 // Visibility clause for one user.
@@ -29,7 +35,7 @@ router.get('/', async (req, res) => {
   try {
     const { category, q, priority } = req.query;
     const where = { AND: [visibleWhere(req.user)] };
-    if (category === 'OPEN' || category === 'POTENTIAL') where.AND.push({ category });
+    if (CATEGORIES.has(category)) where.AND.push({ category });
     if (priority) where.AND.push({ priority: parseInt(priority) });
     if (q) {
       where.AND.push({
@@ -84,7 +90,7 @@ router.post('/', async (req, res) => {
     if (!String(b.customer || '').trim()) return res.status(400).json({ error: 'customer is required' });
     const project = await prisma.hotProject.create({
       data: {
-        category: b.category === 'POTENTIAL' ? 'POTENTIAL' : 'OPEN',
+        category: toCategory(b.category),
         customer: String(b.customer).trim(),
         customerId: b.customerId ? parseInt(b.customerId) : null,
         dateOfReceipt: b.dateOfReceipt ? new Date(b.dateOfReceipt) : null,
@@ -116,7 +122,7 @@ router.put('/:id', async (req, res) => {
     const project = await prisma.hotProject.update({
       where: { id: existing.id },
       data: {
-        ...(b.category !== undefined ? { category: b.category === 'POTENTIAL' ? 'POTENTIAL' : 'OPEN' } : {}),
+        ...(b.category !== undefined ? { category: toCategory(b.category) } : {}),
         ...(b.customer !== undefined ? { customer: String(b.customer).trim() } : {}),
         ...(b.customerId !== undefined ? { customerId: b.customerId ? parseInt(b.customerId) : null } : {}),
         ...(b.dateOfReceipt !== undefined ? { dateOfReceipt: b.dateOfReceipt ? new Date(b.dateOfReceipt) : null } : {}),
