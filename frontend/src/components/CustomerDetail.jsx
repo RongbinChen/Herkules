@@ -380,6 +380,51 @@ export default function CustomerDetail() {
             onChanged={load}
           />
 
+          {/* Visit reports */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-800">Visit reports</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigate(`/visit-reports?new=1&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`)}
+                  className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
+                >
+                  ＋ Add report
+                </button>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{visitReports.length}</span>
+              </div>
+            </div>
+            {visitReports.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">
+                No visit reports for this customer yet.{' '}
+                <button
+                  onClick={() => navigate(`/visit-reports?new=1&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`)}
+                  className="font-semibold text-brand-600 hover:underline"
+                >
+                  Add one
+                </button>
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {visitReports.map((r) => (
+                  <li key={r.id} className="rounded-xl border border-slate-200 p-3">
+                    <button
+                      onClick={() => navigate(`/visit-reports/${r.id}`)}
+                      className="text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
+                    >
+                      {r.title}
+                    </button>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                      <span>{fmt(r.visitDate).slice(0, 10)}</span>
+                      {r.author?.name && <span>By {r.author.name}</span>}
+                      {r.status && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">{r.status}</span>}
+                    </div>
+                    {r.summary && <p className="mt-1 text-xs text-slate-500 line-clamp-2">{r.summary}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {/* Related tender projects */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -432,51 +477,6 @@ export default function CustomerDetail() {
             )}
           </div>
 
-          {/* Visit reports */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-800">Visit reports</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => navigate(`/visit-reports?new=1&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`)}
-                  className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
-                >
-                  ＋ Add report
-                </button>
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{visitReports.length}</span>
-              </div>
-            </div>
-            {visitReports.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">
-                No visit reports for this customer yet.{' '}
-                <button
-                  onClick={() => navigate(`/visit-reports?new=1&customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`)}
-                  className="font-semibold text-brand-600 hover:underline"
-                >
-                  Add one
-                </button>
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {visitReports.map((r) => (
-                  <li key={r.id} className="rounded-xl border border-slate-200 p-3">
-                    <button
-                      onClick={() => navigate(`/visit-reports/${r.id}`)}
-                      className="text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
-                    >
-                      {r.title}
-                    </button>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                      <span>{fmt(r.visitDate).slice(0, 10)}</span>
-                      {r.author?.name && <span>By {r.author.name}</span>}
-                      {r.status && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">{r.status}</span>}
-                    </div>
-                    {r.summary && <p className="mt-1 text-xs text-slate-500 line-clamp-2">{r.summary}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </div>
       </div>
 
