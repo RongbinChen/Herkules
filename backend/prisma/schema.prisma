@@ -33,6 +33,8 @@ model User {
   hotProjects       HotProject[]       @relation("HotProjectOwner")
   hotProjectUpdates HotProjectUpdate[]
   customerNotes     CustomerNote[]
+  contractUploads   ContractFile[]    @relation("ContractUploader")
+  contractPinEdits  TeamContractPin[] @relation("ContractPinEditor")
 }
 
 // ── Hot projects (internal sales open-projects list, from the WAV template) ──
@@ -140,6 +142,7 @@ model Customer {
   // already taken — that one is the customer's standing description, this is
   // the running record of what happened.
   noteEntries  CustomerNote[]
+  contractFiles ContractFile[]
 
   @@index([status])
   @@index([tier])
@@ -499,4 +502,41 @@ enum CustomerTier {
   A // 战略客户
   B // 重点客户
   C // 普通客户
+}
+
+// ── Contract files ───────────────────────────────────────────────────────────
+// Commercial and technical contracts, kept behind a per-team PIN. The PIN is
+// checked server-side and the file bytes never leave the box without it — a
+// front-end-only gate would still ship the data to every browser that asks.
+
+// One PIN per team. Stored as a bcrypt hash: an admin who can read the database
+// still should not be able to read the PIN itself.
+model TeamContractPin {
+  id          Int      @id @default(autoincrement())
+  team        UserTeam @unique
+  pinHash     String
+  updatedAt   DateTime @updatedAt
+  updatedById Int?
+  updatedBy   User?    @relation("ContractPinEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+model ContractFile {
+  id           Int      @id @default(autoincrement())
+  customerId   Int
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  // Which team's PIN unlocks this file.
+  team         UserTeam
+  filename     String // original name as uploaded, shown in the UI
+  // Name on disk (uuid + extension). Never derived from the uploaded name, so a
+  // crafted filename cannot escape the storage directory.
+  storedName   String   @unique
+  mimeType     String?
+  size         Int
+  note         String?
+  uploadedById Int?
+  uploadedBy   User?    @relation("ContractUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([customerId])
+  @@index([team])
 }
