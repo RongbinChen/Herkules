@@ -32,6 +32,7 @@ model User {
   visitReports      VisitReport[]
   hotProjects       HotProject[]       @relation("HotProjectOwner")
   hotProjectUpdates HotProjectUpdate[]
+  customerNotes     CustomerNote[]
 }
 
 // ── Hot projects (internal sales open-projects list, from the WAV template) ──
@@ -133,9 +134,30 @@ model Customer {
   visitReports VisitReport[]
   projectLinks CustomerProjectLink[]
   hotProjects  HotProject[]
+  // Timestamped log entries, each attributed to whoever wrote it. Named
+  // noteEntries rather than notes because the free-text `notes` field above is
+  // already taken — that one is the customer's standing description, this is
+  // the running record of what happened.
+  noteEntries  CustomerNote[]
 
   @@index([status])
   @@index([tier])
+}
+
+// A dated, attributed note on a customer. Same shape as HotProjectUpdate: the
+// author is nullable and set null on delete, so removing a colleague's account
+// never takes their notes with it.
+model CustomerNote {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  content    String
+  authorId   Int?
+  author     User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([customerId])
 }
 
 // Cross-reference glue: links a customer to a tender-project thread (BidProject.threadKey).

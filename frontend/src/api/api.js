@@ -59,6 +59,9 @@ export const customersAPI = {
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),
   geocode: (address) => api.post('/customers/geocode', { address }),
+  addNote: (id, content) => api.post(`/customers/${id}/notes`, { content }),
+  updateNote: (id, noteId, content) => api.put(`/customers/${id}/notes/${noteId}`, { content }),
+  deleteNote: (id, noteId) => api.delete(`/customers/${id}/notes/${noteId}`),
   // Cross-reference: link / unlink a tender-project thread to a customer.
   linkProject: (id, data) => api.post(`/customers/${id}/projects`, data),
   unlinkProject: (id, linkId) => api.delete(`/customers/${id}/projects/${linkId}`),

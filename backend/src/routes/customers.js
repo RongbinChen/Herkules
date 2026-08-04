@@ -187,6 +187,12 @@ async function resolveThreads(threadKeys) {
   return out;
 }
 
+// Newest first, with the author so the UI can say who wrote each note.
+const NOTE_INCLUDE = {
+  orderBy: { createdAt: 'desc' },
+  include: { author: { select: { id: true, name: true } } },
+};
+
 // Get a single customer (hub view: events, linked tender projects, visit reports)
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
@@ -206,6 +212,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
             threadKey: true, author: { select: { id: true, name: true } },
           },
         },
+        noteEntries: NOTE_INCLUDE,
       },
     });
     if (!customer) {
@@ -313,6 +320,71 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // Delete customer (admin only)
+// ── Notes ────────────────────────────────────────────────────────────────────
+// A running log on the customer, one entry per thing worth recording. Any
+// logged-in colleague can add one; only its author or an admin can remove it.
+
+router.post('/:id/notes', authenticateToken, async (req, res) => {
+  try {
+    const customerId = parseInt(req.params.id, 10);
+    const content = String(req.body?.content || '').trim();
+    if (!content) return res.status(400).json({ error: 'content is required' });
+
+    const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const note = await prisma.customerNote.create({
+      data: { customerId, content, authorId: req.user.userId },
+      include: NOTE_INCLUDE.include,
+    });
+    res.status(201).json(note);
+  } catch (error) {
+    console.error('Error adding customer note:', error);
+    res.status(500).json({ error: 'Failed to add note' });
+  }
+});
+
+router.put('/:id/notes/:noteId', authenticateToken, async (req, res) => {
+  try {
+    const note = await prisma.customerNote.findUnique({ where: { id: parseInt(req.params.noteId, 10) } });
+    if (!note || note.customerId !== parseInt(req.params.id, 10)) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (req.user.isAdmin !== true && note.authorId !== req.user.userId) {
+      return res.status(403).json({ error: 'Only the author or an admin can edit this note' });
+    }
+    const content = String(req.body?.content || '').trim();
+    if (!content) return res.status(400).json({ error: 'content is required' });
+
+    const updated = await prisma.customerNote.update({
+      where: { id: note.id },
+      data: { content },
+      include: NOTE_INCLUDE.include,
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating customer note:', error);
+    res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+router.delete('/:id/notes/:noteId', authenticateToken, async (req, res) => {
+  try {
+    const note = await prisma.customerNote.findUnique({ where: { id: parseInt(req.params.noteId, 10) } });
+    if (!note || note.customerId !== parseInt(req.params.id, 10)) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    if (req.user.isAdmin !== true && note.authorId !== req.user.userId) {
+      return res.status(403).json({ error: 'Only the author or an admin can delete this note' });
+    }
+    await prisma.customerNote.delete({ where: { id: note.id } });
+    res.status(204).end();
+  } catch (error) {
+    console.error('Error deleting customer note:', error);
+    res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.isAdmin !== true) {
