@@ -353,7 +353,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
           {/* Add update */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder="Add a status update…（会记录你的名字和日期）" />
+              placeholder="Add a status update…" />
             <div className="mt-2 flex items-center justify-between gap-2">
               <div className="flex gap-2">
                 {canManage && (
