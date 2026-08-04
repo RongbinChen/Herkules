@@ -5,6 +5,7 @@ import { customersAPI } from '../api/api'
 import { listProjectThreads } from '../api/chinabidding'
 import { useAuth } from '../context/AuthContext'
 import CustomerModal from './CustomerModal'
+import CustomerNotes from './CustomerNotes'
 import { statusMeta, tierMeta } from '../constants/customer'
 
 // Tender-lifecycle stage + our-tracking status labels (mirror BidTrackingBoard).
@@ -215,13 +216,23 @@ export default function CustomerDetail() {
             />
           </dl>
 
+          {/* The customer's standing description, edited in the customer form.
+              Distinct from the dated Notes log below — labelled so the two
+              aren't mistaken for each other. */}
           {customer.notes && (
             <div className="mt-5 border-t border-slate-100 pt-4">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</p>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Profile note</p>
               <p className="whitespace-pre-wrap text-sm text-slate-600">{customer.notes}</p>
             </div>
           )}
         </div>
+
+        <CustomerNotes
+          customerId={customer.id}
+          notes={customer.noteEntries || []}
+          currentUser={user}
+          onChanged={load}
+        />
 
         {/* Visit history timeline — min-w-0 so long content can't stretch the grid column */}
         <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5">
