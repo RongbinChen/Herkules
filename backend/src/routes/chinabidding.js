@@ -209,6 +209,57 @@ router.post('/bidopen/manual', async (req, res) => {
   }
 });
 
+// 编辑已有开标记录（识别难免有错，手工订正）
+router.put('/bidopen/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await prisma.bidOpening.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
+    // Same rule as delete — hiding the button in the UI is not a permission.
+    if (existing.uploadedById !== req.user.userId && req.user.isAdmin !== true) {
+      return res.status(403).json({ error: 'Only the uploader or an admin can edit this record' });
+    }
+
+    const { biddingNo, projectName, openDate, purchaser, bidders, summary } = req.body;
+    const cleanBidders = (Array.isArray(bidders) ? bidders : [])
+      .filter((b) => b && (b.name || '').trim())
+      .map((b) => ({
+        name: String(b.name).trim(),
+        country: b.country?.trim() || null,
+        priceTerm: b.priceTerm?.trim() || null,
+        currency: b.currency?.trim() || null,
+        price: b.price?.trim() || null,
+        deliveryTime: b.deliveryTime?.trim() || null,
+        destination: b.destination?.trim() || null,
+        note: b.note?.trim() || null,
+      }));
+    if (!projectName && !biddingNo && cleanBidders.length === 0) {
+      return res.status(400).json({ error: 'Please fill in at least a project/bidding no or one bidder' });
+    }
+
+    const record = await prisma.bidOpening.update({
+      where: { id },
+      data: {
+        biddingNo: biddingNo?.trim() || null,
+        projectName: projectName?.trim() || null,
+        openDate: parseOpenDate(openDate),
+        purchaser: purchaser?.trim() || null,
+        bidders: cleanBidders,
+        summary: summary?.trim() || null,
+        // Drop the translation cache: it was produced from the text that just
+        // changed, so keeping it would show the old wording under the language
+        // switch — a correction that only half-applies is worse than none.
+        // It regenerates on demand the next time someone switches language.
+        translations: null,
+      },
+    });
+    res.json(record);
+  } catch (error) {
+    console.error('Error updating bid opening:', error);
+    res.status(500).json({ error: 'Failed to update the record' });
+  }
+});
+
 // 上传开标记录 → Excel 走 DeepSeek 文本识别 / 图片走 Gemini 视觉识别 → 入库
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 const EXCEL_RE = /\.(xlsx|xls)$/i;
