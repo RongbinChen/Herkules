@@ -63,6 +63,17 @@ const MODULES = [
     badge: 'bg-amber-50 text-amber-600 ring-amber-100',
   },
   {
+    // Bid Opening lives under ChinaBidding as a tab, but it is a destination in
+    // its own right — people come to record or look up an opening result, not
+    // to browse scraped tenders. Sitting next to ChinaBidding keeps that
+    // relationship visible.
+    path: '/chinabidding/bidopen',
+    icon: '🔨',
+    title: 'Bid Opening',
+    desc: 'Record and compare bid opening results, shareable with anyone',
+    badge: 'bg-violet-50 text-violet-600 ring-violet-100',
+  },
+  {
     path: '/hotprojects',
     icon: '🔥',
     title: 'Hot Projects',
