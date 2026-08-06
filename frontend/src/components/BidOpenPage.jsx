@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   uploadBidOpening, listBidOpenings, deleteBidOpening,
-  createManualBidOpening, downloadBidTemplate, translateBidOpening,
+  createManualBidOpening,
+  updateBidOpening, downloadBidTemplate, translateBidOpening,
   fetchBidResults, getBidResults, getEmailStatus,
   listSavedSearches, createSavedSearch, deleteSavedSearch, updateSavedSearch,
 } from '../api/chinabidding'
@@ -29,9 +30,25 @@ function fmtDate(v) {
 // Manual entry form — same columns as the Excel template
 const EMPTY_BIDDER = { name: '', country: '', priceTerm: '', currency: '', price: '', deliveryTime: '', destination: '', note: '' }
 
-function ManualEntryForm({ onSaved, onCancel }) {
-  const [head, setHead] = useState({ projectName: '', biddingNo: '', openDate: '', purchaser: '' })
-  const [bidders, setBidders] = useState([{ ...EMPTY_BIDDER }])
+// Doubles as the edit form: pass `record` to prefill and switch to update mode.
+// Editing always works on the original-language fields, never the translated
+// view — correcting a translation would leave the source wrong and the fix
+// would vanish the next time the cache regenerated.
+function ManualEntryForm({ record, onSaved, onCancel }) {
+  const editing = Boolean(record)
+  const [head, setHead] = useState(() => ({
+    projectName: record?.projectName || '',
+    biddingNo: record?.biddingNo || '',
+    // <input type="date"> wants YYYY-MM-DD.
+    openDate: record?.openDate ? new Date(record.openDate).toISOString().slice(0, 10) : '',
+    purchaser: record?.purchaser || '',
+  }))
+  const [bidders, setBidders] = useState(() => {
+    const rows = Array.isArray(record?.bidders) ? record.bidders : []
+    return rows.length
+      ? rows.map((b) => ({ ...EMPTY_BIDDER, ...Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v ?? ''])) }))
+      : [{ ...EMPTY_BIDDER }]
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -50,7 +67,9 @@ function ManualEntryForm({ onSaved, onCancel }) {
     }
     setSaving(true); setError('')
     try {
-      const rec = await createManualBidOpening({ ...head, bidders: filled })
+      const rec = editing
+        ? await updateBidOpening(record.id, { ...head, bidders: filled })
+        : await createManualBidOpening({ ...head, bidders: filled })
       onSaved(rec)
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
@@ -58,7 +77,9 @@ function ManualEntryForm({ onSaved, onCancel }) {
   return (
     <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <p className="font-semibold text-slate-800">Enter a bid-opening record</p>
+        <p className="font-semibold text-slate-800">
+          {editing ? `Edit: ${record.projectName || record.biddingNo || record.fileName}` : 'Enter a bid-opening record'}
+        </p>
         <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>
       </div>
       <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -98,9 +119,14 @@ function ManualEntryForm({ onSaved, onCancel }) {
         <button onClick={addRow} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-brand-600 hover:bg-brand-50">+ Add bidder</button>
         <div className="flex-1" />
         <button onClick={submit} disabled={saving} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save record'}
+          {saving ? 'Saving…' : editing ? 'Save changes' : 'Save record'}
         </button>
       </div>
+      {editing && (
+        <p className="mt-2 text-xs text-slate-400">
+          Saving clears the cached translation — the other language is regenerated on demand.
+        </p>
+      )}
       {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}
     </div>
   )
@@ -115,6 +141,7 @@ function OpeningTab() {
   const [error, setError] = useState('')
   const [expanded, setExpanded] = useState(null)
   const [manualOpen, setManualOpen] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [displayLang, setDisplayLang] = useState({}) // { [recId]: 'zh' | 'en' } — currently shown language
   const [translatingId, setTranslatingId] = useState(null)
 
@@ -348,6 +375,16 @@ function OpeningTab() {
                   >
                     {resultPanel?.recId === r.id ? 'Hide follow-up' : 'Follow-up'}
                   </button>
+                  {/* Same permission as Delete: correcting a record is an edit
+                      to someone's work, so it stays with the uploader or an admin. */}
+                  {(r.uploadedById === user?.id || user?.isAdmin) && (
+                    <button
+                      onClick={() => { setEditingId(editingId === r.id ? null : r.id); setExpanded(r.id) }}
+                      className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                    >
+                      {editingId === r.id ? 'Cancel edit' : 'Edit'}
+                    </button>
+                  )}
                   {r.shareToken && (
                     <button onClick={() => handleShare(r)} className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">
                       Share
@@ -358,7 +395,22 @@ function OpeningTab() {
                   )}
                 </div>
               </div>
-              {expanded === r.id && (r.bidders || []).length > 0 && (
+              {editingId === r.id && (
+                <div className="mt-3">
+                  <ManualEntryForm
+                    record={r}
+                    onCancel={() => setEditingId(null)}
+                    onSaved={(updated) => {
+                      setRecords((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+                      // The saved record has no translations any more, so drop
+                      // any language override that was showing for this row.
+                      setDisplayLang((prev) => { const next = { ...prev }; delete next[updated.id]; return next })
+                      setEditingId(null)
+                    }}
+                  />
+                </div>
+              )}
+              {editingId !== r.id && expanded === r.id && (r.bidders || []).length > 0 && (
                 <div className="mt-3 overflow-x-auto rounded-xl border border-slate-100">
                   <table className="w-full whitespace-nowrap text-sm">
                     <thead>

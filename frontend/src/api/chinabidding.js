@@ -250,6 +250,15 @@ export async function createManualBidOpening(data) {
   return parseOrThrow(res, 'Failed to save the record');
 }
 
+export async function updateBidOpening(id, data) {
+  const res = await fetch(`${API_BASE}/bidopen/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  return parseOrThrow(res, 'Failed to update the record');
+}
+
 // Download the Excel template (auth required → fetch as blob, then trigger save).
 export async function downloadBidTemplate() {
   const res = await fetch(`${API_BASE}/bidopen/template`, { headers: authHeaders() });
