@@ -56,29 +56,18 @@ const MODULES = [
     badge: 'bg-sky-50 text-sky-600 ring-sky-100',
   },
   {
-    path: '/chinabidding',
-    icon: '📋',
-    title: 'ChinaBidding',
-    desc: 'Scrape and analyze China bidding projects',
-    badge: 'bg-amber-50 text-amber-600 ring-amber-100',
-  },
-  {
-    // Bid Opening lives under ChinaBidding as a tab, but it is a destination in
-    // its own right — people come to record or look up an opening result, not
-    // to browse scraped tenders. Sitting next to ChinaBidding keeps that
-    // relationship visible.
-    path: '/chinabidding/bidopen',
-    icon: '🔨',
-    title: 'Bid Opening',
-    desc: 'Record and compare bid opening results, shareable with anyone',
-    badge: 'bg-violet-50 text-violet-600 ring-violet-100',
-  },
-  {
     path: '/hotprojects',
     icon: '🔥',
     title: 'Hot Projects',
     desc: 'Internal open & potential projects tracking (confidential)',
     badge: 'bg-orange-50 text-orange-600 ring-orange-100',
+  },
+  {
+    path: '/visit-reports',
+    icon: '📝',
+    title: 'Visit Reports',
+    desc: 'Turn on-site notes & photos into AI-structured visit reports',
+    badge: 'bg-rose-50 text-rose-600 ring-rose-100',
   },
   {
     path: '/customers',
@@ -95,11 +84,22 @@ const MODULES = [
     badge: 'bg-indigo-50 text-indigo-600 ring-indigo-100',
   },
   {
-    path: '/visit-reports',
-    icon: '📝',
-    title: 'Visit Reports',
-    desc: 'Turn on-site notes & photos into AI-structured visit reports',
-    badge: 'bg-rose-50 text-rose-600 ring-rose-100',
+    // Bid Opening lives under ChinaBidding as a tab, but it is a destination in
+    // its own right — people come to record or look up an opening result, not
+    // to browse scraped tenders. Sitting next to ChinaBidding keeps that
+    // relationship visible.
+    path: '/chinabidding/bidopen',
+    icon: '🔨',
+    title: 'Bid Opening',
+    desc: 'Record and compare bid opening results, shareable with anyone',
+    badge: 'bg-violet-50 text-violet-600 ring-violet-100',
+  },
+  {
+    path: '/chinabidding',
+    icon: '📋',
+    title: 'ChinaBidding',
+    desc: 'Scrape and analyze China bidding projects',
+    badge: 'bg-amber-50 text-amber-600 ring-amber-100',
   },
 ]
 
