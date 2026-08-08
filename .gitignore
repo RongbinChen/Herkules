@@ -38,3 +38,6 @@ proxy/*.bak.*
 
 # 会话临时快照,不入库
 /docs/SESSION_STATE.md
+
+# DGX runner reject cache — machine-local, regenerated on demand
+backend/scripts/.dgx-rejects.json
