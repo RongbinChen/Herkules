@@ -226,7 +226,12 @@ async function fetchListPage({ tradeClassCode = null, keyword = '', infoClassCod
 
 // ── Upsert a single project, detecting status changes ────────────────────────
 // skipRelevanceCheck=true: skip DeepSeek filter (used for user-initiated keyword searches)
-async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = false, parsedDetail = null, analysis: precomputed = null } = {}) {
+// notify=false: import the rows without telling anyone. Only for the one-time
+//   historical backfill — announcements up to 90 days old are not news, and
+//   pushing "a competitor won this bid" to every user about a two-month-old award
+//   reads as something that just happened. Notifications can be marked read but
+//   never unsent, so the choice has to be made before the import, not after.
+async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = false, parsedDetail = null, analysis: precomputed = null, notify = true } = {}) {
   let project;
 
   // `parsedDetail` is the DGX path: the remote scraper already ran the very same
@@ -280,7 +285,7 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
         ...(statusChanged ? { lastStatusChange: new Date() } : {}),
       },
     });
-    if (statusChanged) {
+    if (statusChanged && notify) {
       await notifyFollowers(existing.id, 'STATUS_CHANGE',
         `项目状态变更：${(project.projectName || existing.projectName).slice(0, 80)} → ${project.status}`);
     }
@@ -332,7 +337,7 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   }
 
   // A tracked company won a bid — alert everyone (own group / competitor / interest)
-  if (competitor) {
+  if (competitor && notify) {
     const { type, prefix } = winNotification(competitor.watchType);
     const priceSuffix = analysis.winningPrice ? `（${analysis.winningPrice}）` : '';
     await notifyAllUsers(type, created.id,
@@ -340,7 +345,7 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   }
 
   // If announcements of the same thread exist, notify their followers about the new stage
-  if (project.threadKey) {
+  if (project.threadKey && notify) {
     const siblings = await prisma.bidProject.findMany({
       where: { threadKey: project.threadKey, id: { not: created.id } },
       select: { id: true },
@@ -366,12 +371,12 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
 // BidProjectList report "(some sub-jobs failed)" on a perfectly good run.
 export const DGX_TRIGGER = -1;
 
-export async function ingestFromRunner({ projects = [], egressIp = null, runId = null, scanned = null } = {}) {
+export async function ingestFromRunner({ projects = [], egressIp = null, runId = null, scanned = null, backfill = false } = {}) {
   const started = Date.now();
   const counts = { received: projects.length, created: 0, changed: 0, unchanged: 0, skipped: 0, failed: 0 };
   const errors = [];
 
-  console.log(`[dgx] ingest run=${runId} egress=${egressIp} scanned=${scanned ?? '?'} items=${projects.length}`);
+  console.log(`[dgx] ingest run=${runId} egress=${egressIp} scanned=${scanned ?? '?'} items=${projects.length}${backfill ? ' BACKFILL(静默)' : ''}`);
 
   for (const p of projects) {
     // One bad notice must not cost us the other 99 — the runner would then have
@@ -385,7 +390,11 @@ export async function ingestFromRunner({ projects = [], egressIp = null, runId =
         listDate: p.listDate ?? null,
         tenderTypeLabel: p.tenderTypeLabel ?? null,
       };
-      const r = await upsertProject(item, null, { parsedDetail: p.detail ?? null, analysis: p.analysis ?? null });
+      const r = await upsertProject(item, null, {
+        parsedDetail: p.detail ?? null,
+        analysis: p.analysis ?? null,
+        notify: !backfill,
+      });
       if (r.skipped) counts.skipped++;
       else if (r.isNew) counts.created++;
       else if (r.isUpdated) counts.changed++;
