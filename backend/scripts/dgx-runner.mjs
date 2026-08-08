@@ -35,7 +35,7 @@ for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) {
 }
 const { solveSession } = await import('../src/services/browserSolver.js');
 const { parseListPage, parseDetailPage } = await import('../src/services/chinabiddingParser.js');
-const { analyzeProjectLocal } = await import('../src/services/localModel.js');
+const { analyzeProjectLocal, assertLocalModel } = await import('../src/services/localModel.js');
 // From chinabiddingJobs.js, NOT chinabidding.js — the latter imports prisma from
 // index.js, so reading a constant out of it would boot the Express server here.
 const { INDUSTRY_JOBS, KEYWORD_JOBS, COMPETITOR_KEYWORDS } = await import('../src/services/chinabiddingJobs.js');
@@ -242,7 +242,25 @@ if (!DRY_RUN && (!INGEST_URL || !INGEST_TOKEN)) {
   process.exit(2);
 }
 
-const egressIp = await assertDomesticEgress();
+// Preconditions fail with a one-line reason, not a stack trace. Whoever reads
+// `journalctl` after a missed run wants the cause on the first line, not frames.
+async function precondition(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    log(`✗ ${label}失败: ${err.message}`);
+    process.exit(2); // distinct from 1 (ran, but gave up partway)
+  }
+}
+
+const egressIp = await precondition('出口检查', assertDomesticEgress);
+
+// Check the classifier before touching the site. ollama keeps a model resident
+// for OLLAMA_KEEP_ALIVE (2h here) and evicts it after; reloading costs ~4s, so
+// this warms it up as a side effect and the run never pays that cost mid-flight.
+const probe = await precondition('本地模型检查', assertLocalModel);
+log(`本地模型就绪: ${probe.model}`);
+
 await getSession();
 
 log('抓列表…');
@@ -253,12 +271,38 @@ const rejects = loadRejects();
 const unknown = (await filterUnknown(all, rejects)).slice(0, LIMIT);
 log(`其中未入库且未被否决过 ${unknown.length} 条（否决缓存 ${rejects.size} 条），开始抓详情 + 本地分类`);
 
+// The classifier can die mid-run (ollama restarted, OOM, GPU claimed by something
+// else). analyzeProjectLocal keeps the notice when that happens, which is right
+// for one item and catastrophic for a thousand — so bound it. Consecutive, not
+// cumulative: isolated hiccups are normal, an unbroken streak means it is down.
+const MAX_CONSECUTIVE_MODEL_ERRORS = 10;
+let modelErrorStreak = 0;
+
 const payload = [];
-let analysed = 0, kept = 0, failed = 0;
+let analysed = 0, kept = 0, failed = 0, modelErrors = 0;
+let aborted = null;
 for (const item of unknown) {
   try {
     const detail = parseDetailPage(await fetchWithAuth(item.sourceUrl), item.sourceUrl);
     const analysis = await analyzeProjectLocal(item.projectName || detail.projectName || '', detail.rawContent || '');
+
+    // The model never answered — this is an outage, not a verdict. Ship nothing
+    // and cache nothing: leaving the notice untouched means the next run picks it
+    // up again, which beats importing something we never actually classified.
+    if (analysis.modelError) {
+      modelErrors++;
+      // `break`, not `throw`: the catch below exists to keep one bad notice from
+      // ending the run, and it would swallow a throw. And the check has to live
+      // here rather than after the try — the `continue` below skips anything
+      // placed at the end of the loop body.
+      if (++modelErrorStreak >= MAX_CONSECUTIVE_MODEL_ERRORS) {
+        aborted = `本地模型连续 ${modelErrorStreak} 次没有响应`;
+        break;
+      }
+      continue;
+    }
+    modelErrorStreak = 0;
+
     analysed++;
     if (!analysis.relevant) {
       // Remember the rejection so tomorrow's run does not pay for it again, and
@@ -295,7 +339,8 @@ for (const item of unknown) {
   await sleep(500);
 }
 
-log(`分析完成: 判读 ${analysed} 条，保留 ${kept}，失败 ${failed}`);
+log(`分析完成: 判读 ${analysed} 条，保留 ${kept}，抓取失败 ${failed}，模型无响应 ${modelErrors}`);
+if (aborted) log(`⚠️ 已中止: ${aborted}。已判读的 ${kept} 条照常回传，其余留到下次重试。`);
 saveRejects(rejects);
 
 if (DRY_RUN) {
@@ -337,3 +382,6 @@ if (DRY_RUN) {
 }
 
 log(`用时 ${((Date.now() - t0) / 60000).toFixed(1)} 分钟`);
+// Non-zero so systemd marks the unit failed and ExecStopPost writes the reason
+// into the journal — a run that gave up must not look like a clean one.
+if (aborted) process.exitCode = 1;
