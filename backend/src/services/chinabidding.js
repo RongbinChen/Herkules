@@ -12,25 +12,11 @@ const USERNAME = process.env.CHINABIDDING_USERNAME;
 const PASSWORD = process.env.CHINABIDDING_PASSWORD;
 
 // ── Scrape targets ───────────────────────────────────────────────────────────
-// Industries to always monitor. Only Machining (01) is relevant to CNC machine
-// tools — other industries (Medical, etc.) just scan hundreds of irrelevant
-// announcements that DeepSeek then skips, wasting scrape time and API calls.
-// Cross-industry machine-tool projects are still caught by KEYWORD_JOBS.
-export const INDUSTRY_JOBS = [
-  { tradeClassCode: '01', label: 'Machining' },
-];
-// Keywords to always monitor (separate searches). English terms — the /en site's
-// fullText search matches announcement bodies in English; Chinese terms (机床/磨床)
-// return nothing here. Each keyword scrape is relevance-filtered by DeepSeek.
-export const KEYWORD_JOBS = [
-  'grinding machine', 'roll grinder',
-  'milling machine', 'portal milling', 'gantry milling',
-  'boring machine',
-  'lathe', 'horizontal lathe', 'crankshaft lathe',
-  'machining center', 'machine tool',
-];
-// Competitor names to monitor daily (scraped without relevance filter — exact keyword hits)
-export const COMPETITOR_KEYWORDS = ['georg', 'pomini', 'INNSE', 'DANIELI', 'waldrich'];
+// Live in their own import-free module so the DGX runner can read them without
+// pulling in prisma (and thereby booting the server). Re-exported here so every
+// existing caller keeps working unchanged.
+export { INDUSTRY_JOBS, KEYWORD_JOBS, COMPETITOR_KEYWORDS } from './chinabiddingJobs.js';
+import { INDUSTRY_JOBS, KEYWORD_JOBS, COMPETITOR_KEYWORDS } from './chinabiddingJobs.js';
 
 // All tender types: New Tenders + Tender Changes + Evaluation Results + Tender Awards
 // 2026-07: DO NOT restrict by infoClassCodes — the site's filter is unreliable
@@ -224,8 +210,15 @@ async function notifyAllUsers(type, projectId, message) {
 }
 
 // ── List-page fetcher (supports POST with filters + pagination) ───────────────
+// 2026-08-08: the pagination parameter is `currentPage`, NOT `pageNo`. The site's
+// own pager posts `currentPage` (see its `pagerSubmitForm`); `pageNo` is silently
+// ignored and every request returns page 1. Verified against the live site: with
+// `currentPage`, 12 pages returned 120 distinct notices in strict date-descending
+// order with zero duplicates; with `pageNo`, all 12 pages were identical.
+// Consequence of the old name: scrapeAllPages only ever saw the newest 10 items
+// per job, then stopped on its "all known" check at page 2. Coverage, not waste.
 async function fetchListPage({ tradeClassCode = null, keyword = '', infoClassCodes = ALL_TENDER_CODES, pageNo = 1 }) {
-  const params = { fullText: keyword, infoClassCodes, pageNo: String(pageNo) };
+  const params = { fullText: keyword, infoClassCodes, currentPage: String(pageNo) };
   if (tradeClassCode) params.tradeClassCodes = tradeClassCode;
   const html = await fetchWithAuth(SEARCH_URL, new URLSearchParams(params).toString());
   return parseListPage(html);
@@ -233,11 +226,15 @@ async function fetchListPage({ tradeClassCode = null, keyword = '', infoClassCod
 
 // ── Upsert a single project, detecting status changes ────────────────────────
 // skipRelevanceCheck=true: skip DeepSeek filter (used for user-initiated keyword searches)
-async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = false } = {}) {
+async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = false, parsedDetail = null, analysis: precomputed = null } = {}) {
   let project;
 
-  if (detailHtml) {
-    project = parseDetailPage(detailHtml, item.sourceUrl);
+  // `parsedDetail` is the DGX path: the remote scraper already ran the very same
+  // parseDetailPage() on its side, so we take its output instead of re-parsing
+  // HTML we never received. The list-page overrides below must stay identical to
+  // the detailHtml branch — they are the same merge, just a different source.
+  if (parsedDetail || detailHtml) {
+    project = parsedDetail ? { ...parsedDetail, sourceUrl: item.sourceUrl } : parseDetailPage(detailHtml, item.sourceUrl);
     project.projectName = item.projectName || project.projectName;
     project.biddingType = item.biddingType || project.biddingType;
     // The list-page "Time" column is chinabidding.com's authoritative publish
@@ -294,10 +291,14 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   const name    = project.projectName || '';
   const content = project.rawContent  || '';
 
-  const analysis = await analyzeProject(name, content);
+  // The DGX runner already classified this notice with the local model, so we
+  // trust its analysis rather than paying for a second opinion from DeepSeek.
+  // Everything downstream (competitor match, notifications, createData) is
+  // shared — the only thing that differs is where the verdict came from.
+  const analysis = precomputed ?? await analyzeProject(name, content);
 
   if (!skipRelevanceCheck && !analysis.relevant) {
-    console.log(`[deepseek] skipped (irrelevant): ${name.slice(0, 60)} — ${analysis.reason}`);
+    console.log(`[${precomputed ? 'dgx' : 'deepseek'}] skipped (irrelevant): ${name.slice(0, 60)} — ${analysis.reason}`);
     return { isNew: false, isUpdated: false, skipped: true };
   }
 
@@ -351,6 +352,114 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   }
 
   return { isNew: true, isUpdated: false };
+}
+
+// ── Remote ingest (the DGX runner) ───────────────────────────────────────────
+// The DGX box scrapes chinabidding over a domestic line and classifies with a
+// local model, then posts finished notices here. It deliberately goes through
+// upsertProject so dedup, status-change detection, competitor matching and every
+// notification side-effect behave exactly as they do for a VPS-side scrape. The
+// only thing that differs is where the relevance verdict came from.
+//
+// Provenance lives in `triggeredBy`: a plain nullable Int with no foreign key
+// that nothing renders. Putting the note in `error` instead would make
+// BidProjectList report "(some sub-jobs failed)" on a perfectly good run.
+export const DGX_TRIGGER = -1;
+
+export async function ingestFromRunner({ projects = [], egressIp = null, runId = null, scanned = null } = {}) {
+  const started = Date.now();
+  const counts = { received: projects.length, created: 0, changed: 0, unchanged: 0, skipped: 0, failed: 0 };
+  const errors = [];
+
+  console.log(`[dgx] ingest run=${runId} egress=${egressIp} scanned=${scanned ?? '?'} items=${projects.length}`);
+
+  for (const p of projects) {
+    // One bad notice must not cost us the other 99 — the runner would then have
+    // to resend the whole batch, and a persistently broken row would block the
+    // pipeline forever.
+    try {
+      const item = {
+        sourceUrl: p.sourceUrl,
+        projectName: p.projectName ?? null,
+        biddingType: p.biddingType ?? null,
+        listDate: p.listDate ?? null,
+        tenderTypeLabel: p.tenderTypeLabel ?? null,
+      };
+      const r = await upsertProject(item, null, { parsedDetail: p.detail ?? null, analysis: p.analysis ?? null });
+      if (r.skipped) counts.skipped++;
+      else if (r.isNew) counts.created++;
+      else if (r.isUpdated) counts.changed++;
+      else counts.unchanged++;
+    } catch (err) {
+      counts.failed++;
+      if (errors.length < 20) errors.push(`${p.sourceUrl}: ${err.message}`);
+      console.error(`[dgx] ingest item failed: ${p.sourceUrl} — ${err.message}`);
+    }
+  }
+
+  // Recorded as DONE because the scraping already happened on the DGX side —
+  // there is no in-flight work here for the deploy guard to protect.
+  await prisma.scrapeJob.create({
+    data: {
+      type: 'NEW',
+      status: counts.failed && counts.failed === counts.received ? 'FAILED' : 'DONE',
+      // What the runner looked at, not what it forwarded — the runner filters
+      // irrelevant notices out on its side, so `projects.length` alone would
+      // under-report a busy day as a quiet one.
+      itemsFound: scanned ?? counts.received,
+      itemsSaved: counts.created,
+      triggeredBy: DGX_TRIGGER,
+      startedAt: new Date(started),
+      finishedAt: new Date(),
+      error: errors.length ? errors.slice(0, 5).join(' | ').slice(0, 900) : null,
+    },
+  });
+
+  console.log(`[dgx] ingest done run=${runId} ${JSON.stringify(counts)}`);
+  return { ...counts, errors };
+}
+
+// The DGX pipeline is a pull: the runner reaches out to us, we never reach it.
+// That is deliberate (no inbound hole in a home network), but it means a runner
+// that is switched off, unplugged, or silently re-routed through a foreign exit
+// looks exactly like a quiet day of tenders — nobody would notice for a week.
+// So we ask the question out loud once a day, after the run should have landed.
+//
+// Lives here rather than inline in the cron callback so it can actually be run
+// and tested; an alarm nobody has ever seen fire is not an alarm.
+export async function checkDgxAbsence({ maxAgeHours = 24 } = {}) {
+  const last = await lastDgxIngest();
+  const ageH = last ? (Date.now() - new Date(last.startedAt).getTime()) / 3600000 : Infinity;
+  if (ageH <= maxAgeHours) return { alarm: false, ageH, last };
+
+  const when = last ? new Date(last.startedAt).toISOString() : '从未';
+  // The log line has to stand on its own: if SMTP is unconfigured or the mail
+  // bounces, the alarm must still be findable in `pm2 logs`.
+  console.error(`[dgx] ALARM: no ingest for ${ageH === Infinity ? '∞' : ageH.toFixed(1)}h (last: ${when})`);
+
+  const admins = await prisma.user.findMany({ where: { isAdmin: true }, select: { email: true } });
+  const to = admins.map((a) => a.email).filter(Boolean).join(',');
+  if (!to) {
+    console.error('[dgx] ALARM: no admin email to notify');
+    return { alarm: true, ageH, last, mailed: false };
+  }
+  const mailed = await sendMail({
+    to,
+    subject: '[Herkules] DGX 抓取未交作业',
+    text: `DGX 抓取超过 ${maxAgeHours} 小时没有回传数据。\n\n最后一次: ${when}\n\n`
+      + '请检查：DGX 是否开机、ollama 是否在跑、以及出口 IP 是否仍是国内线路'
+      + '（走到国外线路时抓取会变慢并大量超时）。',
+  }).catch((e) => { console.error('[dgx] alarm mail failed:', e.message); return false; });
+  return { alarm: true, ageH, last, mailed };
+}
+
+// Most recent run reported by the DGX runner, or null if it has never reported.
+export async function lastDgxIngest() {
+  return prisma.scrapeJob.findFirst({
+    where: { triggeredBy: DGX_TRIGGER },
+    orderBy: { startedAt: 'desc' },
+    select: { id: true, startedAt: true, finishedAt: true, itemsFound: true, itemsSaved: true, status: true },
+  });
 }
 
 // ── Core: scrape all pages for one job until no new items ─────────────────────

@@ -9,6 +9,7 @@ import {
   listNotifications, markNotificationRead, markAllNotificationsRead,
   getTrends, generateTrendReport, backfillStructured,
   listCompetitors, seedCompetitors,
+  ingestFromRunner, lastDgxIngest,
 } from '../services/chinabidding.js';
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
@@ -16,7 +17,8 @@ import { prisma } from '../index.js';
 import { xlsxToText, extractBidOpenings, translateBidOpening, parseOpenDate } from '../services/bidOpening.js';
 import { extractBidOpeningsFromImage, isGeminiConfigured } from '../services/gemini.js';
 import { isEmailConfigured } from '../services/mailer.js';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
+import { z } from 'zod';
 
 const router = express.Router();
 
@@ -44,6 +46,125 @@ router.get('/bidopen/share/:token', async (req, res) => {
   } catch (error) {
     console.error('Error loading shared bid opening:', error);
     res.status(500).json({ error: 'Failed to load shared record' });
+  }
+});
+
+// ── MACHINE: ingest from the DGX scrape runner (token auth, no user session) ──
+// Defined BEFORE the auth middleware: the runner is a machine, it has no user
+// account and must not need one. A dedicated single-purpose token can be
+// rotated without touching anybody's login, and leaking it exposes exactly this
+// endpoint rather than somebody's whole account.
+
+const analysisSchema = z.object({
+  relevant: z.boolean(),
+  reason: z.string().max(1000).default(''),
+  summary: z.string().max(4000).default(''),
+  purchaser: z.string().max(500).nullable().default(null),
+  winner: z.string().max(500).nullable().default(null),
+  winningPrice: z.string().max(200).nullable().default(null),
+  equipmentType: z.string().max(120).nullable().default(null),
+});
+
+// Mirrors what parseDetailPage() produces on the runner side. Unknown keys are
+// stripped rather than passed through — this object is spread straight into a
+// Prisma create, so an unexpected field would be a 500 at best.
+const detailSchema = z.object({
+  projectName: z.string().max(1000).nullable().optional(),
+  projectCode: z.string().max(300).nullable().optional(),
+  region: z.string().max(300).nullable().optional(),
+  industry: z.string().max(300).nullable().optional(),
+  biddingType: z.enum(['NEW', 'PAST']).nullable().optional(),
+  publishDate: z.coerce.date().nullable().optional(),
+  deadline: z.coerce.date().nullable().optional(),
+  budget: z.string().max(300).nullable().optional(),
+  status: z.enum(['PUBLISHED', 'CLOSED', 'CANCELLED']).nullable().optional(),
+  rawContent: z.string().max(40000).nullable().optional(),
+}).strip();
+
+const ingestSchema = z.object({
+  runId: z.string().max(100).optional(),
+  egressIp: z.string().max(60).optional(),
+  // How many notices the runner actually judged. `projects` carries only the
+  // ones that survived, so without this the job record would report a busy run
+  // as a tiny one.
+  scanned: z.number().int().min(0).max(1000000).optional(),
+  // 400 is comfortably above a real day's volume (~100) and far below anything
+  // that would tie the event loop up for minutes on a single request.
+  projects: z.array(z.object({
+    sourceUrl: z.string().url().max(1000),
+    projectName: z.string().max(1000).nullable().optional(),
+    biddingType: z.enum(['NEW', 'PAST']).nullable().optional(),
+    listDate: z.string().max(60).nullable().optional(),
+    tenderTypeLabel: z.string().max(200).nullable().optional(),
+    detail: detailSchema.nullable().optional(),
+    analysis: analysisSchema.nullable().optional(),
+  })).max(400),
+});
+
+function requireIngestToken(req, res, next) {
+  const expected = process.env.INGEST_TOKEN;
+  // Absent config must fail closed. An empty expected value compared loosely
+  // would otherwise let an empty header through and open the endpoint to anyone.
+  if (!expected || expected.length < 16) {
+    console.warn('[dgx] ingest attempted but INGEST_TOKEN is not configured');
+    return res.status(503).json({ error: 'ingest not configured' });
+  }
+  const got = String(req.get('X-Ingest-Token') || '');
+  const a = Buffer.from(got);
+  const b = Buffer.from(expected);
+  // timingSafeEqual throws on length mismatch, so length is checked first —
+  // that leaks only the length, which is not the secret.
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    console.warn(`[dgx] ingest rejected: bad token from ${req.ip}`);
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  next();
+}
+
+// The larger body limit for this path is mounted in index.js — it has to run
+// before the global express.json, which a router-level parser cannot do.
+router.post('/ingest', requireIngestToken, async (req, res) => {
+  const parsed = ingestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'invalid payload', details: parsed.error.issues.slice(0, 5) });
+  }
+  try {
+    // Idempotent by construction: upsertProject keys on the unique sourceUrl, so
+    // a runner that retries after a timeout updates rows instead of duplicating.
+    const result = await ingestFromRunner(parsed.data);
+    res.json(result);
+  } catch (error) {
+    console.error('[dgx] ingest failed:', error);
+    res.status(500).json({ error: 'ingest failed' });
+  }
+});
+
+// Which of these announcements do we already have? The runner asks before
+// classifying, because the DB is the only authority on what has been ingested —
+// a cache on the runner's side would drift and silently re-analyse (or worse,
+// skip) notices after any reset. Cheap: one indexed lookup on a unique column.
+router.post('/ingest/known', requireIngestToken, async (req, res) => {
+  const parsed = z.object({ sourceUrls: z.array(z.string().max(1000)).max(5000) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'invalid payload' });
+  try {
+    const rows = await prisma.bidProject.findMany({
+      where: { sourceUrl: { in: parsed.data.sourceUrls } },
+      select: { sourceUrl: true },
+    });
+    res.json({ known: rows.map((r) => r.sourceUrl) });
+  } catch (error) {
+    console.error('[dgx] known lookup failed:', error);
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+// Lets the runner confirm the previous batch landed before starting a new one.
+router.get('/ingest/status', requireIngestToken, async (_req, res) => {
+  try {
+    res.json({ last: await lastDgxIngest() });
+  } catch (error) {
+    console.error('[dgx] ingest status failed:', error);
+    res.status(500).json({ error: 'failed' });
   }
 });
 

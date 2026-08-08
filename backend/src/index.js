@@ -25,6 +25,12 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+// The DGX ingest posts a batch of announcements running to a few MB. Its roomier
+// parser must be mounted BEFORE the global one, not inside the router: body-parser
+// runs in mount order and the 100 kB default would reject the body long before the
+// route is reached. Once this one has parsed, it sets req._body and the global
+// parser below no-ops — so only this path gets the larger limit.
+app.use('/api/chinabidding/ingest', express.json({ limit: '12mb' }));
 app.use(express.json());
 
 // Health check
@@ -63,6 +69,11 @@ app.use(shareMetaRoutes);
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  // An oversized body is the client's problem, and reporting it as 500 sends
+  // whoever is debugging a batch upload looking for a server fault that isn't there.
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'payload too large' });
+  }
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
@@ -83,6 +94,19 @@ cron.schedule('0 6 * * *', async () => {
     await runDailyJob(null);
   } catch (err) {
     console.error('[cron] Daily scrape error:', err.message);
+  }
+}, { timezone: 'Asia/Shanghai' });
+
+// ── DGX runner absence alarm — 12:00 China time, after the run should have landed ──
+// Gated on DGX_EXPECTED so it stays silent until the runner is actually in
+// service; an alarm that fires before the thing exists trains people to ignore it.
+cron.schedule('0 12 * * *', async () => {
+  if (process.env.DGX_EXPECTED !== '1') return;
+  try {
+    const { checkDgxAbsence } = await import('./services/chinabidding.js');
+    await checkDgxAbsence();
+  } catch (err) {
+    console.error('[dgx] absence check failed:', err.message);
   }
 }, { timezone: 'Asia/Shanghai' });
 
