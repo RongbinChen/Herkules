@@ -133,6 +133,31 @@ function extractJson(reply) {
 
 const nullish = (v) => (v == null || v === 'null' || v === '' ? null : String(v).trim());
 
+/**
+ * Pre-flight check: is the local model actually answering?
+ *
+ * Without this, a dead ollama is worse than an outage. analyzeProjectLocal keeps
+ * a notice when the model errors — correct per-notice, because a discarded lead
+ * leaves no trace — but applied to a whole run it silently imports a thousand
+ * irrelevant announcements. Fail before scraping instead.
+ *
+ * Cold start costs ~4s (measured: model evicted from VRAM → first inference),
+ * so this doubles as the warm-up: by the time the list pages are fetched, the
+ * model is resident.
+ */
+export async function assertLocalModel() {
+  const probe = '标题：Procurement of CNC roll grinder\n\n公告正文：\nCNC roll grinding machine 1 set';
+  let parsed;
+  try {
+    parsed = extractJson(await callOllama(CLASSIFY_SYSTEM, probe, 200));
+  } catch (err) {
+    throw new Error(`本地模型不可用 (${OLLAMA_URL}, ${MODEL}): ${err.message} —— 拒绝在没有分类能力的情况下抓取`);
+  }
+  const category = nullish(parsed?.category);
+  if (!category) throw new Error(`本地模型返回了无法解析的结果，拒绝抓取。原始输出: ${JSON.stringify(parsed)?.slice(0, 200)}`);
+  return { model: MODEL, category };
+}
+
 export async function classify(projectName, rawContent = '') {
   const user = `标题：${projectName}\n\n公告正文：\n${(rawContent || '').slice(0, 3500)}`;
   const parsed = extractJson(await callOllama(CLASSIFY_SYSTEM, user, 200));
@@ -163,7 +188,10 @@ export async function analyzeProjectLocal(projectName, rawContent = '') {
   try {
     ({ category, equipment } = await classify(projectName, rawContent));
   } catch (err) {
-    return { relevant: true, reason: `local model error — kept by default: ${err.message}`,
+    // modelError lets the caller tell "the model said keep" apart from "the model
+    // never answered". One of those is a verdict; the other is an outage, and a
+    // run that hits a string of them should stop rather than import everything.
+    return { relevant: true, modelError: true, reason: `local model error — kept by default: ${err.message}`,
              summary: '', purchaser: null, winner: null, winningPrice: null, equipmentType: null, category: null };
   }
 
