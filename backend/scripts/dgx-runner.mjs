@@ -10,6 +10,7 @@
 //   node backend/scripts/dgx-runner.mjs            # full run, posts to the VPS
 //   node backend/scripts/dgx-runner.mjs --dry-run  # scrape + classify, post nothing
 //   node backend/scripts/dgx-runner.mjs --limit 20 # cap notices analysed (smoke test)
+//   node backend/scripts/dgx-runner.mjs --backfill # historical import, notify nobody
 //
 // Environment (backend/.env):
 //   CHINABIDDING_USERNAME / _PASSWORD   site credentials
@@ -41,6 +42,11 @@ const { INDUSTRY_JOBS, KEYWORD_JOBS, COMPETITOR_KEYWORDS } = await import('../sr
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
+// One-time historical import: the server stores the rows but sends no
+// notifications. Announcements up to 90 days old are not news, and telling every
+// user "a competitor won this bid" about a two-month-old award reads as if it
+// just happened. Never use this for the daily run.
+const BACKFILL = args.includes('--backfill');
 const LIMIT = Number(args[args.indexOf('--limit') + 1]) || Infinity;
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
@@ -317,7 +323,7 @@ if (DRY_RUN) {
     for (let attempt = 1; attempt <= 3 && !done; attempt++) {
       try {
         // `scanned` is what we actually judged; `projects` is only what survived.
-        const r = await vps('/ingest', { runId, egressIp, scanned: analysed, projects: slice });
+        const r = await vps('/ingest', { runId, egressIp, scanned: analysed, backfill: BACKFILL, projects: slice });
         for (const [k, v] of Object.entries(r)) if (typeof v === 'number') totals[k] = (totals[k] || 0) + v;
         done = true;
       } catch (err) {

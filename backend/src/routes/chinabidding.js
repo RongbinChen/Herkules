@@ -88,6 +88,8 @@ const ingestSchema = z.object({
   // ones that survived, so without this the job record would report a busy run
   // as a tiny one.
   scanned: z.number().int().min(0).max(1000000).optional(),
+  // One-time historical import: store the rows, notify nobody. See upsertProject.
+  backfill: z.boolean().optional(),
   // 400 is comfortably above a real day's volume (~100) and far below anything
   // that would tie the event loop up for minutes on a single request.
   projects: z.array(z.object({
