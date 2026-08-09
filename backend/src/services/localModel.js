@@ -47,12 +47,6 @@ const TIMEOUT_MS = Number(process.env.LOCAL_MODEL_TIMEOUT_MS || 60000);
 export const RELEVANT_CATEGORIES = new Set([
   '轧辊磨床', '其他磨床', '车床', '铣床镗床', '加工中心',
   '龙门或大型精密机床', '其他金属切削机床', '锻压冲压设备', '轧机连铸连轧或轧辊',
-  // 2026-08-09: this category was missing from the original list, and a 30 MeV
-  // cyclotron therefore had nowhere to go — the model picked 其他 and the notice
-  // was dropped. Not a judgement failure: there was no correct answer available.
-  // Both the legacy DeepSeek prompt and the equipmentType enum have always
-  // treated particle accelerators as core business.
-  '粒子加速器或质子治疗装置',
 ]);
 // Adjacent equipment we want to see but would not call core business. Kept
 // relevant so a human decides, rather than the model discarding it silently.
@@ -60,6 +54,15 @@ export const BORDERLINE_CATEGORIES = new Set(['炼钢冶炼设备', '激光加�
 const IRRELEVANT_CATEGORIES = new Set([
   '热处理或工业炉', '表面处理电镀涂装', '半导体或显示面板设备', '医疗影像或实验室仪器',
   '检测测量仪器', '通用机械泵阀输送', '电气自动化软件或服务', '建筑工程土建', '备件耗材', '其他',
+  // 2026-08-09, user's call: accelerators are not a market Herkules sells into.
+  // The category still EXISTS on purpose — a 30 MeV cyclotron previously landed
+  // in 其他 for want of anywhere to put it, which hid the decision inside a
+  // catch-all. Now the verdict reads "归类为「粒子加速器或质子治疗装置」" and
+  // reversing it means moving this one string back to RELEVANT_CATEGORIES.
+  // Note this diverges from the legacy DeepSeek prompt, which listed 粒子治疗 as
+  // relevant — deepseek.js is updated to match, or the VPS would keep importing
+  // them during the parallel run and they would show up as "local misses" daily.
+  '粒子加速器或质子治疗装置',
 ]);
 const KNOWN_CATEGORIES = new Set([...RELEVANT_CATEGORIES, ...BORDERLINE_CATEGORIES, ...IRRELEVANT_CATEGORIES]);
 
