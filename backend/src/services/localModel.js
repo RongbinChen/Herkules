@@ -54,6 +54,15 @@ export const BORDERLINE_CATEGORIES = new Set(['炼钢冶炼设备', '激光加�
 const IRRELEVANT_CATEGORIES = new Set([
   '热处理或工业炉', '表面处理电镀涂装', '半导体或显示面板设备', '医疗影像或实验室仪器',
   '检测测量仪器', '通用机械泵阀输送', '电气自动化软件或服务', '建筑工程土建', '备件耗材', '其他',
+  // 2026-08-09, user's call: accelerators are not a market Herkules sells into.
+  // The category still EXISTS on purpose — a 30 MeV cyclotron previously landed
+  // in 其他 for want of anywhere to put it, which hid the decision inside a
+  // catch-all. Now the verdict reads "归类为「粒子加速器或质子治疗装置」" and
+  // reversing it means moving this one string back to RELEVANT_CATEGORIES.
+  // Note this diverges from the legacy DeepSeek prompt, which listed 粒子治疗 as
+  // relevant — deepseek.js is updated to match, or the VPS would keep importing
+  // them during the parallel run and they would show up as "local misses" daily.
+  '粒子加速器或质子治疗装置',
 ]);
 const KNOWN_CATEGORIES = new Set([...RELEVANT_CATEGORIES, ...BORDERLINE_CATEGORIES, ...IRRELEVANT_CATEGORIES]);
 
@@ -64,6 +73,7 @@ const EQUIPMENT_TYPE = {
   加工中心: '加工中心', 龙门或大型精密机床: '龙门设备', 其他金属切削机床: '其他',
   锻压冲压设备: '锻压设备', 轧机连铸连轧或轧辊: '钢铁冶金', 炼钢冶炼设备: '钢铁冶金',
   激光加工设备: '激光设备', 检测测量仪器: '检测仪器',
+  粒子加速器或质子治疗装置: '粒子治疗',
 };
 
 const CLASSIFY_SYSTEM = `你在为一家轧辊磨床与重型机床制造商（Herkules / Waldrich Siegen）阅读招标公告。
@@ -74,7 +84,13 @@ const CLASSIFY_SYSTEM = `你在为一家轧辊磨床与重型机床制造商（H
 ${[...KNOWN_CATEGORIES].join('\n')}
 
 规则：
-- 只看采购的设备是什么，不看采购方是什么行业。半导体厂买加工中心，类目就是"加工中心"，不是"半导体或显示面板设备"。
+- 只看采购的设备是什么，不看采购方是什么行业。半导体厂买一台通用加工中心来加工零件，类目就是"加工中心"。
+- **但如果设备本身就是晶圆/面板/显示产线上的专用制程设备，一律归"半导体或显示面板设备"**，哪怕它用到激光、紫外或磨削。典型例子：
+  刻蚀机 / etcher、光刻胶剥离 / photoresist stripper、镀膜溅射 / sputter、
+  CMP 与晶圆减薄磨床 / wafer grinder、贴片贴合 / bonder、AOI 检测、
+  8 英寸或 12 英寸 xx 设备、AMOLED / TFT-LCD / OLED 产线设备。
+  这类设备名称里出现 laser、UV 时，**不要**归到"激光加工设备"——
+  "激光加工设备"只用于金属切割、焊接、打标这类通用激光加工机床。
 - 一条公告采购多种设备时，取金额最大或最主要的那一种。
 - equipment 写公告里出现的设备名称原文，不要概括成类目名。
 - 拿不准时选最贴近实物形态的类目，实在无法归类才用"其他"。
@@ -93,10 +109,17 @@ const EXTRACT_SYSTEM = `你是一名工业设备采购分析师。从招标公�
 注意：
 - purchaser 是真正使用设备的单位（如某某钢厂、某某重工），不是招标代理公司（如 SINOCHEM、CNCCC、China Electronics Commerce 等代理）
 - winner 常见表述："中标人"、"中标方"、"成交供应商"、"Winning bidder"；公告里没有就填 null，不要拿采购方或代理充数
-- **公司名必须逐字照抄公告里出现的那串字符，一个字都不要翻译、不要改写、不要补全。**
+- **purchaser 和 winner 必须逐字照抄公告里出现的那串字符，一个字都不要翻译、不要改写、不要补全。**
   公告写 "Hunan Machinery & Equipment Imp.& Exp.Corp" 就照抄这一串，
-  **不要**写成"湖南机电进出口有限公司"。公告写中文就照抄中文。
+  **不要**写成"湖南机电进出口有限公司"。
+  公告写 "Shanghai Automobile Gear Works" 就照抄，不要写"上海汽车齿轮厂"。
+  即使你知道这家公司的中文名，也照抄英文原文。公告写中文才照抄中文。
   下游要拿这个名字去和公司档案做字符串匹配，翻译过就匹配不上了。
+- **找不到就填 null，不要拿别的东西凑数。** 尤其不要把招标代理公司
+  （名字里含"招标"、"采购与招标"、"国际招标"、"tendering"、"bidding" 的）
+  当成 purchaser。宁可 null，也不要填一个错的。
+- **winningPrice 只在公告里明确写了金额时才填。不要从预算、估算或任何其他数字推断。**
+  绝大多数英文公告根本不写中标金额，填 null 是正常结果。
 - summary 用中文写；只有 purchaser 和 winner 这两个字段要照抄原文`;
 
 async function callOllama(system, user, maxTokens) {
