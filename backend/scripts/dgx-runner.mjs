@@ -162,7 +162,7 @@ async function vps(pathname, body, method = 'POST') {
 // Bump whenever CLASSIFY_SYSTEM or the category sets change: yesterday's
 // rejections were made under a different question and deserve a fresh opinion.
 // The cost is one slow run (~30 min to re-judge the cached rejects), paid once.
-const PROMPT_VERSION = 'v4-semiconductor-rule-2026-08-09';
+const PROMPT_VERSION = 'v5-machine-not-part-2026-08-10';
 const REJECT_FILE = process.env.DGX_REJECT_CACHE || path.join(HERE, '.dgx-rejects.json');
 const REJECT_TTL_DAYS = 120;
 
