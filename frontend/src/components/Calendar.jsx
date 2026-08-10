@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { agentsAPI, customersAPI, eventsAPI, holidaysAPI, usersAPI } from '../api/api'
 import EventModal from './EventModal'
 import ProfileModal from './ProfileModal'
+import NotificationBell from './NotificationBell'
 import UserManagementModal from './UserManagementModal'
 
 const CATEGORY_LABELS = {
@@ -1190,6 +1191,7 @@ export default function Calendar() {
                 </svg>
                 Modules
               </button>
+              <NotificationBell />
               <button
                 type="button"
                 onClick={() => setProfileModalOpen(true)}

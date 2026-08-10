@@ -338,6 +338,12 @@ router.post('/:id/notes', authenticateToken, async (req, res) => {
       include: NOTE_INCLUDE.include,
     });
     res.status(201).json(note);
+
+    // After the response: telling colleagues is worth doing, but not worth
+    // failing the write over, and not worth making the author wait for.
+    import('../services/reminders.js')
+      .then((m) => m.notifyCustomerNote({ customerId, authorId: req.user.userId, content }))
+      .catch((err) => console.error('[reminders] customer note notify failed:', err.message));
   } catch (error) {
     console.error('Error adding customer note:', error);
     res.status(500).json({ error: 'Failed to add note' });
