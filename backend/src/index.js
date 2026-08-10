@@ -97,6 +97,23 @@ cron.schedule('0 6 * * *', async () => {
   }
 }, { timezone: 'Asia/Shanghai' });
 
+// ── Daily reminders — 08:00 China time, before people start their day ──
+// Deliberately its own schedule rather than a step inside runDailyJob.
+// checkDeadlines() used to live only there, which quietly tied tender deadline
+// alerts to the VPS scrape: switching that scrape off for the DGX would have
+// stopped the reminders too, with nothing to show for it. checkDeadlines
+// dedupes per user+project, so running it here as well as there is harmless.
+cron.schedule('0 8 * * *', async () => {
+  try {
+    const { checkDeadlines } = await import('./services/chinabidding.js');
+    const { checkTripsTomorrow } = await import('./services/reminders.js');
+    await checkDeadlines().catch((e) => console.error('[reminders] deadlines failed:', e.message));
+    await checkTripsTomorrow().catch((e) => console.error('[reminders] trips failed:', e.message));
+  } catch (err) {
+    console.error('[reminders] daily run failed:', err.message);
+  }
+}, { timezone: 'Asia/Shanghai' });
+
 // ── DGX runner absence alarm — 12:00 China time, after the run should have landed ──
 // Gated on DGX_EXPECTED so it stays silent until the runner is actually in
 // service; an alarm that fires before the thing exists trains people to ignore it.
