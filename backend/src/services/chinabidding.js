@@ -446,20 +446,33 @@ export async function checkDgxAbsence({ maxAgeHours = 24 } = {}) {
   // bounces, the alarm must still be findable in `pm2 logs`.
   console.error(`[dgx] ALARM: no ingest for ${ageH === Infinity ? '∞' : ageH.toFixed(1)}h (last: ${when})`);
 
-  const admins = await prisma.user.findMany({ where: { isAdmin: true }, select: { email: true } });
-  const to = admins.map((a) => a.email).filter(Boolean).join(',');
-  if (!to) {
-    console.error('[dgx] ALARM: no admin email to notify');
-    return { alarm: true, ageH, last, mailed: false };
+  const admins = await prisma.user.findMany({ where: { isAdmin: true }, select: { id: true, email: true } });
+  if (admins.length === 0) {
+    console.error('[dgx] ALARM: no admin to notify');
+    return { alarm: true, ageH, last, notified: 0, mailed: false };
   }
-  const mailed = await sendMail({
-    to,
-    subject: '[Herkules] DGX 抓取未交作业',
-    text: `DGX 抓取超过 ${maxAgeHours} 小时没有回传数据。\n\n最后一次: ${when}\n\n`
-      + '请检查：DGX 是否开机、ollama 是否在跑、以及出口 IP 是否仍是国内线路'
-      + '（走到国外线路时抓取会变慢并大量超时）。',
-  }).catch((e) => { console.error('[dgx] alarm mail failed:', e.message); return false; });
-  return { alarm: true, ageH, last, mailed };
+
+  const text = `DGX 抓取超过 ${maxAgeHours} 小时没有回传数据。最后一次: ${when}。`
+    + '请检查：DGX 是否开机、ollama 是否在跑、以及出口 IP 是否仍是国内线路'
+    + '（走到国外线路时抓取会变慢并大量超时）。';
+
+  // In-app first, because it is the only channel known to work. Production has
+  // no SMTP configured at all (verified 2026-08-10: no SMTP_* in either .env,
+  // and not one [mailer] line in the logs), so an alarm that only emailed would
+  // have been silently undeliverable — the exact failure it exists to catch.
+  // STATUS_CHANGE rather than a new enum value: adding one changes the Prisma
+  // schema, which aborts the deploy. projectId stays null and the UI handles
+  // that (it reads n.project?.sourceUrl).
+  const notified = await prisma.notification.createMany({
+    data: admins.map((a) => ({ userId: a.id, type: 'STATUS_CHANGE', projectId: null, message: `⚠️ ${text}` })),
+  }).then((r) => r.count).catch((e) => { console.error('[dgx] alarm notification failed:', e.message); return 0; });
+
+  // Secondary, and a no-op until someone configures SMTP.
+  const to = admins.map((a) => a.email).filter(Boolean).join(',');
+  const mailed = to ? await sendMail({ to, subject: '[Herkules] DGX 抓取未交作业', text })
+    .catch((e) => { console.error('[dgx] alarm mail failed:', e.message); return false; }) : false;
+
+  return { alarm: true, ageH, last, notified, mailed };
 }
 
 // Most recent run reported by the DGX runner, or null if it has never reported.
