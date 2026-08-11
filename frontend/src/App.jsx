@@ -10,6 +10,7 @@ import BidTrackingBoard from './components/BidTrackingBoard'
 import BidOpeningShare from './components/BidOpeningShare'
 import LampLoginPreview from './components/LampLoginPreview'
 import CustomerList from './components/CustomerList'
+import ContractsPage from './components/ContractsPage'
 import CustomerDetail from './components/CustomerDetail'
 import TripList from './components/TripList'
 import VisitReportList from './components/VisitReportList'
@@ -38,6 +39,7 @@ function App() {
       <Route path="/chinabidding/tracking" element={token ? <BidTrackingBoard /> : <Navigate to="/login" />} />
       <Route path="/customers" element={token ? <CustomerList /> : <Navigate to="/login" />} />
       <Route path="/customers/:id" element={token ? <CustomerDetail /> : <Navigate to="/login" />} />
+      <Route path="/contracts" element={token ? <ContractsPage /> : <Navigate to="/login" />} />
       <Route path="/trips" element={token ? <TripList /> : <Navigate to="/login" />} />
       {/* Literal segments before /trips/:id so "new" is never parsed as an id */}
       <Route path="/trips/new" element={token ? <TripWizard mode="create" /> : <Navigate to="/login" />} />

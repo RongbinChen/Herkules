@@ -150,6 +150,12 @@ export const contractsAPI = {
   download: (fileId, token) =>
     api.get(`/contracts/files/${fileId}/download`, withUnlock(token, { responseType: 'blob' })),
   remove: (fileId, token) => api.delete(`/contracts/files/${fileId}`, withUnlock(token)),
+  // Cross-customer list for the standalone Contracts module. `params` takes
+  // docType / customerId / q / limit / offset; team is never sent — the server
+  // takes it from the unlock token and ignores anything the client claims.
+  listAll: (params, token) => api.get('/contracts/files', withUnlock(token, { params })),
+  summary: (token) => api.get('/contracts/files/summary', withUnlock(token)),
+  patch: (fileId, data, token) => api.patch(`/contracts/files/${fileId}`, data, withUnlock(token)),
 }
 
 export const usersAPI = {
