@@ -14,13 +14,23 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const STORAGE_DIR = process.env.CONTRACT_STORAGE_DIR || '/home/ubuntu/contract-files';
+// Resolved once, and the only spelling of the storage path in this file. The
+// download guard compares an absolute prefix, so a relative or trailing-slash
+// value of CONTRACT_STORAGE_DIR used to make every download 404: the path being
+// built and the path being compared were not the same string.
+const STORAGE_ROOT = path.resolve(process.env.CONTRACT_STORAGE_DIR || '/home/ubuntu/contract-files');
 const TEAMS = new Set(['WRC', 'HRC']);
+
+// Mirrors the Prisma enum ContractDocType. Kept as a plain array so zod and the
+// summary endpoint share one source of truth.
+const DOC_TYPES = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'SAT', 'FAC', 'OTHER'];
+const docTypeSchema = z.enum(DOC_TYPES);
 // Long enough to work through a customer without re-entering, short enough that
 // a forgotten open tab is not a standing key.
 const UNLOCK_TTL = '45m';
@@ -32,11 +42,11 @@ const ALLOWED_EXT = new Set([
   '.txt', '.md', '.csv', '.png', '.jpg', '.jpeg', '.webp',
 ]);
 
-fs.mkdirSync(STORAGE_DIR, { recursive: true });
+fs.mkdirSync(STORAGE_ROOT, { recursive: true });
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, STORAGE_DIR),
+    destination: (_req, _file, cb) => cb(null, STORAGE_ROOT),
     // The stored name is generated, never taken from the upload: a filename
     // like "../../etc/passwd" must not be able to decide where bytes land.
     filename: (_req, file, cb) => cb(null, `${randomUUID()}${path.extname(file.originalname).toLowerCase()}`),
@@ -137,9 +147,13 @@ router.get('/pin-status', authenticateToken, async (_req, res) => {
 // ── Files (all require an unlock token) ──────────────────────────────────────
 
 const FILE_SELECT = {
-  id: true, filename: true, mimeType: true, size: true, note: true, createdAt: true,
+  id: true, docType: true, filename: true, mimeType: true, size: true, note: true, createdAt: true,
   uploadedBy: { select: { id: true, name: true } },
 };
+
+// The cross-customer list needs the customer's name; the per-customer list
+// already knows it from the page it is on.
+const LIST_SELECT = { ...FILE_SELECT, customer: { select: { id: true, name: true } } };
 
 router.get('/customer/:customerId', authenticateToken, requireUnlock, async (req, res) => {
   try {
@@ -163,7 +177,7 @@ router.post('/customer/:customerId', authenticateToken, requireUnlock, (req, res
       const customerId = parseInt(req.params.customerId, 10);
       const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
       if (!customer) {
-        fs.unlink(path.join(STORAGE_DIR, req.file.filename), () => {});
+        fs.unlink(path.join(STORAGE_ROOT, req.file.filename), () => {});
         return res.status(404).json({ error: 'Customer not found' });
       }
       const saved = await prisma.contractFile.create({
@@ -176,18 +190,118 @@ router.post('/customer/:customerId', authenticateToken, requireUnlock, (req, res
           storedName: req.file.filename,
           mimeType: req.file.mimetype || null,
           size: req.file.size,
-          note: (req.body?.note || '').trim() || null,
+          // An unrecognised or absent value falls back to OTHER rather than
+          // rejecting the upload: the bytes are already on disk by this point,
+          // and a mislabelled file is fixable through PATCH while a lost upload
+          // is not.
+          docType: docTypeSchema.catch('OTHER').parse(req.body?.docType),
+          note: (req.body?.note || '').trim().slice(0, 500) || null,
           uploadedById: req.user.userId,
         },
         select: FILE_SELECT,
       });
       res.status(201).json(saved);
     } catch (error) {
-      fs.unlink(path.join(STORAGE_DIR, req.file.filename), () => {});
+      fs.unlink(path.join(STORAGE_ROOT, req.file.filename), () => {});
       console.error('[contracts] upload error:', error.message);
       res.status(500).json({ error: 'Failed to save the file' });
     }
   });
+});
+
+// ── Cross-customer list, for the standalone Contracts module ─────────────────
+
+const listQuerySchema = z.object({
+  docType: docTypeSchema.optional(),
+  customerId: z.coerce.number().int().positive().optional(),
+  q: z.string().trim().max(100).optional(),
+  // Paginated from the start. This is the one list here that grows without
+  // bound, and retrofitting pagination later means changing a contract the
+  // frontend already depends on.
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+router.get('/files', authenticateToken, requireUnlock, async (req, res) => {
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'invalid query', details: parsed.error.issues.slice(0, 3) });
+  }
+  const { docType, customerId, q, limit, offset } = parsed.data;
+  try {
+    // team comes from the unlock token and is never read from the query. This
+    // single line is what stops a WRC session from listing HRC's contracts.
+    const where = {
+      team: req.contractTeam,
+      ...(docType ? { docType } : {}),
+      ...(customerId ? { customerId } : {}),
+      ...(q ? {
+        OR: [
+          { filename: { contains: q, mode: 'insensitive' } },
+          { note: { contains: q, mode: 'insensitive' } },
+          { customer: { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      } : {}),
+    };
+    const [items, total] = await prisma.$transaction([
+      prisma.contractFile.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset, select: LIST_SELECT }),
+      prisma.contractFile.count({ where }),
+    ]);
+    res.json({ items, total, limit, offset });
+  } catch (error) {
+    console.error('[contracts] list all error:', error.message);
+    res.status(500).json({ error: 'Failed to list contract files' });
+  }
+});
+
+// Counts per category, so the filter chips can show numbers instead of making
+// people click each one to find out it is empty.
+router.get('/files/summary', authenticateToken, requireUnlock, async (req, res) => {
+  try {
+    const rows = await prisma.contractFile.groupBy({
+      by: ['docType'],
+      where: { team: req.contractTeam },
+      _count: { _all: true },
+    });
+    const counts = Object.fromEntries(DOC_TYPES.map((t) => [t, 0]));
+    for (const r of rows) counts[r.docType] = r._count._all;
+    res.json({ team: req.contractTeam, total: rows.reduce((n, r) => n + r._count._all, 0), counts });
+  } catch (error) {
+    console.error('[contracts] summary error:', error.message);
+    res.status(500).json({ error: 'Failed to summarise contract files' });
+  }
+});
+
+// Fix a wrong category or note. Picking the wrong type on upload is a certainty,
+// and without this the only remedy is delete-and-reupload, which throws away the
+// upload record and timestamp.
+const patchSchema = z.object({
+  docType: docTypeSchema.optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+}).refine((v) => v.docType !== undefined || v.note !== undefined, { message: 'Nothing to update' });
+
+router.patch('/files/:id', authenticateToken, requireUnlock, async (req, res) => {
+  const parsed = patchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'invalid payload', details: parsed.error.issues.slice(0, 3) });
+  }
+  try {
+    const file = await prisma.contractFile.findUnique({ where: { id: parseInt(req.params.id, 10) } });
+    // 404 rather than 403 across teams, matching download and delete: whether a
+    // given id exists is itself something the other team should not learn.
+    if (!file || file.team !== req.contractTeam) return res.status(404).json({ error: 'Not found' });
+    if (req.user.isAdmin !== true && file.uploadedById !== req.user.userId) {
+      return res.status(403).json({ error: 'Only the uploader or an admin can edit this file' });
+    }
+    const data = {};
+    if (parsed.data.docType !== undefined) data.docType = parsed.data.docType;
+    if (parsed.data.note !== undefined) data.note = parsed.data.note || null;
+    const updated = await prisma.contractFile.update({ where: { id: file.id }, data, select: FILE_SELECT });
+    res.json(updated);
+  } catch (error) {
+    console.error('[contracts] patch error:', error.message);
+    res.status(500).json({ error: 'Failed to update the file' });
+  }
 });
 
 router.get('/files/:id/download', authenticateToken, requireUnlock, async (req, res) => {
@@ -195,10 +309,10 @@ router.get('/files/:id/download', authenticateToken, requireUnlock, async (req, 
     const file = await prisma.contractFile.findUnique({ where: { id: parseInt(req.params.id, 10) } });
     if (!file || file.team !== req.contractTeam) return res.status(404).json({ error: 'Not found' });
 
-    const abs = path.join(STORAGE_DIR, file.storedName);
+    const abs = path.join(STORAGE_ROOT, file.storedName);
     // storedName is generated, but check anyway — a path that resolves outside
     // the storage directory must never be streamed.
-    if (!abs.startsWith(path.resolve(STORAGE_DIR) + path.sep) || !fs.existsSync(abs)) {
+    if (!abs.startsWith(STORAGE_ROOT + path.sep) || !fs.existsSync(abs)) {
       return res.status(404).json({ error: 'File missing on disk' });
     }
     res.download(abs, file.filename);
@@ -218,7 +332,7 @@ router.delete('/files/:id', authenticateToken, requireUnlock, async (req, res) =
     await prisma.contractFile.delete({ where: { id: file.id } });
     // The row is the record of truth; a leftover blob is harmless, a missing row
     // with a live file is not. Delete the bytes after, best effort.
-    fs.unlink(path.join(STORAGE_DIR, file.storedName), () => {});
+    fs.unlink(path.join(STORAGE_ROOT, file.storedName), () => {});
     res.status(204).end();
   } catch (error) {
     console.error('[contracts] delete error:', error.message);
