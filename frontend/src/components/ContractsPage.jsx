@@ -137,7 +137,7 @@ export default function ContractsPage() {
           </div>
           <Card className="p-6">
             <p className="mb-4 text-sm text-slate-500">
-              合同文件按团队分开保管，需要输入该团队的 PIN 才能查看或上传。
+              Contract files are kept per team. Enter that team’s PIN to view or add files.
             </p>
             <div className="mb-3 flex flex-wrap gap-1.5">
               {['WRC', 'HRC'].map((k) => (
@@ -198,7 +198,7 @@ export default function ContractsPage() {
               {unlock.team === k ? `🔓 ${k}` : `🔒 ${k}`}
             </button>
           ))}
-          <span className="ml-1 text-[11px] text-slate-400">切换团队需要输入该团队的 PIN</span>
+          <span className="ml-1 text-[11px] text-slate-400">Switching teams asks for that team’s PIN</span>
           <button onClick={lock} className="ml-auto text-xs font-semibold text-slate-400 transition hover:text-slate-600">🔒 Lock</button>
         </div>
 
@@ -212,7 +212,7 @@ export default function ContractsPage() {
               docType === '' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            全部
+            All
           </button>
           {DOC_TYPE_ORDER.map((k) => (
             <button
@@ -222,7 +222,7 @@ export default function ContractsPage() {
                 docType === k ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {CONTRACT_DOC_TYPES[k].label}
+              {CONTRACT_DOC_TYPES[k].short}
               {counts[k] > 0 && <span className="ml-1 opacity-60">{counts[k]}</span>}
             </button>
           ))}
@@ -232,21 +232,21 @@ export default function ContractsPage() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索文件名、备注或客户名…"
+            placeholder="Search file name, note or customer…"
             className="max-w-sm"
           />
           {customerId && (
             <span className="flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-              客户：{customerName || `#${customerId}`}
+              Customer: {customerName || `#${customerId}`}
               <button onClick={() => { params.delete('customerId'); setParams(params); setCustomerName('') }} aria-label="Clear customer filter">✕</button>
             </span>
           )}
-          <span className="text-xs text-slate-400">{total} 个文件</span>
+          <span className="text-xs text-slate-400">{total} file{total === 1 ? '' : 's'}</span>
         </div>
 
         {items.length === 0 ? (
           <Card className="p-10 text-center text-sm text-slate-400">
-            {loading ? '加载中…' : '没有符合条件的合同文件。'}
+            {loading ? 'Loading…' : 'No contract files match these filters.'}
           </Card>
         ) : (
           <ul className="space-y-2">
@@ -254,7 +254,7 @@ export default function ContractsPage() {
               <li key={f.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).label}</Badge>
+                    <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
                     <button onClick={() => doDownload(f)} className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 transition hover:text-brand-600">
                       {f.filename}
                     </button>
@@ -289,7 +289,7 @@ export default function ContractsPage() {
               disabled={loading}
               onClick={() => { const next = offset + PAGE; setOffset(next); load(true) }}
             >
-              {loading ? '加载中…' : `Load more（还有 ${total - items.length} 个）`}
+              {loading ? 'Loading…' : `Load more (${total - items.length} left)`}
             </Button>
           </div>
         )}
@@ -308,11 +308,11 @@ export default function ContractsPage() {
       {editing && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4" onClick={() => setEditing(null)}>
           <div onClick={(e) => e.stopPropagation()} className="my-16 w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-            <h3 className="mb-3 text-base font-bold text-slate-900">改分类 / 备注</h3>
+            <h3 className="mb-3 text-base font-bold text-slate-900">Change type / note</h3>
             <Select value={editing.docType} onChange={(e) => setEditing((s) => ({ ...s, docType: e.target.value }))}>
               {DOC_TYPE_ORDER.map((k) => <option key={k} value={k}>{CONTRACT_DOC_TYPES[k].label}</option>)}
             </Select>
-            <Input value={editing.note} onChange={(e) => setEditing((s) => ({ ...s, note: e.target.value }))} placeholder="备注" maxLength={500} className="mt-2" />
+            <Input value={editing.note} onChange={(e) => setEditing((s) => ({ ...s, note: e.target.value }))} placeholder="Note" maxLength={500} className="mt-2" />
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
               <Button size="sm" onClick={saveEdit}>Save</Button>

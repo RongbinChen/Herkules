@@ -207,7 +207,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="备注（可选）"
+              placeholder="Note (optional)"
               maxLength={500}
               className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none transition focus:border-brand-500 focus:bg-white"
             />
@@ -223,7 +223,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
             {progress !== null && <span className="text-xs font-semibold text-brand-600">{progress}%</span>}
           </div>
           <p className="mb-3 text-[11px] text-slate-400">
-            选好文件即刻上传，归类为「{CONTRACT_DOC_TYPES[docType].label}」。
+            Uploads start as soon as you pick a file, filed as “{CONTRACT_DOC_TYPES[docType].label}”.
             PDF / Word / Excel / PowerPoint / images / text, up to 40 MB each.
           </p>
 
@@ -235,7 +235,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
                 <li key={f.id} className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 p-3">
                   <button onClick={() => doDownload(f)} className="min-w-0 flex-1 text-left">
                     <p className="flex min-w-0 items-center gap-1.5">
-                      <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).label}</Badge>
+                      <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
                       <span className="truncate text-sm font-semibold text-slate-800 hover:text-brand-600">{f.filename}</span>
                     </p>
                     {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
