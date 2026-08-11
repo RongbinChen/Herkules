@@ -1,46 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
-
-// The unlock token is scoped to one team and expires server-side. Keeping it in
-// sessionStorage means walking between customers doesn't ask for the PIN again,
-// while closing the tab ends the session.
-const TOKEN_KEY = 'contractUnlock'
-
-const loadUnlock = () => {
-  try {
-    return JSON.parse(sessionStorage.getItem(TOKEN_KEY)) || null
-  } catch {
-    return null
-  }
-}
+import { Badge } from './ui'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta } from '../constants/contract'
+import useContractUnlock from '../hooks/useContractUnlock'
 
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 
 export default function CustomerContracts({ customerId, currentUser }) {
-  const [unlock, setUnlock] = useState(loadUnlock)
-  const [team, setTeam] = useState(currentUser?.team === 'WRC' ? 'WRC' : 'HRC')
+  const {
+    unlock, team, setTeam, doUnlock: unlockWithPin, lock: clearUnlock,
+    busy, error, setError, configured, refreshPinStatus, handleAuthError,
+  } = useContractUnlock(currentUser?.team === 'WRC' ? 'WRC' : 'HRC')
+
   const [pin, setPin] = useState('')
   const [files, setFiles] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const [progress, setProgress] = useState(null)
-  const [configured, setConfigured] = useState(null)
   const [pinPanel, setPinPanel] = useState(false)
   const [newPin, setNewPin] = useState('')
+  // Uploads here are fire-on-select, so nobody is forced past a type picker.
+  // That is exactly why the default is OTHER and not COMMERCIAL: an honest
+  // "unsorted" beats a wrong label applied by someone who never looked.
+  const [docType, setDocType] = useState('OTHER')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
   const fileRef = useRef(null)
 
   const isAdmin = currentUser?.isAdmin === true
 
-  useEffect(() => {
-    contractsAPI.pinStatus().then((r) => setConfigured(r.data.configured)).catch(() => setConfigured([]))
-  }, [])
-
   const lock = useCallback(() => {
-    sessionStorage.removeItem(TOKEN_KEY)
-    setUnlock(null)
+    clearUnlock()
     setFiles([])
-  }, [])
+  }, [clearUnlock])
 
   const load = useCallback(async (u) => {
     if (!u) return
@@ -49,48 +40,37 @@ export default function CustomerContracts({ customerId, currentUser }) {
       setFiles(data)
       setError('')
     } catch (e) {
-      // 401 here means the token expired while the page was open.
-      if (e.response?.status === 401) { lock(); setError('The contract session expired — enter the PIN again.') }
+      if (handleAuthError(e)) setFiles([])
       else setError(e.response?.data?.error || 'Failed to load contract files')
     }
-  }, [customerId, lock])
+  }, [customerId, handleAuthError, setError])
 
   useEffect(() => { load(unlock) }, [load, unlock])
 
   async function doUnlock(e) {
     e?.preventDefault()
-    if (!pin.trim() || busy) return
-    setBusy(true)
-    setError('')
-    try {
-      const { data } = await contractsAPI.unlock(team, pin)
-      const u = { token: data.token, team: data.team }
-      sessionStorage.setItem(TOKEN_KEY, JSON.stringify(u))
-      setUnlock(u)
-      setPin('')
-    } catch (e2) {
-      setError(e2.response?.data?.error || 'Unlock failed')
-    } finally {
-      setBusy(false)
-    }
+    if (await unlockWithPin(pin)) setPin('')
   }
 
   async function doUpload(file) {
     if (!file || !unlock) return
-    setBusy(true)
+    setSaving(true)
     setError('')
     setProgress(0)
     const fd = new FormData()
+    fd.append('docType', docType)
+    if (note.trim()) fd.append('note', note.trim())
     fd.append('file', file)
     try {
       await contractsAPI.upload(customerId, unlock.token, fd, (evt) => {
         if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100))
       })
       await load(unlock)
+      setNote('')
     } catch (e) {
       setError(e.response?.data?.error || 'Upload failed')
     } finally {
-      setBusy(false)
+      setSaving(false)
       setProgress(null)
       if (fileRef.current) fileRef.current.value = ''
     }
@@ -122,18 +102,17 @@ export default function CustomerContracts({ customerId, currentUser }) {
 
   async function savePin() {
     if (newPin.trim().length < 4) { setError('PIN must be at least 4 characters'); return }
-    setBusy(true)
+    setSaving(true)
     try {
       await contractsAPI.setPin(team, newPin.trim())
       setNewPin('')
       setPinPanel(false)
       setError('')
-      const r = await contractsAPI.pinStatus()
-      setConfigured(r.data.configured)
+      await refreshPinStatus()
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to set the PIN')
     } finally {
-      setBusy(false)
+      setSaving(false)
     }
   }
 
@@ -205,17 +184,38 @@ export default function CustomerContracts({ customerId, currentUser }) {
         </form>
       ) : (
         <>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          {/* Type and note are chosen before the file, because picking a file
+              uploads immediately — there is no confirm step to come back to. */}
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-brand-500 focus:bg-white"
+            >
+              {DOC_TYPE_ORDER.map((k) => (
+                <option key={k} value={k}>{CONTRACT_DOC_TYPES[k].label}</option>
+              ))}
+            </select>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="备注（可选）"
+              maxLength={500}
+              className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none transition focus:border-brand-500 focus:bg-white"
+            />
+          </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <input
               ref={fileRef}
               type="file"
               onChange={(e) => doUpload(e.target.files?.[0])}
-              disabled={busy}
+              disabled={saving}
               className="min-w-0 flex-1 text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
             />
             {progress !== null && <span className="text-xs font-semibold text-brand-600">{progress}%</span>}
           </div>
           <p className="mb-3 text-[11px] text-slate-400">
+            选好文件即刻上传，归类为「{CONTRACT_DOC_TYPES[docType].label}」。
             PDF / Word / Excel / PowerPoint / images / text, up to 40 MB each.
           </p>
 
@@ -226,7 +226,11 @@ export default function CustomerContracts({ customerId, currentUser }) {
               {files.map((f) => (
                 <li key={f.id} className="flex items-start justify-between gap-2 rounded-xl border border-slate-200 p-3">
                   <button onClick={() => doDownload(f)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-sm font-semibold text-slate-800 hover:text-brand-600">📄 {f.filename}</p>
+                    <p className="flex min-w-0 items-center gap-1.5">
+                      <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).label}</Badge>
+                      <span className="truncate text-sm font-semibold text-slate-800 hover:text-brand-600">{f.filename}</span>
+                    </p>
+                    {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
                     <p className="mt-0.5 text-[11px] text-slate-400">
                       {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
                     </p>
@@ -262,7 +266,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
                 autoComplete="new-password"
                 className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-brand-500"
               />
-              <button onClick={savePin} disabled={busy} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Save</button>
+              <button onClick={savePin} disabled={saving} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Save</button>
               <button onClick={() => { setPinPanel(false); setNewPin('') }} className="text-xs font-semibold text-slate-500">Cancel</button>
               <p className="w-full text-[11px] text-slate-400">
                 Changing the PIN does not sign anyone out — existing sessions keep working until they expire.
