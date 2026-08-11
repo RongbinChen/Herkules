@@ -505,6 +505,16 @@ enum CustomerTier {
 }
 
 // ── Contract files ───────────────────────────────────────────────────────────
+
+// 合同文档分类。这些是稳定的机器标识，中文标签在前端 constants/contract.js。
+enum ContractDocType {
+  COMMERCIAL // 商务合同
+  TECHNICAL  // 技术协议
+  QUOTATION  // 报价单
+  SAT        // SAT 验收
+  FAC        // 最终验收证书
+  OTHER      // 其他/未分类
+}
 // Commercial and technical contracts, kept behind a per-team PIN. The PIN is
 // checked server-side and the file bytes never leave the box without it — a
 // front-end-only gate would still ship the data to every browser that asks.
@@ -526,6 +536,12 @@ model ContractFile {
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   // Which team's PIN unlocks this file.
   team         UserTeam
+  // Non-null with a default rather than optional: `db push` can add a column
+  // like this to a populated table without touching existing rows, and the
+  // frontend never has to write `docType || 'OTHER'` at every render site.
+  // Existing rows become OTHER, which is the honest label for "filed before
+  // there were categories".
+  docType      ContractDocType @default(OTHER)
   filename     String // original name as uploaded, shown in the UI
   // Name on disk (uuid + extension). Never derived from the uploaded name, so a
   // crafted filename cannot escape the storage directory.
