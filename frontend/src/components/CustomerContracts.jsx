@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { Badge } from './ui'
@@ -128,6 +129,13 @@ export default function CustomerContracts({ customerId, currentUser }) {
           {unlock && (
             <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{files.length}</span>
           )}
+          <Link
+            to={`/contracts?customerId=${customerId}`}
+            className="text-xs font-semibold text-slate-400 transition hover:text-brand-600"
+            title="Open the Contracts module filtered to this customer"
+          >
+            Open in Contracts →
+          </Link>
           {unlock && (
             <button onClick={lock} className="text-xs font-semibold text-slate-400 transition hover:text-slate-600">
               🔒 Lock

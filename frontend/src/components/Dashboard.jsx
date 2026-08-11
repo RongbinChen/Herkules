@@ -77,6 +77,15 @@ const MODULES = [
     badge: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
   },
   {
+    // Visible to everyone: the PIN is the gate, not the tile. Hiding the
+    // entrance would only mean people never learn the module exists.
+    path: '/contracts',
+    icon: '📁',
+    title: 'Contracts',
+    desc: 'Commercial contracts, technical agreements, quotations, SAT & FAC — behind a team PIN',
+    badge: 'bg-slate-100 text-slate-600 ring-slate-200',
+  },
+  {
     path: '/trips',
     icon: '🗺️',
     title: 'Trips',
