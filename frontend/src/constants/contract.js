@@ -4,13 +4,18 @@
 // expensive half (it stops the deploy and needs a manual pass over the VPS).
 //
 // `tone` feeds <Badge tone> from ui.jsx, so the palette stays the app's.
+//
+// `label` is what renders; the rest of this app is in English, so it is too.
+// `zh` is kept alongside for the day someone wires up a language toggle (the
+// visit-report module already has one in i18n/visitReports.js) — a Chinese
+// label is easy to lose and hard to reconstruct from an English one.
 export const CONTRACT_DOC_TYPES = {
-  COMMERCIAL: { label: '商务合同', en: 'Commercial contract', tone: 'brand' },
-  TECHNICAL: { label: '技术协议', en: 'Technical agreement', tone: 'blue' },
-  QUOTATION: { label: '报价单', en: 'Quotation', tone: 'amber' },
-  SAT: { label: 'SAT 验收', en: 'SAT acceptance', tone: 'emerald' },
-  FAC: { label: 'FAC', en: 'FAC', tone: 'violet' },
-  OTHER: { label: '其他', en: 'Other', tone: 'slate' },
+  COMMERCIAL: { label: 'Commercial contract', short: 'Commercial', zh: '商务合同', tone: 'brand' },
+  TECHNICAL: { label: 'Technical agreement', short: 'Technical', zh: '技术协议', tone: 'blue' },
+  QUOTATION: { label: 'Quotation', short: 'Quotation', zh: '报价单', tone: 'amber' },
+  SAT: { label: 'SAT acceptance', short: 'SAT', zh: 'SAT 验收', tone: 'emerald' },
+  FAC: { label: 'FAC', short: 'FAC', zh: 'FAC', tone: 'violet' },
+  OTHER: { label: 'Other', short: 'Other', zh: '其他', tone: 'slate' },
 }
 
 // Display order: roughly the order a deal moves through, with the catch-all

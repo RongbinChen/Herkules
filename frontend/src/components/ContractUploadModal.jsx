@@ -66,15 +66,15 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
         {err && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{err}</p>}
 
         <label className="block text-xs font-semibold text-slate-600">
-          客户 <span className="text-rose-500">*</span>
+          Customer <span className="text-rose-500">*</span>
           <div className="mt-1">
             <CustomerPicker value={customer} onChange={setCustomer} autoFocus />
           </div>
         </label>
-        <p className="mt-1 text-[11px] text-slate-400">找不到就直接输入名字，下拉里会出现「+ Create」新建。</p>
+        <p className="mt-1 text-[11px] text-slate-400">Not in the list? Type the name and pick “+ Create” from the dropdown.</p>
 
         <label className="mt-4 block text-xs font-semibold text-slate-600">
-          文档类型
+          Document type
           <Select value={docType} onChange={(e) => setDocType(e.target.value)} className="mt-1">
             {DOC_TYPE_ORDER.map((k) => (
               <option key={k} value={k}>{CONTRACT_DOC_TYPES[k].label}</option>
@@ -83,7 +83,7 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
         </label>
 
         <label className="mt-4 block text-xs font-semibold text-slate-600">
-          文件 <span className="text-rose-500">*</span>
+          File <span className="text-rose-500">*</span>
           <input
             ref={fileRef}
             type="file"
@@ -94,7 +94,7 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
         <p className="mt-1 text-[11px] text-slate-400">PDF / Word / Excel / PowerPoint / images / text, up to 40 MB.</p>
 
         <label className="mt-4 block text-xs font-semibold text-slate-600">
-          备注（可选）
+          Note (optional)
           <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="mt-1" />
         </label>
 
