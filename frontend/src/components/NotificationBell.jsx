@@ -1,16 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { listNotifications, markNotificationRead, markAllNotificationsRead } from '../api/chinabidding';
 
 // Lifted out of BidProjectList so the bell is not stranded on the ChinaBidding
 // page. There is no shared header in this app, so each page that wants it
 // mounts this component itself.
 //
-// Markup is unchanged from the original. The panel is fixed-position on small
-// screens and anchored to the button from `sm` up, which is why the wrapper
-// needs `relative` and the backdrop sits at z-[70] under the panel's z-[80].
+// The panel is portalled to document.body and positioned from the button's
+// measured rect. The backdrop sits at z-[70] under the panel's z-[80].
 export default function NotificationBell({ className = '' }) {
   const [notif, setNotif] = useState({ items: [], unreadCount: 0 });
   const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  // Where to draw the panel. Measured from the button rather than positioned
+  // relative to it, because the panel is portalled out of the component tree.
+  const [anchor, setAnchor] = useState(null);
+
+  // The panel is rendered into document.body instead of next to the button. An
+  // absolutely-positioned dropdown is clipped by any ancestor with
+  // `overflow-hidden`, and the Calendar header has exactly that — the list came
+  // out sliced off after two rows. Portalling means no ancestor can ever clip
+  // it, wherever the bell gets mounted next.
+  const place = useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setAnchor({ top: r.bottom + 8, right: Math.max(12, window.innerWidth - r.right) });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    // Fixed coordinates go stale the moment the page moves under them.
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open, place]);
 
   const load = async () => {
     try { setNotif(await listNotifications()); } catch { /* a dead bell must not break the page */ }
@@ -33,6 +59,7 @@ export default function NotificationBell({ className = '' }) {
   return (
     <div className={`relative ${className}`}>
       <button
+        ref={btnRef}
         onClick={() => { if (!open) load(); setOpen(v => !v); }}
         aria-label="Notifications"
         className="relative flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 sm:px-4 sm:py-2 sm:text-sm"
@@ -47,11 +74,21 @@ export default function NotificationBell({ className = '' }) {
         )}
       </button>
 
-      {open && (
+      {open && anchor && createPortal(
         <>
           {/* click-outside backdrop */}
           <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
-          <div className="fixed inset-x-3 top-16 z-[80] rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-w-[90vw]">
+          <div
+            className="fixed z-[80] rounded-2xl border border-slate-200 bg-white shadow-xl"
+            style={{
+              top: anchor.top,
+              // Narrow screens: full width minus a 12px gutter, ignoring the
+              // button's own position. Wider: hang off the button's right edge.
+              ...(window.innerWidth < 640
+                ? { left: 12, right: 12 }
+                : { right: anchor.right, width: 384, maxWidth: '90vw' }),
+            }}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <span className="text-sm font-bold text-slate-800">Notifications</span>
               <div className="flex items-center gap-3">
@@ -67,7 +104,7 @@ export default function NotificationBell({ className = '' }) {
                 </button>
               </div>
             </div>
-            <ul className="max-h-96 overflow-y-auto divide-y divide-slate-50">
+            <ul className="max-h-[60vh] overflow-y-auto divide-y divide-slate-50">
               {notif.items.length === 0 ? (
                 <li className="px-4 py-8 text-center text-sm text-slate-400">No notifications</li>
               ) : notif.items.map(n => (
@@ -94,7 +131,8 @@ export default function NotificationBell({ className = '' }) {
               ))}
             </ul>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
