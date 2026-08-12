@@ -29,7 +29,7 @@ const TEAMS = new Set(['WRC', 'HRC']);
 
 // Mirrors the Prisma enum ContractDocType. Kept as a plain array so zod and the
 // summary endpoint share one source of truth.
-const DOC_TYPES = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'SAT', 'FAC', 'OTHER'];
+const DOC_TYPES = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'FAT', 'FAC', 'OTHER'];
 const docTypeSchema = z.enum(DOC_TYPES);
 // Long enough to work through a customer without re-entering, short enough that
 // a forgotten open tab is not a standing key.

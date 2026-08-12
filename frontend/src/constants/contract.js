@@ -13,14 +13,14 @@ export const CONTRACT_DOC_TYPES = {
   COMMERCIAL: { label: 'Commercial contract', short: 'Commercial', zh: '商务合同', tone: 'brand' },
   TECHNICAL: { label: 'Technical agreement', short: 'Technical', zh: '技术协议', tone: 'blue' },
   QUOTATION: { label: 'Quotation', short: 'Quotation', zh: '报价单', tone: 'amber' },
-  SAT: { label: 'SAT acceptance', short: 'SAT', zh: 'SAT 验收', tone: 'emerald' },
+  FAT: { label: 'FAT acceptance', short: 'FAT', zh: '出厂验收', tone: 'emerald' },
   FAC: { label: 'FAC', short: 'FAC', zh: 'FAC', tone: 'violet' },
   OTHER: { label: 'Other', short: 'Other', zh: '其他', tone: 'slate' },
 }
 
 // Display order: roughly the order a deal moves through, with the catch-all
 // last. Not alphabetical — a quotation precedes a contract in real life.
-export const DOC_TYPE_ORDER = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'SAT', 'FAC', 'OTHER']
+export const DOC_TYPE_ORDER = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'FAT', 'FAC', 'OTHER']
 
 // Rows written before this feature existed have docType OTHER, and a value the
 // frontend does not recognise (someone added an enum member and shipped the

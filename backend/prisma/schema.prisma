@@ -511,7 +511,7 @@ enum ContractDocType {
   COMMERCIAL // 商务合同
   TECHNICAL  // 技术协议
   QUOTATION  // 报价单
-  SAT        // SAT 验收
+  FAT        // 出厂验收 Factory Acceptance Test
   FAC        // 最终验收证书
   OTHER      // 其他/未分类
 }
