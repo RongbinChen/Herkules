@@ -22,7 +22,12 @@ function WatchingRow({ t }) {
   return (
     <li>
       <button
-        onClick={() => navigate(`/chinabidding/tracking?q=${encodeURIComponent(t.projectCode || t.projectName || '')}`)}
+        // threadKey, not projectCode: the tracking page groups by threadKey and
+        // its search box never looked at projectCode, so this used to land on an
+        // empty list. projectCode is also unreliable here — when the detail page
+        // yields no bidding number it falls back to the URL slug, which matches
+        // nothing anywhere ("263250845-BidResult").
+        onClick={() => navigate(`/chinabidding/tracking?q=${encodeURIComponent(t.threadKey || t.projectName || '')}`)}
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-left transition hover:bg-brand-50/50"
       >
         {/* Mobile: badges on line 1, full project name wraps on line 2; ≥sm: single truncated row */}
@@ -82,7 +87,7 @@ const MODULES = [
     path: '/contracts',
     icon: '📁',
     title: 'Contracts',
-    desc: 'Commercial contracts, technical agreements, quotations, SAT & FAC — behind a team PIN',
+    desc: 'Commercial contracts, technical agreements, quotations, FAT & FAC — behind a team PIN',
     badge: 'bg-slate-100 text-slate-600 ring-slate-200',
   },
   {
@@ -183,10 +188,14 @@ export default function Dashboard() {
       {/* Top bar */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex w-48 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
-            <img src="/brand/hrc.png" alt="HERKULES" className="h-5 w-auto max-w-[44%] object-contain" />
-            <div className="h-5 w-px shrink-0 bg-slate-200" />
-            <img src="/brand/wasi.png" alt="WALDRICH SIEGEN" className="h-5 w-auto max-w-[44%] object-contain" />
+          {/* Sized by height, not by a fixed container width. The two marks have
+              very different aspect ratios (395x97 and 261x48), so the old
+              w-48 + max-w-[44%] pair silently squashed WALDRICH below the shared
+              h-5 — they were not even the same height on screen. */}
+          <div className="flex shrink-0 items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <img src="/brand/hrc.png" alt="HERKULES" className="h-5 w-auto object-contain sm:h-9" />
+            <div className="h-5 w-px shrink-0 bg-slate-200 sm:h-9" />
+            <img src="/brand/wasi.png" alt="WALDRICH SIEGEN" className="h-5 w-auto object-contain sm:h-9" />
           </div>
           <div className="flex items-center gap-3">
             {user?.name && <span className="hidden text-sm text-slate-500 sm:inline">{user.name}</span>}

@@ -1241,7 +1241,9 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
   if (q) {
     const needle = String(q).toLowerCase();
     threads = threads.filter((t) =>
-      [t.projectName, t.purchaser, t.winner, t.threadKey, t.equipmentType]
+      // projectCode included so typing a bidding number into the box works;
+      // it was the one obvious thing to search by that this filter ignored.
+      [t.projectName, t.projectCode, t.purchaser, t.winner, t.threadKey, t.equipmentType]
         .filter(Boolean).some((s) => String(s).toLowerCase().includes(needle)));
   }
   return threads;
