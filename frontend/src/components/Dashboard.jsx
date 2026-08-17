@@ -19,6 +19,9 @@ function WatchingRow({ t }) {
   const stage = WATCH_STAGES[t.currentStage] || null
   const deadline = t.deadline ? new Date(t.deadline) : null
   const overdue = deadline && deadline < new Date()
+  // At EVALUATION the date is the end of the public-notice window — the last
+  // day to object, not a bid deadline. Same field, different meaning.
+  const dueLabel = t.currentStage === 'EVALUATION' ? 'Objection until' : 'Deadline'
   return (
     <li>
       <button
@@ -44,7 +47,7 @@ function WatchingRow({ t }) {
         </span>
         {deadline && (
           <span className={`order-2 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold sm:order-3 ${overdue ? 'bg-slate-100 text-slate-400' : 'bg-amber-50 text-amber-600'}`}>
-            Deadline {deadline.toISOString().slice(0, 10)}
+            {dueLabel} {deadline.toISOString().slice(0, 10)}
           </span>
         )}
       </button>

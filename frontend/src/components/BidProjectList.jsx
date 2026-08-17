@@ -696,7 +696,8 @@ function BidProjectList() {
                             ? 'border-red-200 bg-red-50 text-red-500'
                             : 'border-slate-200 bg-slate-50 text-slate-500'
                         }`}>
-                          Deadline：{new Date(project.deadline).toLocaleDateString('zh-CN')}
+                          {/* EVALUATION carries the public-notice end date, not a bid deadline. */}
+                          {project.bidStage === 'EVALUATION' ? 'Objection until' : 'Deadline'}：{new Date(project.deadline).toLocaleDateString('zh-CN')}
                         </span>
                       )}
                       {project.budget && (

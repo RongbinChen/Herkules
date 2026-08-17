@@ -1328,7 +1328,7 @@ export async function checkDeadlines() {
   const soon = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
   const follows = await prisma.projectFollow.findMany({
-    include: { project: { select: { id: true, projectName: true, deadline: true } } },
+    include: { project: { select: { id: true, projectName: true, deadline: true, bidStage: true } } },
   });
 
   for (const f of follows) {
@@ -1346,7 +1346,9 @@ export async function checkDeadlines() {
         userId: f.userId,
         type: 'DEADLINE_SOON',
         projectId: p.id,
-        message: `投标截止临近（${p.deadline.toISOString().slice(0, 10)}）：${p.projectName.slice(0, 80)}`,
+        // On an EVALUATION notice the date is the end of the public-notice
+        // window, not a bid deadline — saying "投标截止" there would be wrong.
+        message: `${p.bidStage === 'EVALUATION' ? '评标公示期将结束' : '投标截止临近'}（${p.deadline.toISOString().slice(0, 10)}）：${p.projectName.slice(0, 80)}`,
       },
     });
   }
@@ -1363,7 +1365,7 @@ export async function getTrends({ months = 12 } = {}) {
       publishDate: true, equipmentType: true, region: true, industry: true,
       purchaser: true, winner: true, winningPrice: true, infoClass: true,
       competitorId: true, projectName: true, status: true, deadline: true, id: true,
-      sourceUrl: true,
+      sourceUrl: true, bidStage: true,
     },
     orderBy: { publishDate: 'asc' },
   });
@@ -1427,10 +1429,12 @@ export async function getTrends({ months = 12 } = {}) {
     }))
     .sort((a, b) => b.winCount - a.winCount);
 
-  // Upcoming deadlines (open opportunities)
+  // Upcoming deadlines (open opportunities). EVALUATION rows now carry a
+  // deadline too, but that one is an objection window on a bid already closed —
+  // it is not something we can still go and win, so it stays out of this panel.
   const now = new Date();
   const upcoming = projects
-    .filter(p => p.deadline && new Date(p.deadline) > now)
+    .filter(p => p.deadline && new Date(p.deadline) > now && p.bidStage !== 'EVALUATION' && p.bidStage !== 'AWARD')
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
     .slice(0, 10);
 
