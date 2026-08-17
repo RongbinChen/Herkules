@@ -10,7 +10,7 @@ import FileDropZone from './FileDropZone'
 export default function CustomerContracts({ customerId, currentUser }) {
   const {
     unlock, team, setTeam, doUnlock: unlockWithPin, lock: clearUnlock,
-    busy, error, setError, configured, refreshPinStatus, handleAuthError,
+    busy, error, setError, configured, masterSet, refreshPinStatus, handleAuthError,
   } = useContractUnlock(currentUser?.team === 'WRC' ? 'WRC' : 'HRC')
 
   const [pin, setPin] = useState('')
@@ -18,6 +18,9 @@ export default function CustomerContracts({ customerId, currentUser }) {
   const [progress, setProgress] = useState(null)
   const [pinPanel, setPinPanel] = useState(false)
   const [newPin, setNewPin] = useState('')
+  // Which PIN the admin panel is editing: a team, or MASTER (one password that
+  // opens either team, admins only).
+  const [pinTarget, setPinTarget] = useState('TEAM')
   // Uploads here are fire-on-select, so nobody is forced past a type picker.
   // That is exactly why the default is OTHER and not COMMERCIAL: an honest
   // "unsorted" beats a wrong label applied by someone who never looked.
@@ -99,10 +102,17 @@ export default function CustomerContracts({ customerId, currentUser }) {
   }
 
   async function savePin() {
-    if (newPin.trim().length < 4) { setError('PIN must be at least 4 characters'); return }
+    const isMaster = pinTarget === 'MASTER'
+    // The master PIN opens every team, so it is held to a longer minimum. The
+    // server enforces both; this is here so the message arrives before the trip.
+    const min = isMaster ? 8 : 4
+    if (newPin.trim().length < min) {
+      setError(`${isMaster ? 'The master PIN' : 'PIN'} must be at least ${min} characters`)
+      return
+    }
     setSaving(true)
     try {
-      await contractsAPI.setPin(team, newPin.trim())
+      await contractsAPI.setPin(isMaster ? 'MASTER' : team, newPin.trim())
       setNewPin('')
       setPinPanel(false)
       setError('')
@@ -256,22 +266,41 @@ export default function CustomerContracts({ customerId, currentUser }) {
         <div className="mt-4 border-t border-slate-100 pt-3">
           {!pinPanel ? (
             <button onClick={() => setPinPanel(true)} className="text-xs font-semibold text-slate-400 hover:text-brand-600">
-              ⚙ Set {team} PIN
+              ⚙ Set contract PINs{masterSet ? ' · master PIN is set' : ''}
             </button>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full flex-wrap gap-1.5">
+                {[
+                  { k: 'TEAM', label: `${team} PIN` },
+                  { k: 'MASTER', label: 'Master PIN' },
+                ].map(({ k, label }) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => { setPinTarget(k); setError('') }}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                      pinTarget === k ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <input
                 type="password"
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value)}
-                placeholder={`New ${team} PIN (min 4 chars)`}
+                placeholder={pinTarget === 'MASTER' ? 'New master PIN (min 8 chars)' : `New ${team} PIN (min 4 chars)`}
                 autoComplete="new-password"
                 className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs outline-none focus:border-brand-500"
               />
               <button onClick={savePin} disabled={saving} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Save</button>
               <button onClick={() => { setPinPanel(false); setNewPin('') }} className="text-xs font-semibold text-slate-500">Cancel</button>
               <p className="w-full text-[11px] text-slate-400">
-                Changing the PIN does not sign anyone out — existing sessions keep working until they expire.
+                {pinTarget === 'MASTER'
+                  ? 'The master PIN opens WRC and HRC, and only works for admin accounts. Team PINs keep working unchanged. Saving a new one replaces the old.'
+                  : 'Changing the PIN does not sign anyone out — existing sessions keep working until they expire.'}
               </p>
             </div>
           )}
