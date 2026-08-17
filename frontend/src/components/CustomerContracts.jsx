@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { Badge } from './ui'
-import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta } from '../constants/contract'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, fmtFileSize } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
-
-const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+import FileDropZone from './FileDropZone'
 
 export default function CustomerContracts({ customerId, currentUser }) {
   const {
@@ -25,7 +24,6 @@ export default function CustomerContracts({ customerId, currentUser }) {
   const [docType, setDocType] = useState('OTHER')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
-  const fileRef = useRef(null)
 
   const isAdmin = currentUser?.isAdmin === true
 
@@ -73,7 +71,6 @@ export default function CustomerContracts({ customerId, currentUser }) {
     } finally {
       setSaving(false)
       setProgress(null)
-      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -212,20 +209,17 @@ export default function CustomerContracts({ customerId, currentUser }) {
               className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none transition focus:border-brand-500 focus:bg-white"
             />
           </div>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              onChange={(e) => doUpload(e.target.files?.[0])}
+          <div className="mb-3">
+            <FileDropZone
+              compact
               disabled={saving}
-              className="min-w-0 flex-1 text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
+              onFile={doUpload}
+              hint={`Dropping or picking a file uploads it right away, filed as “${CONTRACT_DOC_TYPES[docType].label}”. PDF / Word / Excel / PowerPoint / images / text, up to 40 MB each.`}
             />
-            {progress !== null && <span className="text-xs font-semibold text-brand-600">{progress}%</span>}
+            {progress !== null && (
+              <p className="mt-1 text-[11px] font-semibold text-brand-600">Uploading… {progress}%</p>
+            )}
           </div>
-          <p className="mb-3 text-[11px] text-slate-400">
-            Uploads start as soon as you pick a file, filed as “{CONTRACT_DOC_TYPES[docType].label}”.
-            PDF / Word / Excel / PowerPoint / images / text, up to 40 MB each.
-          </p>
 
           {files.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">No contract files for {unlock.team} yet.</p>
@@ -240,7 +234,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
                     </p>
                     {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
                     <p className="mt-0.5 text-[11px] text-slate-400">
-                      {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
+                      {fmtFileSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
                     </p>
                   </button>
                   {canDelete(f) && (

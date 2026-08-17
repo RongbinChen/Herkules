@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { contractsAPI } from '../api/api'
 import { Button, Select, Textarea } from './ui'
 import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER } from '../constants/contract'
 import CustomerPicker from './CustomerPicker'
+import FileDropZone from './FileDropZone'
 
 // Fill-then-confirm, unlike the customer-detail card where picking a file
 // uploads it straight away. Here the file has to be bound to a customer and a
@@ -20,7 +21,6 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
   const [progress, setProgress] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const fileRef = useRef(null)
 
   const ready = customer?.id && file && !busy
 
@@ -82,16 +82,15 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
           </Select>
         </label>
 
-        <label className="mt-4 block text-xs font-semibold text-slate-600">
+        {/* Not a <label>: the drop zone is itself a button, and nesting it in a
+            label makes a click reach the hidden input twice — the picker opens,
+            then reopens the moment it closes. */}
+        <div className="mt-4 text-xs font-semibold text-slate-600">
           File <span className="text-rose-500">*</span>
-          <input
-            ref={fileRef}
-            type="file"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="mt-1 block w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
-          />
-        </label>
-        <p className="mt-1 text-[11px] text-slate-400">PDF / Word / Excel / PowerPoint / images / text, up to 40 MB.</p>
+          <div className="mt-1">
+            <FileDropZone file={file} onFile={setFile} onClear={() => setFile(null)} disabled={busy} />
+          </div>
+        </div>
 
         <label className="mt-4 block text-xs font-semibold text-slate-600">
           Note (optional)
