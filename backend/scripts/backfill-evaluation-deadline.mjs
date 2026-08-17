@@ -4,7 +4,7 @@
  *
  * Evaluation notices carry no bid deadline; their live date is
  * "Ending Date of Evaluation Result" — the end of the public-notice window,
- * i.e. the last moment to file an objection. The parser ignored that label
+ * i.e. the last moment to file a complaint. The parser ignored that label
  * until 2026-08-17, so every evaluation row landed with `deadline = NULL` and
  * the Watching panel showed those projects with no date at all.
  *

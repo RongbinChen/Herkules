@@ -20,8 +20,8 @@ function WatchingRow({ t }) {
   const deadline = t.deadline ? new Date(t.deadline) : null
   const overdue = deadline && deadline < new Date()
   // At EVALUATION the date is the end of the public-notice window — the last
-  // day to object, not a bid deadline. Same field, different meaning.
-  const dueLabel = t.currentStage === 'EVALUATION' ? 'Objection until' : 'Deadline'
+  // day to file a complaint, not a bid deadline. Same field, different meaning.
+  const dueLabel = t.currentStage === 'EVALUATION' ? 'Complaint until' : 'Deadline'
   return (
     <li>
       <button

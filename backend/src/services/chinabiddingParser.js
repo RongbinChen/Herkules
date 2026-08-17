@@ -119,7 +119,7 @@ export function parseDetailPage(html, detailUrl) {
   project.publishDate = extractPublishDate(body);
 
   // Evaluation Results announce no bid deadline — their live date is the end of
-  // the public-notice window, the last moment to file an objection. That is the
+  // the public-notice window, the last moment to file a complaint. That is the
   // one date still worth acting on at that stage, so it lands in `deadline` too;
   // the UI labels it by stage. The value is glued to the next sentence
   // ("...23:59Who proposed the successful bidder"), hence no trailing anchor.
