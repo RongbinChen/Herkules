@@ -27,6 +27,16 @@ const router = express.Router();
 const STORAGE_ROOT = path.resolve(process.env.CONTRACT_STORAGE_DIR || '/home/ubuntu/contract-files');
 const TEAMS = new Set(['WRC', 'HRC']);
 
+// The master PIN lets an admin open either team with one password. It lives in
+// the same TeamContractPin table under the UserTeam member nothing else uses —
+// `OTHER` is not in TEAMS, so no unlock can ever mint a token for it and no
+// ContractFile can ever be filed under it. Reusing the slot keeps this a
+// deploy-safe change: a new model would stop the pipeline for a manual pass
+// over the VPS. The API says MASTER; only storage says OTHER.
+const MASTER_SLOT = 'OTHER';
+// Longer than a team PIN's 4 because one guess opens everything.
+const MASTER_MIN_LEN = 8;
+
 // Mirrors the Prisma enum ContractDocType. Kept as a plain array so zod and the
 // summary endpoint share one source of truth.
 const DOC_TYPES = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'FAT', 'FAC', 'OTHER'];
@@ -68,22 +78,41 @@ router.post('/unlock', authenticateToken, async (req, res) => {
     if (!TEAMS.has(team)) return res.status(400).json({ error: 'team must be WRC or HRC' });
     if (!pin) return res.status(400).json({ error: 'PIN is required' });
 
-    const row = await prisma.teamContractPin.findUnique({ where: { team } });
-    if (!row) return res.status(409).json({ error: `No PIN has been set for ${team} yet. Ask an admin to set one.` });
+    // The master PIN is only ever fetched for an admin, so for everyone else
+    // this route behaves exactly as it did before — same queries, same replies.
+    const isAdmin = req.user.isAdmin === true;
+    const [row, master] = await Promise.all([
+      prisma.teamContractPin.findUnique({ where: { team } }),
+      isAdmin ? prisma.teamContractPin.findUnique({ where: { team: MASTER_SLOT } }) : null,
+    ]);
+    if (!row && !master) {
+      return res.status(409).json({ error: `No PIN has been set for ${team} yet. Ask an admin to set one.` });
+    }
 
-    if (!(await bcrypt.compare(pin, row.pinHash))) {
+    let via = null;
+    if (row && await bcrypt.compare(pin, row.pinHash)) via = 'team';
+    else if (master && await bcrypt.compare(pin, master.pinHash)) via = 'master';
+
+    if (!via) {
       // Deliberately vague and deliberately slow-ish (bcrypt already is): do not
-      // hint whether the team exists or how close the guess was.
+      // hint whether the team exists, whether a master PIN exists, or how close
+      // the guess was. A non-admin typing the master PIN lands here too.
       console.warn(`[contracts] failed unlock for ${team} by user ${req.user.userId}`);
       return res.status(401).json({ error: 'Incorrect PIN' });
     }
+    // Worth a line in the log: one credential opening any team should be
+    // attributable after the fact.
+    if (via === 'master') console.warn(`[contracts] master unlock for ${team} by admin ${req.user.userId}`);
 
+    // The token still covers exactly ONE team no matter which PIN opened it, so
+    // `where.team = req.contractTeam` downstream stays the whole story. A master
+    // unlock is a second key to the same door, not a wider door.
     const token = jwt.sign(
-      { scope: 'contract', team, userId: req.user.userId },
+      { scope: 'contract', team, userId: req.user.userId, via },
       process.env.JWT_SECRET,
       { expiresIn: UNLOCK_TTL },
     );
-    res.json({ token, team, expiresIn: UNLOCK_TTL });
+    res.json({ token, team, via, expiresIn: UNLOCK_TTL });
   } catch (error) {
     console.error('[contracts] unlock error:', error.message);
     res.status(500).json({ error: 'Unlock failed' });
@@ -111,21 +140,30 @@ function requireUnlock(req, res, next) {
 
 // ── Admin: set or change a team's PIN ─────────────────────────────────────────
 
+// `team` is WRC, HRC, or MASTER. Setting MASTER again rotates it; there is no
+// separate revoke, because replacing the PIN already invalidates the old one.
 router.put('/pin', authenticateToken, async (req, res) => {
   try {
     if (req.user.isAdmin !== true) return res.status(403).json({ error: 'Admin only' });
     const team = String(req.body?.team || '').toUpperCase();
     const pin = String(req.body?.pin || '');
-    if (!TEAMS.has(team)) return res.status(400).json({ error: 'team must be WRC or HRC' });
-    if (pin.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 characters' });
+    const isMaster = team === 'MASTER';
+    if (!isMaster && !TEAMS.has(team)) return res.status(400).json({ error: 'team must be WRC, HRC or MASTER' });
 
+    const minLen = isMaster ? MASTER_MIN_LEN : 4;
+    if (pin.length < minLen) {
+      return res.status(400).json({ error: `${isMaster ? 'The master PIN' : 'PIN'} must be at least ${minLen} characters` });
+    }
+
+    const slot = isMaster ? MASTER_SLOT : team;
     const pinHash = await bcrypt.hash(pin, 10);
     await prisma.teamContractPin.upsert({
-      where: { team },
-      create: { team, pinHash, updatedById: req.user.userId },
+      where: { team: slot },
+      create: { team: slot, pinHash, updatedById: req.user.userId },
       update: { pinHash, updatedById: req.user.userId },
     });
-    res.json({ team, message: 'PIN updated' });
+    console.warn(`[contracts] ${isMaster ? 'MASTER' : team} PIN set by admin ${req.user.userId}`);
+    res.json({ team, message: isMaster ? 'Master PIN updated' : 'PIN updated' });
   } catch (error) {
     console.error('[contracts] set pin error:', error.message);
     res.status(500).json({ error: 'Failed to update the PIN' });
@@ -134,10 +172,15 @@ router.put('/pin', authenticateToken, async (req, res) => {
 
 // Which teams have a PIN configured — safe to answer while locked, so the UI can
 // say "ask an admin" instead of failing at the unlock step.
-router.get('/pin-status', authenticateToken, async (_req, res) => {
+router.get('/pin-status', authenticateToken, async (req, res) => {
   try {
     const rows = await prisma.teamContractPin.findMany({ select: { team: true } });
-    res.json({ configured: rows.map((r) => r.team) });
+    // Whether a master PIN exists is only told to admins — nobody else can use
+    // it, and its existence is not something the rest of the staff needs to know.
+    res.json({
+      configured: rows.map((r) => r.team).filter((t) => TEAMS.has(t)),
+      master: req.user.isAdmin === true ? rows.some((r) => r.team === MASTER_SLOT) : undefined,
+    });
   } catch (error) {
     console.error('[contracts] pin status error:', error.message);
     res.status(500).json({ error: 'Failed to read PIN status' });
