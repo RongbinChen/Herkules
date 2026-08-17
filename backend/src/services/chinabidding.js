@@ -1430,7 +1430,7 @@ export async function getTrends({ months = 12 } = {}) {
     .sort((a, b) => b.winCount - a.winCount);
 
   // Upcoming deadlines (open opportunities). EVALUATION rows now carry a
-  // deadline too, but that one is an objection window on a bid already closed —
+  // deadline too, but that one is a complaint window on a bid already closed —
   // it is not something we can still go and win, so it stays out of this panel.
   const now = new Date();
   const upcoming = projects
