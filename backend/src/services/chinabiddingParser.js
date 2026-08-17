@@ -42,10 +42,17 @@ export function parseListPage(html) {
   return items;
 }
 
+/**
+ * Group 1 is the date; an optional group 2 carries "HH:MM". Chinabidding is a
+ * mainland site, so a time-bearing value is anchored to Beijing (+08:00) —
+ * without it a 23:59 cutoff would read as expired eight hours early. Date-only
+ * values keep the historical UTC-midnight behaviour so that
+ * `.toISOString().slice(0, 10)` still prints the date shown on the page.
+ */
 function matchDate(text, re) {
   const m = text.match(re);
   if (!m) return null;
-  const d = new Date(m[1]);
+  const d = new Date(m[2] ? `${m[1]}T${m[2]}:00+08:00` : m[1]);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -111,9 +118,15 @@ export function parseDetailPage(html, detailUrl) {
 
   project.publishDate = extractPublishDate(body);
 
+  // Evaluation Results announce no bid deadline — their live date is the end of
+  // the public-notice window, the last moment to file an objection. That is the
+  // one date still worth acting on at that stage, so it lands in `deadline` too;
+  // the UI labels it by stage. The value is glued to the next sentence
+  // ("...23:59Who proposed the successful bidder"), hence no trailing anchor.
   project.deadline =
     matchDate(body, /Deadline for Submitting Bids[^:：]*[:：]\s*(\d{4}-\d{2}-\d{2})/i) ||
-    matchDate(body, /Ending of Selling Bidding Documents[:：]\s*(\d{4}-\d{2}-\d{2})/i);
+    matchDate(body, /Ending of Selling Bidding Documents[:：]\s*(\d{4}-\d{2}-\d{2})/i) ||
+    matchDate(body, /Ending Date of Evaluation Result[:：]\s*(\d{4}-\d{2}-\d{2})(?:\s*(\d{2}:\d{2}))?/i);
 
   // Price is a currency token (e.g. "￥1500/$250"); match only currency
   // symbols + digits so we stop at any glued label like "Additional".
