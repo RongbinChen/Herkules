@@ -26,3 +26,33 @@ export const DOC_TYPE_ORDER = ['COMMERCIAL', 'TECHNICAL', 'QUOTATION', 'FAT', 'F
 // frontend does not recognise (someone added an enum member and shipped the
 // backend first) must still render as something rather than crash a list.
 export const docTypeMeta = (t) => CONTRACT_DOC_TYPES[t] || CONTRACT_DOC_TYPES.OTHER
+
+// ── Upload limits ───────────────────────────────────────────────────────────
+// Mirrors ALLOWED_EXT and MAX_FILE_BYTES in backend/src/routes/contracts.js.
+// The server stays the authority — this copy exists so a 45 MB drop is refused
+// in the browser instead of after uploading 45 MB to be told no. Keep the two
+// lists in step; a value only added here would let a file through to a 400.
+export const MAX_FILE_BYTES = 40 * 1024 * 1024
+export const ALLOWED_EXT = [
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.txt', '.md', '.csv', '.png', '.jpg', '.jpeg', '.webp',
+]
+
+// Feeds the file input's `accept` so the OS picker filters too.
+export const ACCEPT_ATTR = ALLOWED_EXT.join(',')
+
+export const fmtFileSize = (n) =>
+  (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+
+/** Returns an error string, or '' when the file is acceptable. */
+export function validateContractFile(file) {
+  if (!file) return 'No file selected'
+  const dot = file.name.lastIndexOf('.')
+  const ext = dot === -1 ? '' : file.name.slice(dot).toLowerCase()
+  if (!ALLOWED_EXT.includes(ext)) return `File type ${ext || '(none)'} is not accepted`
+  if (file.size > MAX_FILE_BYTES) return `${fmtFileSize(file.size)} is over the 40 MB limit`
+  // A dropped folder arrives as a zero-byte entry with no type — uploading it
+  // would store an empty file under the folder's name.
+  if (file.size === 0) return 'That looks like an empty file or a folder'
+  return ''
+}
