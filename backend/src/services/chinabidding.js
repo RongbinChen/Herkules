@@ -3,6 +3,7 @@ import { parseListPage, parseDetailPage } from './chinabiddingParser.js';
 import { analyzeProject, generateMarketReport } from './deepseek.js';
 import { COMPETITOR_SEED } from '../data/competitors.js';
 import { sendMail } from './mailer.js';
+import { renderEmail } from './emailTemplate.js';
 import { solveSession, SCRAPER_UA } from './browserSolver.js';
 import { normalizeCompany } from './companyName.js';
 
@@ -456,6 +457,31 @@ export async function checkDgxAbsence({ maxAgeHours = 24 } = {}) {
     + '请检查：DGX 是否开机、ollama 是否在跑、以及出口 IP 是否仍是国内线路'
     + '（走到国外线路时抓取会变慢并大量超时）。';
 
+  // The mail says the same thing in both languages and, unlike the in-app
+  // line, has room for the checklist — this is read by whoever is closest to
+  // the machine, which is not always the person who built it.
+  const mail = renderEmail({
+    tone: 'alert',
+    title: { en: 'DGX scrape has not reported in', zh: 'DGX 抓取未交作业' },
+    intro: {
+      en: `No data has arrived from the DGX runner for more than ${maxAgeHours} hours. Today's chinabidding announcements are missing until it runs again.`,
+      zh: `DGX 抓取已超过 ${maxAgeHours} 小时没有回传数据。在它重新跑起来之前，今天的招标公告是缺的。`,
+    },
+    facts: [
+      { k: { en: 'Last ingest', zh: '最后一次回传' }, v: when },
+      { k: { en: 'Scheduled', zh: '计划时间' }, v: '05:00 Asia/Shanghai' },
+    ],
+    items: [
+      { label: '1', title: { en: 'Is the DGX powered on and awake?', zh: 'DGX 是否开机、有没有休眠？' } },
+      { label: '2', title: { en: 'Is ollama running and the model loadable?', zh: 'ollama 是否在跑、模型能否加载？' } },
+      { label: '3', title: { en: 'Is the egress IP still a domestic route?', zh: '出口 IP 是否仍是国内线路？' } },
+    ],
+    note: {
+      en: 'A foreign egress route does not fail outright — it makes the scrape slow and time out in bulk, which looks like a hang rather than an error.',
+      zh: '走到国外线路不会直接报错，而是让抓取变慢并大量超时，看起来像卡住而不是出错。',
+    },
+  });
+
   // In-app first, because it is the only channel known to work. Production has
   // no SMTP configured at all (verified 2026-08-10: no SMTP_* in either .env,
   // and not one [mailer] line in the logs), so an alarm that only emailed would
@@ -469,7 +495,7 @@ export async function checkDgxAbsence({ maxAgeHours = 24 } = {}) {
 
   // Secondary, and a no-op until someone configures SMTP.
   const to = admins.map((a) => a.email).filter(Boolean).join(',');
-  const mailed = to ? await sendMail({ to, subject: '[Herkules] DGX 抓取未交作业', text })
+  const mailed = to ? await sendMail({ to, subject: '[Herkules] DGX scrape has not reported in / DGX 抓取未交作业', text: mail.text, html: mail.html })
     .catch((e) => { console.error('[dgx] alarm mail failed:', e.message); return false; }) : false;
 
   return { alarm: true, ageH, last, notified, mailed };
@@ -994,17 +1020,35 @@ async function notifySearchOwner(search, since) {
         select: { email: true, name: true },
       });
       if (user?.email) {
-        const lines = fresh.map(
-          (p) => `• [${p.infoClass || 'Announcement'}] ${p.projectName}\n  ${p.sourceUrl}`,
-        );
+        const n = fresh.length;
+        const mail = renderEmail({
+          title: {
+            en: `${n} new announcement${n > 1 ? 's' : ''} for "${search.name}"`,
+            zh: `订阅「${search.name}」有 ${n} 条新公告`,
+          },
+          intro: {
+            en: `Hi ${user.name}, your saved search (keyword: ${search.keyword}) matched the following.`,
+            zh: `${user.name} 你好，你的订阅（关键词：${search.keyword}）匹配到以下公告。`,
+          },
+          items: fresh.map((p) => ({
+            label: p.infoClass || 'Announcement',
+            title: p.projectName,
+            url: p.sourceUrl,
+          })),
+          action: {
+            label: { en: 'Open in Herkules CRM', zh: '在系统中查看' },
+            url: 'https://www.herkulesgroup-china.com/chinabidding',
+          },
+          note: {
+            en: 'You are receiving this because email notifications are switched on for this saved search.',
+            zh: '你收到这封邮件，是因为这条订阅开启了邮件通知。',
+          },
+        });
         await sendMail({
           to: user.email,
-          subject: `[Herkules Bid Watch] ${search.name}: ${fresh.length} new announcement(s)`,
-          text:
-            `Hi ${user.name},\n\n` +
-            `Your subscription "${search.name}" (keyword: ${search.keyword}) matched ${fresh.length} new announcement(s):\n\n` +
-            `${lines.join('\n\n')}\n\n` +
-            `View in the app: https://www.herkulesgroup-china.com/chinabidding\n`,
+          subject: `[Herkules Bid Watch] ${search.name}: ${n} new announcement${n > 1 ? 's' : ''} / ${n} 条新公告`,
+          text: mail.text,
+          html: mail.html,
         });
       }
     }
