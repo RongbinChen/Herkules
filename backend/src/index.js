@@ -87,7 +87,15 @@ app.listen(PORT, () => {
 // window clear of working hours. Note 06:00 China = 22:00 UTC the day before,
 // so a run shows up under the previous date when reading timestamps in UTC.
 // runDailyJob guards against overlapping runs internally.
+//
+// Since the DGX runner took over (2026-08-18) this is switched OFF in
+// production via SCRAPE_ON_VPS=0. It is an env flag rather than deleted code
+// on purpose: the failure mode we are guarding against is the DGX going dark,
+// and the recovery for that has to be one line in .env plus a pm2 restart —
+// not a code change, a PR and a deploy at the moment the pipeline is already
+// broken. Default stays ON so nothing changes for a fresh checkout.
 cron.schedule('0 6 * * *', async () => {
+  if (process.env.SCRAPE_ON_VPS === '0') return;
   console.log('[cron] Starting daily chinabidding scrape...');
   try {
     const { runDailyJob } = await import('./services/chinabidding.js');
