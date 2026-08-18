@@ -272,6 +272,9 @@ export default function CustomerContracts({ customerId, currentUser }) {
               <button onClick={() => { setPinPanel(false); setNewPin('') }} className="text-xs font-semibold text-slate-500">Cancel</button>
               <p className="w-full text-[11px] text-slate-400">
                 Changing the PIN does not sign anyone out — existing sessions keep working until they expire.
+                {/* The master PIN lives in My Account, not here: it is an
+                    account-level credential, not this team's door key. */}
+                {' '}The master PIN is set in My Account.
               </p>
             </div>
           )}

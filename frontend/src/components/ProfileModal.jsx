@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { eventsAPI, usersAPI } from '../api/api'
+import { contractsAPI, eventsAPI, usersAPI } from '../api/api'
 
 function emptyForm(user) {
   return {
@@ -22,6 +22,15 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
   const [copyState, setCopyState] = useState('')
   const [downloading, setDownloading] = useState(false)
   const [rotating, setRotating] = useState(false)
+  // Contract master PIN — one password that opens either team's contract files.
+  // It lives here rather than in the Contracts module because it is a property
+  // of being an administrator, not of the team whose files you happen to be
+  // looking at. Admin-only, so everything below is inside a user.isAdmin gate.
+  const [masterPin, setMasterPin] = useState('')
+  const [masterSet, setMasterSet] = useState(false)
+  const [masterSaving, setMasterSaving] = useState(false)
+  const [masterMsg, setMasterMsg] = useState('')
+  const [masterError, setMasterError] = useState('')
 
   useEffect(() => {
     if (!isOpen) {
@@ -30,12 +39,21 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
       setFeedLoading(false)
       setCopyState('')
       setTeamFeeds([])
+      // Never leave a typed PIN sitting in state behind a closed modal.
+      setMasterPin('')
+      setMasterMsg('')
+      setMasterError('')
       return
     }
 
     setForm(emptyForm(user))
     setError('')
     loadCalendarFeed()
+    if (user?.isAdmin) {
+      contractsAPI.pinStatus()
+        .then((r) => setMasterSet(r.data.master === true))
+        .catch(() => setMasterSet(false))
+    }
   }, [isOpen, user])
 
   useEffect(() => {
@@ -116,6 +134,28 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
       setFeedError(requestError.response?.data?.error || 'Failed to reset calendar link')
     } finally {
       setRotating(false)
+    }
+  }
+
+  async function handleSaveMasterPin() {
+    // Held to 8 rather than a team PIN's 4: one guess opens every team. The
+    // server enforces this too — repeating it here just saves a round trip.
+    if (masterPin.trim().length < 8) {
+      setMasterError('The master PIN must be at least 8 characters')
+      return
+    }
+    setMasterSaving(true)
+    setMasterError('')
+    setMasterMsg('')
+    try {
+      await contractsAPI.setPin('MASTER', masterPin.trim())
+      setMasterPin('')
+      setMasterSet(true)
+      setMasterMsg(masterSet ? 'Master PIN replaced' : 'Master PIN set')
+    } catch (requestError) {
+      setMasterError(requestError.response?.data?.error || 'Failed to save the master PIN')
+    } finally {
+      setMasterSaving(false)
     }
   }
 
@@ -408,6 +448,66 @@ export default function ProfileModal({ isOpen, onClose, user, onSave }) {
                       No team feeds available.
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {user?.isAdmin && (
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Contract master PIN</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      One PIN that opens both WRC and HRC contract files. Each team&apos;s own PIN keeps working
+                      exactly as before — this is an extra key, not a replacement.
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                    masterSet ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {masterSet ? 'Set' : 'Not set'}
+                  </span>
+                </div>
+
+                {masterError && (
+                  <div className="mt-4 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm text-red-700">
+                    {masterError}
+                  </div>
+                )}
+                {masterMsg && (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
+                    {masterMsg}
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="password"
+                    value={masterPin}
+                    onChange={(event) => setMasterPin(event.target.value)}
+                    // This sits inside the profile form, so Enter would otherwise
+                    // submit the profile instead of saving the PIN.
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') { event.preventDefault(); handleSaveMasterPin() }
+                    }}
+                    placeholder={masterSet ? 'New master PIN (min 8 characters)' : 'Master PIN (min 8 characters)'}
+                    autoComplete="new-password"
+                    className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-brand-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveMasterPin}
+                    disabled={masterSaving || !masterPin.trim()}
+                    className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {masterSaving ? 'Saving...' : masterSet ? 'Replace' : 'Set PIN'}
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Only administrator accounts can use this PIN — if anyone else types it, they are told it is
+                  simply wrong. Saving a new one replaces the old immediately, and unlock sessions already open
+                  keep working until they expire.
                 </div>
               </div>
             )}
