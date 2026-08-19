@@ -11,12 +11,13 @@ import express from 'express';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { wakeDgx } from '../services/dgxWake.js';
 
 const router = express.Router();
 
@@ -191,6 +192,10 @@ router.get('/pin-status', authenticateToken, async (req, res) => {
 
 const FILE_SELECT = {
   id: true, docType: true, filename: true, mimeType: true, size: true, note: true, createdAt: true,
+  // Whether the file has been read yet. Surfaced so the UI can say "still
+  // being read" instead of letting the assistant answer from nothing and look
+  // like it is wrong about the contract.
+  ocrStatus: true, ocrPages: true,
   uploadedBy: { select: { id: true, name: true } },
 };
 
@@ -243,7 +248,11 @@ router.post('/customer/:customerId', authenticateToken, requireUnlock, (req, res
         },
         select: FILE_SELECT,
       });
+      // Answer the browser first, then poke the DGX. The upload is complete
+      // either way — the row is queued as PENDING by default, so a DGX that is
+      // off just means the file is read later, not never.
       res.status(201).json(saved);
+      wakeDgx(`upload:${saved.id}`).catch(() => {});
     } catch (error) {
       fs.unlink(path.join(STORAGE_ROOT, req.file.filename), () => {});
       console.error('[contracts] upload error:', error.message);
@@ -384,3 +393,150 @@ router.delete('/files/:id', authenticateToken, requireUnlock, async (req, res) =
 });
 
 export default router;
+
+// ── OCR queue (machine endpoints, worker token — NOT the PIN) ────────────────
+//
+// Every contract on file is a scanned image with no text layer, so a person
+// searching for "质保期" finds nothing and the assistant has nothing to read.
+// The DGX transcribes them with a local vision model and posts the text back.
+//
+// SECURITY — read this before adding an endpoint here.
+//
+// These routes bypass the team PIN, because a machine has no PIN to type. That
+// makes the worker token a second key to the same cupboard, so the endpoints
+// are deliberately built to be worth stealing as little as possible:
+//
+//   1. NO FILE BYTES EVER LEAVE THROUGH THIS DOOR. The queue hands out ids and
+//      stored names, never content. The worker already has the files: the
+//      nightly backup rsyncs the whole directory over SSH, an authorised path
+//      that predates this feature. Adding an HTTP route that served contract
+//      PDFs to a bearer token would have been a real PIN bypass; pointing the
+//      worker at a channel it already has is not.
+//   2. THE TEXT GOES IN, BUT NEVER COMES BACK OUT HERE. Transcriptions are
+//      read only through the PIN-guarded routes above. This door is write-only
+//      by design.
+//   3. A SEPARATE TOKEN. Not INGEST_TOKEN — that one is for tender scraping and
+//      lives in the same .env, but one leaked secret should not open both.
+
+function requireOcrToken(req, res, next) {
+  const expected = process.env.OCR_TOKEN;
+  // Fail closed: an unset value must not be comparable to an absent header.
+  if (!expected || expected.length < 16) {
+    console.warn('[ocr] queue hit but OCR_TOKEN is not configured');
+    return res.status(503).json({ error: 'ocr not configured' });
+  }
+  const got = Buffer.from(String(req.get('X-Ocr-Token') || ''));
+  const want = Buffer.from(expected);
+  // timingSafeEqual throws on a length mismatch, so length is compared first.
+  // That leaks the length, which is not the secret.
+  if (got.length !== want.length || !timingSafeEqual(got, want)) {
+    console.warn(`[ocr] queue rejected: bad token from ${req.ip}`);
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  next();
+}
+
+// What still needs reading. Returns metadata only — the worker resolves
+// storedName against its own copy of the files.
+router.get('/ocr/pending', requireOcrToken, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const items = await prisma.contractFile.findMany({
+      where: { ocrStatus: 'PENDING' },
+      // Smallest first: a 1-page quotation should not wait behind a 174-page
+      // technical appendix, and early results make the queue visibly moving.
+      orderBy: [{ size: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: { id: true, storedName: true, filename: true, mimeType: true, size: true, ocrAttempt: true },
+    });
+    const pending = await prisma.contractFile.count({ where: { ocrStatus: 'PENDING' } });
+    res.json({ items, pending });
+  } catch (error) {
+    console.error('[ocr] pending failed:', error.message);
+    res.status(500).json({ error: 'failed to list pending' });
+  }
+});
+
+// Claim before working, so two workers (or a retry racing the original) cannot
+// both transcribe the same file. The attempt counter returned here has to come
+// back with the result.
+router.post('/ocr/claim/:id', requireOcrToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad id' });
+    // Conditional update: only PENDING rows can be claimed, and the count tells
+    // us whether we won. Read-then-write would leave a gap for a second worker.
+    const claimed = await prisma.contractFile.updateMany({
+      where: { id, ocrStatus: 'PENDING' },
+      data: { ocrStatus: 'RUNNING', ocrError: null, ocrAttempt: { increment: 1 } },
+    });
+    if (claimed.count === 0) return res.status(409).json({ error: 'already claimed or not pending' });
+    const file = await prisma.contractFile.findUnique({
+      where: { id },
+      select: { id: true, storedName: true, filename: true, ocrAttempt: true },
+    });
+    res.json(file);
+  } catch (error) {
+    console.error('[ocr] claim failed:', error.message);
+    res.status(500).json({ error: 'claim failed' });
+  }
+});
+
+const ocrResultSchema = z.object({
+  attempt: z.number().int().positive(),
+  pages: z.array(z.object({
+    pageNo: z.number().int().positive(),
+    text: z.string().max(200000),
+  })).max(2000),
+  error: z.string().max(2000).nullable().optional(),
+  skipped: z.boolean().optional(),
+});
+
+router.post('/ocr/result/:id', requireOcrToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad id' });
+    const parsed = ocrResultSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'bad result', detail: parsed.error.issues.slice(0, 3) });
+    const { attempt, pages, error, skipped } = parsed.data;
+
+    const file = await prisma.contractFile.findUnique({ where: { id }, select: { ocrAttempt: true } });
+    if (!file) return res.status(404).json({ error: 'not found' });
+    // A result from an abandoned attempt (worker restarted, file re-queued) must
+    // not overwrite a newer pass that is already running or finished.
+    if (file.ocrAttempt !== attempt) {
+      console.warn(`[ocr] stale result for file ${id}: attempt ${attempt}, current ${file.ocrAttempt}`);
+      return res.status(409).json({ error: 'stale attempt' });
+    }
+
+    if (error) {
+      await prisma.contractFile.update({
+        where: { id },
+        data: { ocrStatus: 'FAILED', ocrError: error.slice(0, 2000), ocrAt: new Date() },
+      });
+      return res.json({ ok: true, status: 'FAILED' });
+    }
+
+    // Replace rather than merge: a re-run is the authority on the whole file,
+    // and leaving stale pages behind would mix two transcriptions of one page.
+    await prisma.$transaction([
+      prisma.contractPage.deleteMany({ where: { fileId: id } }),
+      prisma.contractPage.createMany({
+        data: pages.map((p) => ({ fileId: id, pageNo: p.pageNo, text: p.text })),
+      }),
+      prisma.contractFile.update({
+        where: { id },
+        data: {
+          ocrStatus: skipped ? 'SKIPPED' : 'DONE',
+          ocrPages: pages.length,
+          ocrError: null,
+          ocrAt: new Date(),
+        },
+      }),
+    ]);
+    res.json({ ok: true, status: skipped ? 'SKIPPED' : 'DONE', pages: pages.length });
+  } catch (error) {
+    console.error('[ocr] result failed:', error.message);
+    res.status(500).json({ error: 'result failed' });
+  }
+});

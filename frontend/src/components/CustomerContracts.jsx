@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { Badge } from './ui'
-import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, fmtFileSize } from '../constants/contract'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, fmtFileSize, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import FileDropZone from './FileDropZone'
 
@@ -230,6 +230,13 @@ export default function CustomerContracts({ customerId, currentUser }) {
                   <button onClick={() => doDownload(f)} className="min-w-0 flex-1 text-left">
                     <p className="flex min-w-0 items-center gap-1.5">
                       <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+                    {/* Only shown while a file is unreadable — a green tick on every
+                        row once the backlog clears would be noise. */}
+                    {ocrNeedsBadge(f.ocrStatus) && (
+                      <Badge tone={ocrMeta(f.ocrStatus).tone} title={ocrMeta(f.ocrStatus).zh}>
+                        {ocrMeta(f.ocrStatus).label}
+                      </Badge>
+                    )}
                       <span className="truncate text-sm font-semibold text-slate-800 hover:text-brand-600">{f.filename}</span>
                     </p>
                     {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
