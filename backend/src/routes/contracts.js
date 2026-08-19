@@ -18,6 +18,8 @@ import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { wakeDgx } from '../services/dgxWake.js';
+import { sendMail } from '../services/mailer.js';
+import { renderEmail } from '../services/emailTemplate.js';
 
 const router = express.Router();
 
@@ -538,5 +540,81 @@ router.post('/ocr/result/:id', requireOcrToken, async (req, res) => {
   } catch (error) {
     console.error('[ocr] result failed:', error.message);
     res.status(500).json({ error: 'result failed' });
+  }
+});
+
+// The worker says when it has emptied the queue. The VPS decides whether that
+// is worth an email, because only the VPS has the mailer and the admin list —
+// and duplicating SMTP credentials onto the DGX to save one request would be a
+// second copy of a secret for no gain.
+const drainedSchema = z.object({
+  processed: z.number().int().min(0),
+  pages: z.number().int().min(0),
+  failed: z.number().int().min(0),
+  elapsedMs: z.number().int().min(0),
+});
+
+router.post('/ocr/drained', requireOcrToken, async (req, res) => {
+  const parsed = drainedSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad summary' });
+  const { processed, pages, failed, elapsedMs } = parsed.data;
+  // Answer immediately: the worker should not wait on SMTP.
+  res.json({ ok: true });
+
+  try {
+    // A pass that did nothing is the normal idle case — the worker only reports
+    // after real work, but check anyway rather than trusting the caller.
+    if (processed === 0) return;
+    const [pending, stuck, admins] = await Promise.all([
+      prisma.contractFile.count({ where: { ocrStatus: 'PENDING' } }),
+      prisma.contractFile.count({ where: { ocrStatus: 'FAILED' } }),
+      prisma.user.findMany({ where: { isAdmin: true }, select: { email: true } }),
+    ]);
+    // Still work left means this was a pause, not a finish — no mail for that.
+    if (pending > 0) return;
+
+    const to = admins.map((a) => a.email).filter(Boolean).join(',');
+    if (!to) return;
+
+    const hours = elapsedMs / 3600000;
+    const spent = hours >= 1 ? `${hours.toFixed(1)} h` : `${Math.round(elapsedMs / 60000)} min`;
+    const mail = renderEmail({
+      tone: failed > 0 ? 'alert' : 'info',
+      title: {
+        en: 'Contract files are now readable',
+        zh: '合同文件已识别完成',
+      },
+      intro: {
+        en: `${processed} file${processed > 1 ? 's' : ''} finished reading. Their text is searchable now, and the assistant can answer from them.`,
+        zh: `${processed} 个文件识别完成。文字已可检索，助手也能据此回答了。`,
+      },
+      facts: [
+        { k: { en: 'Files read', zh: '识别文件数' }, v: String(processed) },
+        { k: { en: 'Pages', zh: '页数' }, v: String(pages) },
+        { k: { en: 'Time taken', zh: '耗时' }, v: spent },
+        ...(failed > 0 ? [{ k: { en: 'Failed', zh: '失败' }, v: String(failed) }] : []),
+        ...(stuck > 0 ? [{ k: { en: 'Needs attention', zh: '待处理' }, v: `${stuck} file(s) in FAILED` }] : []),
+      ],
+      action: { label: { en: 'Open Contracts', zh: '打开合同模块' }, url: 'https://www.herkulesgroup-china.com/contracts' },
+      note: stuck > 0
+        ? {
+            en: 'Files marked FAILED were not read. Re-queue them by setting ocrStatus back to PENDING; the worker picks them up on its own.',
+            zh: '标记为 FAILED 的文件没有读成功。把 ocrStatus 改回 PENDING 即可重新排队，worker 会自己领走。',
+          }
+        : {
+            en: 'Reading runs on the DGX with a local model — the files themselves never leave the company.',
+            zh: '识别在 DGX 上用本地模型完成，文件本身不出公司。',
+          },
+    });
+    await sendMail({
+      to,
+      subject: `[Herkules] Contract files readable / 合同识别完成 — ${processed} files, ${pages} pages`,
+      text: mail.text,
+      html: mail.html,
+    });
+  } catch (error) {
+    // Never surface this to the worker: the transcription already landed, and a
+    // mail failure must not make a successful pass look failed.
+    console.error('[ocr] drained notification failed:', error.message);
   }
 });
