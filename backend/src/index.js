@@ -31,6 +31,13 @@ app.use(cors());
 // route is reached. Once this one has parsed, it sets req._body and the global
 // parser below no-ops — so only this path gets the larger limit.
 app.use('/api/chinabidding/ingest', express.json({ limit: '12mb' }));
+// A whole document's transcription arrives in one body: 50 pages of contract
+// text is a few hundred KB, well past the 100kb default. It has to be mounted
+// BEFORE the global parser — express.json sets req._body, which makes any
+// later parser on the same request a no-op, so a roomier one mounted after
+// this line would never run. Discovered the hard way: a 50-page file spent
+// 55 minutes in the vision model and then lost the result to a 413.
+app.use('/api/contracts/ocr/result', express.json({ limit: '25mb' }));
 app.use(express.json());
 
 // Health check
