@@ -216,7 +216,12 @@ async function drain() {
               method: 'POST',
               body: JSON.stringify({ attempt: file.ocrAttempt, pages, skipped }),
             });
-            log(`  ✓ ${pages.length} 页，${((Date.now() - t0) / 1000 / 60).toFixed(1)} 分钟，回传 ${r.status}`);
+            // Checking the status matters more here than almost anywhere else:
+            // the work that just got thrown away took nearly an hour of GPU
+            // time. A 413 once printed as a tick, and the file sat in RUNNING
+            // forever because nothing ever told the queue it had failed.
+            if (!r.ok) throw new Error(`回传被拒: HTTP ${r.status}`);
+            log(`  ✓ ${pages.length} 页，${((Date.now() - t0) / 1000 / 60).toFixed(1)} 分钟`);
           }
         } catch (e) {
           log(`  ✗ ${e.message}`);
