@@ -56,3 +56,20 @@ export function validateContractFile(file) {
   if (file.size === 0) return 'That looks like an empty file or a folder'
   return ''
 }
+
+// ── OCR status ───────────────────────────────────────────────────────────────
+// Contracts arrive as scans with no text layer, so a file is not searchable or
+// answerable until the DGX has read it. The list says so rather than letting
+// someone search a file that cannot match yet and conclude the search is broken.
+export const OCR_STATUS = {
+  PENDING: { label: 'Queued for reading', zh: '排队待识别', tone: 'slate' },
+  RUNNING: { label: 'Being read', zh: '识别中', tone: 'blue' },
+  DONE: { label: 'Readable', zh: '已识别', tone: 'emerald' },
+  FAILED: { label: 'Could not be read', zh: '识别失败', tone: 'amber' },
+  SKIPPED: { label: 'Not a scan', zh: '无需识别', tone: 'slate' },
+}
+
+// DONE is the normal state once the backlog clears; badging every row with a
+// green tick would be noise. Only the states that explain a missing answer show.
+export const ocrNeedsBadge = (s) => s === 'PENDING' || s === 'RUNNING' || s === 'FAILED'
+export const ocrMeta = (s) => OCR_STATUS[s] || OCR_STATUS.PENDING

@@ -553,6 +553,45 @@ model ContractFile {
   uploadedBy   User?    @relation("ContractUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
 
+  // ── OCR (every contract on file is a scan; see ContractPage) ──────────────
+  // Existing rows default to PENDING, which is the truth: nothing has been
+  // read yet. The worker picks them up in the same queue as new uploads, so
+  // the backfill needs no separate code path.
+  ocrStatus    OcrStatus @default(PENDING)
+  ocrPages     Int?
+  ocrError     String?   // last failure, kept so a stuck file can be diagnosed
+  ocrAt        DateTime?
+  // Bumped when a file is re-queued, so a result arriving late from an
+  // abandoned attempt can be recognised and dropped rather than overwriting a
+  // newer pass.
+  ocrAttempt   Int       @default(0)
+  pages        ContractPage[]
+
   @@index([customerId])
   @@index([team])
+  @@index([ocrStatus])
+}
+
+// One row per page, not one blob per file. Pages are the unit the reader cares
+// about: retrieval finds the page, and the answer is composed from that page's
+// image — transcription is accurate enough to locate a fact but not always to
+// state it, so the page number has to survive the pipeline.
+model ContractPage {
+  id        Int          @id @default(autoincrement())
+  fileId    Int
+  file      ContractFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  pageNo    Int          // 1-based, matching what a person sees in a PDF reader
+  text      String       // transcription; may be empty for a blank or unreadable page
+  createdAt DateTime     @default(now())
+
+  @@unique([fileId, pageNo])
+  @@index([fileId])
+}
+
+enum OcrStatus {
+  PENDING   // queued — the state every pre-existing row starts in
+  RUNNING   // claimed by the worker
+  DONE
+  FAILED    // see ocrError; re-queued by setting this back to PENDING
+  SKIPPED   // nothing to read (unsupported type)
 }

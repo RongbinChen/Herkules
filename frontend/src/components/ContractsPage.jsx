@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Badge, Button, Card, Input, Select } from './ui'
-import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta } from '../constants/contract'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import ContractUploadModal from './ContractUploadModal'
 
@@ -273,6 +273,13 @@ export default function ContractsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+                    {/* Only shown while a file is unreadable — a green tick on every
+                        row once the backlog clears would be noise. */}
+                    {ocrNeedsBadge(f.ocrStatus) && (
+                      <Badge tone={ocrMeta(f.ocrStatus).tone} title={ocrMeta(f.ocrStatus).zh}>
+                        {ocrMeta(f.ocrStatus).label}
+                      </Badge>
+                    )}
                     <button onClick={() => doDownload(f)} className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 transition hover:text-brand-600">
                       {f.filename}
                     </button>
