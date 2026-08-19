@@ -156,6 +156,11 @@ export const contractsAPI = {
   listAll: (params, token) => api.get('/contracts/files', withUnlock(token, { params })),
   summary: (token) => api.get('/contracts/files/summary', withUnlock(token)),
   patch: (fileId, data, token) => api.patch(`/contracts/files/${fileId}`, data, withUnlock(token)),
+  // Ask AI about one customer's contracts. The vision model reads the original
+  // page images on the DGX, so this can take tens of seconds — override the
+  // client's default timeout for this one call.
+  ask: (customerId, question, token) =>
+    api.post('/contracts/ask', { customerId, question }, withUnlock(token, { timeout: 180000 })),
 }
 
 export const usersAPI = {

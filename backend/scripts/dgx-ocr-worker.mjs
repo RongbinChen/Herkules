@@ -124,24 +124,105 @@ async function transcribePage(jpegPath) {
   return text === '[no readable content]' ? '' : text;
 }
 
+// ── Q&A (read the answer off the ORIGINAL page image, not the transcription) ──
+//
+// The VPS located the pages by text and relays the question here; this renders
+// those exact pages from the local PDF and asks the vision model. Answering from
+// the image, not the transcription, is the whole point — a value that landed in
+// the wrong column of a transcribed table would be read back wrong, and a
+// contract is exactly where that matters.
+const ASK_TIMEOUT_MS = Number(process.env.ASK_TIMEOUT_MS || 140000);
+const ASK_MAX_PAGES = Number(process.env.ASK_MAX_PAGES || 6);
+
+function askPrompt(question) {
+  return `You are answering a question about a customer's contract. The images are the exact contract pages, in the order listed below. Read them and answer.
+
+Question: ${question}
+
+Rules:
+- Answer ONLY from what is shown in these pages. If the answer is not on them, say so plainly (in the language of the question) — do not guess.
+- Read values from their actual position in the page. A number belongs to the row and column it physically sits in; a blank cell is blank, never borrow a neighbour's value.
+- Cite where each fact comes from as (file, page N), using the labels given below.
+- Keep Chinese as Chinese and English as English; answer in the language of the question.
+- Be concise: give the figure or clause asked for, with its citation, not a summary of the whole page.`;
+}
+
+// Render one page of a PDF to a base64 JPEG. `-f/-l pageNo` renders just that
+// page; `-singlefile` drops the -NN suffix so the output name is predictable.
+async function renderPage(src, pageNo, work) {
+  const stem = path.join(work, `pg-${pageNo}`);
+  await run('pdftoppm', [
+    '-r', String(DPI), '-jpeg', '-q',
+    '-f', String(pageNo), '-l', String(pageNo), '-singlefile',
+    src, stem,
+  ], { timeout: 120000 });
+  return (await fs.readFile(`${stem}.jpg`)).toString('base64');
+}
+
+// pages: [{ storedName, pageNo, filename, fileId }]. Returns the model's answer
+// text. The VPS has already checked the PIN and picked the pages; this only
+// renders and asks.
+async function answerFromPages(question, pages) {
+  const wanted = pages.slice(0, ASK_MAX_PAGES).filter((p) => isPdf(p.storedName || ''));
+  if (!wanted.length) throw new Error('no renderable pages');
+
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'ask-'));
+  try {
+    const images = [];
+    const labels = [];
+    for (const p of wanted) {
+      const src = await ensureLocal(p.storedName);
+      images.push(await renderPage(src, p.pageNo, work));
+      labels.push(`- Image ${images.length}: ${p.filename || p.storedName}, page ${p.pageNo}`);
+    }
+    const prompt = `${askPrompt(question)}\n\nPages provided:\n${labels.join('\n')}`;
+    const res = await fetch(`${OLLAMA}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: VLM_MODEL,
+        prompt,
+        images,
+        stream: false,
+        // Low but not zero: a contract answer is a reading task, not creative
+        // writing, but a touch of slack reads a smudged digit better than a hard 0.
+        options: { temperature: 0.1, num_ctx: 16384 },
+      }),
+      signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`ollama ${res.status}`);
+    return (await res.json()).response?.trim() || '';
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 // PDFs only for now. A .docx already has a text layer and deserves a plain
 // extractor rather than a vision model reading pictures of its own words.
 const isPdf = (f) => f.toLowerCase().endsWith('.pdf');
 
-async function processFile(file) {
-  const src = path.join(CONTRACT_DIR, file.storedName);
+// Return the absolute path to a stored file, fetching it over SSH if the nightly
+// sync has not brought it down yet. Shared by transcription and by Q&A, which
+// both need the original bytes on local disk.
+async function ensureLocal(storedName) {
+  const src = path.join(CONTRACT_DIR, storedName);
   try {
     await fs.access(src);
   } catch {
     // Uploaded since the last nightly sync. Pull just this one over the SSH
     // channel the backup already uses, rather than opening an HTTP route that
     // would serve contract bytes to a bearer token.
-    log(`  本地没有，走 SSH 单独拉: ${file.storedName}`);
+    log(`  本地没有，走 SSH 单独拉: ${storedName}`);
     const key = process.env.VPS_SSH_KEY || '/home/henner/calendar/LightsailDefaultKey-ap-northeast-1.pem';
     const host = process.env.VPS_SSH_HOST || 'ubuntu@35.76.38.203';
     await run('scp', ['-i', key, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
-      `${host}:/home/ubuntu/contract-files/${file.storedName}`, src], { timeout: 300000 });
+      `${host}:/home/ubuntu/contract-files/${storedName}`, src], { timeout: 300000 });
   }
+  return src;
+}
+
+async function processFile(file) {
+  const src = await ensureLocal(file.storedName);
 
   if (!isPdf(file.storedName)) {
     log(`  跳过（非 PDF）: ${file.filename}`);
@@ -264,6 +345,43 @@ createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, draining, model: VLM_MODEL }));
+    return;
+  }
+  // Q&A: the VPS relays a question plus the pages it located. Same token as the
+  // OCR queue — this is another machine-to-machine door reached only over the
+  // tunnel, and it never returns file bytes, only an answer read off the image.
+  if (req.method === 'POST' && req.url === '/ask') {
+    if (String(req.headers['x-ocr-token'] || '') !== OCR_TOKEN) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"unauthorized"}');
+      return;
+    }
+    let body = '';
+    let tooBig = false;
+    req.on('data', (c) => {
+      body += c;
+      // Page coordinates and a question are tiny; anything large is not ours.
+      if (body.length > 64 * 1024) { tooBig = true; req.destroy(); }
+    });
+    req.on('end', async () => {
+      if (tooBig) return;
+      try {
+        const { question, pages } = JSON.parse(body || '{}');
+        if (!question || !Array.isArray(pages) || !pages.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end('{"error":"question and pages are required"}');
+          return;
+        }
+        log(`收到提问（${pages.length} 页）: ${String(question).slice(0, 40)}`);
+        const answer = await answerFromPages(String(question), pages);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ answer }));
+      } catch (e) {
+        log('提问处理失败:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message.slice(0, 200) }));
+      }
+    });
     return;
   }
   res.writeHead(404); res.end();

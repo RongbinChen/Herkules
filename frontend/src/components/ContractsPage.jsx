@@ -7,6 +7,7 @@ import { Badge, Button, Card, Input, Select } from './ui'
 import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import ContractUploadModal from './ContractUploadModal'
+import ContractAsk from './ContractAsk'
 
 const PAGE = 50
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
@@ -221,6 +222,13 @@ export default function ContractsPage() {
         </div>
 
         {error && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+
+        {/* Ask AI. Seeded with the deep-link customer when arriving from a
+            customer's card, but the picker still lets you ask about any of them. */}
+        <ContractAsk
+          token={unlock.token}
+          initialCustomer={customerId && customerName ? { id: Number(customerId), name: customerName } : null}
+        />
 
         {/* Category filter */}
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
