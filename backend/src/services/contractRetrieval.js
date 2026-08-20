@@ -18,10 +18,31 @@ const STOP = new Set([
   'what', 'how', 'much', 'many', 'long', 'does', 'do', 'this', 'that', 'please',
 ]);
 
+// Concept expansion. A contract states one thing under many names — the total
+// is a "总价" or "TOTAL CONTRACT VALUE", never the "金额" the reader typed — so a
+// question that only matched the reader's word would miss the page that holds
+// the answer. This was not hypothetical: "合同金额是多少" retrieved only the
+// installment pages (which repeat 金额) and skipped page 1's "TOTAL CONTRACT
+// VALUE: EUR 1,546,500.00", and the model then reported the 70% installment as
+// the total. When any trigger appears in the question, its group's terms are
+// added to the search set. Synonyms that appear nowhere cost nothing (they score
+// zero); the win is the one page they do match.
+const EXPAND = [
+  { triggers: ['金额', '价格', '价款', '总价', '总额', '合同价', '多少钱', '价值', '货款', '单价', 'amount', 'price', 'value', 'cost'],
+    add: ['总价', '总额', '金额', '价款', '价值', '合同价', '单价', 'total', 'amount', 'value', 'contract value', 'contract price'] },
+  { triggers: ['质保', '保修', '保质', '质量保证', 'warranty', 'guarantee'],
+    add: ['质保', '保修', '保证期', 'warranty', 'guarantee'] },
+  { triggers: ['付款', '支付', '款项', '结算', 'payment', 'pay'],
+    add: ['付款', '支付', 'payment', 'terms of payment'] },
+  { triggers: ['交货', '交付', '货期', '交期', 'delivery', 'deliver', 'lead time'],
+    add: ['交货', '交付', 'delivery', 'shipment'] },
+];
+
 // Break a question into search terms. CJK runs become overlapping bigrams (Chinese
 // has no spaces, and a bigram like "质保" matches "质保期" / "质保金" alike);
 // latin words and bare numbers are kept whole. Everything is lower-cased and the
-// stopwords above are dropped.
+// stopwords above are dropped. Then any concept whose trigger appears is expanded
+// (see EXPAND) so a page using a synonym of the reader's word is still found.
 export function extractTerms(question) {
   const terms = new Set();
   const q = String(question || '').toLowerCase();
@@ -35,6 +56,13 @@ export function extractTerms(question) {
     for (let i = 0; i < run.length - 1; i++) {
       const bg = run.slice(i, i + 2);
       if (!STOP.has(bg)) terms.add(bg);
+    }
+  }
+  // Concept expansion: raw-question substring match, so multi-char triggers like
+  // "合同价" fire even though bigramming would have split them.
+  for (const grp of EXPAND) {
+    if (grp.triggers.some((t) => q.includes(t))) {
+      for (const a of grp.add) terms.add(a.toLowerCase());
     }
   }
   return [...terms];
