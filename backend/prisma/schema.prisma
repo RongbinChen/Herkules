@@ -599,6 +599,18 @@ model ContractPage {
   text      String // transcription; may be empty for a blank or unreadable page
   createdAt DateTime     @default(now())
 
+  // Semantic search vector for this page's text, so Q&A retrieval finds the
+  // right page by MEANING ("machine type" → "roll grinder WS 180") rather than
+  // by shared keywords. Nullable: a page is embedded after it is transcribed, so
+  // existing rows fill in over a backfill. The corpus is small (~2k pages), so
+  // the vector is a plain Json float array and similarity is computed in the
+  // app — no pgvector extension to install on the production database.
+  //   embedding      the vector (array of floats), or null until embedded
+  //   embeddingModel which model produced it — a change here re-triggers embedding
+  embedding      Json?
+  embeddingModel String?
+  embeddedAt     DateTime?
+
   @@unique([fileId, pageNo])
   @@index([fileId])
 }
