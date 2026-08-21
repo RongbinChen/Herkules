@@ -81,7 +81,7 @@ const TECHNICAL_FIELDS = [
 // Bumped whenever the fields or the prompt change, so summaries stored under
 // the old shape are regenerated instead of being rendered with labels that no
 // longer match what was asked.
-export const SUMMARY_VERSION = 2;
+export const SUMMARY_VERSION = 3;
 
 export function summaryFields(docType) {
   return docType === 'TECHNICAL' ? TECHNICAL_FIELDS : COMMERCIAL_FIELDS;
@@ -157,6 +157,32 @@ export function parseSummary(answer, docType) {
   }
   return fields;
 }
+
+// Kom. No. is almost never printed in the contract itself — of the files on
+// record, not one states it in the body. It lives in the note the uploader
+// types ("Kom. No.: 98950, 30-0003 (with RSIS)"), so when the model finds
+// nothing in the pages, that is where to look.
+//
+// The value is cut at the next labelled field, because a note often runs
+// several of them together: "Kom. Nr.: 85660/670/680, Contract no.: 01DEN…"
+// must yield the Kom part alone, while "98950, 30-0003 (with RSIS)" is one
+// value and must survive its comma intact.
+export function komFromNote(note) {
+  const m = /kom\s*\.?\s*(?:no|nr)\s*\.?\s*[:：]?\s*/i.exec(note || '');
+  if (!m) return null;
+  let rest = String(note).slice(m.index + m[0].length).split(/[\r\n]/)[0];
+  // A separator followed by a word-ish label ending in No./Nr.: — the start of
+  // the next field, not part of this one.
+  const nextLabel = /[,;.]\s*[A-Za-z][A-Za-z ]{2,}\s*(?:no|nr)\s*\.?\s*[:：]/i.exec(rest);
+  if (nextLabel) rest = rest.slice(0, nextLabel.index);
+  const value = rest.replace(/[\s.,;]+$/, '').trim();
+  return value || null;
+}
+
+// Where a value came from. Page citations are what the model read; NOTE marks
+// the one field that may instead come from what a colleague typed, because the
+// two are not the same kind of evidence and the reader should see which is which.
+export const NOTE_SOURCE = 'note';
 
 // Choose the pages to send from a file's pages, already loaded.
 //
