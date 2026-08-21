@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { wakeDgx } from '../services/dgxWake.js';
+import { answerContractQuestion, DgxOfflineError } from '../services/contractQa.js';
 import { sendMail } from '../services/mailer.js';
 import { renderEmail } from '../services/emailTemplate.js';
 
@@ -391,6 +392,54 @@ router.delete('/files/:id', authenticateToken, requireUnlock, async (req, res) =
   } catch (error) {
     console.error('[contracts] delete error:', error.message);
     res.status(500).json({ error: 'Delete failed' });
+  }
+});
+
+// ── Ask AI about one customer's contracts ────────────────────────────────────
+//
+// Scoped to a single customer on purpose (see the memory note): a cross-customer
+// search would need a vector store and would have to reason about the PIN
+// boundary all over again. Here the boundary is the same one line as every other
+// read — where.team is the unlock token's team, and the customerId is checked to
+// belong to it — so a WRC session can only ever ask about WRC's files.
+//
+// The heavy work (rendering pages, running the vision model) happens on the DGX
+// through the reverse tunnel. This route only locates the pages and relays the
+// question; the answer is read off the original page images, never off the
+// lossy transcription. When the DGX is offline it says so rather than guessing.
+const askSchema = z.object({
+  customerId: z.coerce.number().int().positive(),
+  question: z.string().trim().min(2).max(500),
+});
+
+router.post('/ask', authenticateToken, requireUnlock, async (req, res) => {
+  const parsed = askSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'invalid payload', details: parsed.error.issues.slice(0, 3) });
+  }
+  const { customerId, question } = parsed.data;
+  try {
+    // The customer must belong to this team's files, checked the same way a
+    // cross-team id is handled everywhere else: 404, because whether the id
+    // exists is itself not the other team's business. A customer with no files
+    // under this team simply has nothing to answer from.
+    const has = await prisma.contractFile.findFirst({
+      where: { customerId, team: req.contractTeam },
+      select: { id: true },
+    });
+    if (!has) return res.status(404).json({ error: 'No contracts for this customer' });
+
+    const result = await answerContractQuestion({ customerId, team: req.contractTeam, question });
+    res.json(result);
+  } catch (error) {
+    if (error instanceof DgxOfflineError) {
+      // 503, and flagged, so the UI can show "the local model is offline" rather
+      // than a generic failure — and crucially so it does NOT retry against the
+      // text, which is the path that misreads a spec table.
+      return res.status(503).json({ error: error.message, offline: true });
+    }
+    console.error('[contracts] ask error:', error.message);
+    res.status(500).json({ error: 'Failed to answer' });
   }
 });
 
