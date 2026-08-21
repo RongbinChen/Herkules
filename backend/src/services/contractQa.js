@@ -18,7 +18,8 @@
 // this fails loudly with DgxOfflineError rather than falling back to answering
 // from the lossy text, which is exactly the path that misreads a spec table.
 import { prisma } from '../index.js';
-import { rankPages, extractTerms } from './contractRetrieval.js';
+import { rankHybrid, extractTerms } from './contractRetrieval.js';
+import { embedViaDgx } from './contractEmbeddings.js';
 
 // Reached over the reverse tunnel; loopback on the VPS lands on the DGX worker.
 const ASK_URL = process.env.DGX_ASK_URL || 'http://127.0.0.1:9099/ask';
@@ -28,7 +29,7 @@ const ASK_TIMEOUT_MS = Number(process.env.DGX_ASK_TIMEOUT_MS || 150000);
 // How many keyword-hit pages ("seeds") to keep before neighbour expansion. A
 // customer may have several contracts (versions, or one per machine), and the
 // answer might legitimately differ between them, so this is not tiny.
-const MAX_PAGES = Number(process.env.CONTRACT_QA_MAX_PAGES || 6);
+const MAX_PAGES = Number(process.env.CONTRACT_QA_MAX_PAGES || 8);
 // At most this many seeds from any single file, so one long technical appendix
 // cannot crowd out the commercial contract that actually holds the price.
 const MAX_PAGES_PER_FILE = 3;
@@ -60,15 +61,30 @@ export async function retrievePages({ customerId, team, question, maxPages = MAX
       pageNo: true,
       text: true,
       fileId: true,
+      embedding: true,
       file: { select: { filename: true, storedName: true } },
     },
   });
   // Flatten the file relation so the pure ranker takes a plain shape.
   const pages = rows.map((r) => ({
-    pageNo: r.pageNo, text: r.text, fileId: r.fileId,
+    pageNo: r.pageNo, text: r.text, fileId: r.fileId, embedding: r.embedding,
     filename: r.file.filename, storedName: r.file.storedName,
   }));
-  const { pages: seeds, terms } = rankPages(pages, question, {
+
+  // Embed the question so retrieval can match by meaning ("machine type" → "roll
+  // grinder WS 180"), not just shared words. Best-effort: if the embed worker is
+  // offline, qVec is null and rankHybrid degrades to keyword-only — a slightly
+  // worse recall, not an outage.
+  let qVec = null;
+  if (pages.some((p) => Array.isArray(p.embedding) && p.embedding.length)) {
+    try {
+      const [v] = await embedViaDgx([question]);
+      qVec = v;
+    } catch (e) {
+      console.warn(`[contracts] question embed failed, keyword-only: ${e.message}`);
+    }
+  }
+  const { pages: seeds, terms } = rankHybrid(pages, question, qVec, {
     maxPages, maxPerFile: MAX_PAGES_PER_FILE,
   });
 

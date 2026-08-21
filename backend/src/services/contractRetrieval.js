@@ -168,3 +168,69 @@ export function rankPages(pages, question, { maxPages = 5, maxPerFile = 3 } = {}
   }
   return { pages: chosen, terms };
 }
+
+// ── Semantic ranking ─────────────────────────────────────────────────────────
+// Cosine similarity between two equal-length vectors.
+export function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  const d = Math.sqrt(na) * Math.sqrt(nb);
+  return d ? dot / d : 0;
+}
+
+// Rank pages by cosine similarity to the question vector. Pages without a vector
+// are skipped (they fall to the keyword path). Same output shape and per-file
+// cap as rankPages, so the two can be unioned.
+//
+// pages: [{ pageNo, text, fileId, filename, storedName, embedding }]
+export function rankByVector(pages, qVec, { maxPages = 6, maxPerFile = 3 } = {}) {
+  if (!qVec || !qVec.length) return [];
+  const scored = pages
+    .filter((p) => Array.isArray(p.embedding) && p.embedding.length)
+    .map((p) => ({ p, score: cosine(qVec, p.embedding) }))
+    .sort((a, b) => b.score - a.score);
+
+  const perFile = new Map();
+  const chosen = [];
+  for (const s of scored) {
+    const used = perFile.get(s.p.fileId) || 0;
+    if (used >= maxPerFile) continue;
+    perFile.set(s.p.fileId, used + 1);
+    chosen.push({
+      fileId: s.p.fileId,
+      filename: s.p.filename,
+      storedName: s.p.storedName,
+      pageNo: s.p.pageNo,
+      score: s.score,
+      snippet: String(s.p.text || '').slice(0, 160).trim(),
+    });
+    if (chosen.length >= maxPages) break;
+  }
+  return chosen;
+}
+
+// Hybrid: union the vector hits and the keyword hits, vector first (it has the
+// better recall), keyword close behind (it catches the page that STATES a value
+// via the definition boost). Deduped by page. This is what Q&A retrieval uses
+// when embeddings are available; with none it is just the keyword result.
+export function rankHybrid(pages, question, qVec, { maxPages = 8, maxPerFile = 3 } = {}) {
+  const vec = rankByVector(pages, qVec, { maxPages, maxPerFile });
+  const { pages: kw, terms } = rankPages(pages, question, { maxPages, maxPerFile });
+  const seen = new Set();
+  const merged = [];
+  // Interleave so neither method is starved: take from vector and keyword in
+  // turn until the budget fills.
+  for (let i = 0; i < Math.max(vec.length, kw.length) && merged.length < maxPages; i++) {
+    for (const list of [vec, kw]) {
+      const p = list[i];
+      if (!p) continue;
+      const key = `${p.fileId}:${p.pageNo}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(p);
+      if (merged.length >= maxPages) break;
+    }
+  }
+  return { pages: merged, terms, usedVector: vec.length > 0 };
+}
