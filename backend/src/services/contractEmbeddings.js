@@ -55,7 +55,7 @@ export async function embedPagesForFile(prisma, fileId, { batch = 32 } = {}) {
     where: {
       fileId,
       text: { not: '' },
-      OR: [{ embedding: { equals: null } }, { embeddingModel: { not: EMBED_MODEL } }],
+      OR: [{ embeddedAt: null }, { embeddingModel: { not: EMBED_MODEL } }],
     },
     select: { id: true, text: true },
     orderBy: { pageNo: 'asc' },
@@ -73,7 +73,7 @@ export async function backfillEmbeddings(prisma, { batch = 32, limit = Infinity,
       where: {
         text: { not: '' },
         file: { ocrStatus: 'DONE' },
-        OR: [{ embedding: { equals: null } }, { embeddingModel: { not: EMBED_MODEL } }],
+        OR: [{ embeddedAt: null }, { embeddingModel: { not: EMBED_MODEL } }],
       },
       select: { id: true, text: true },
       orderBy: { id: 'asc' },
@@ -87,7 +87,7 @@ export async function backfillEmbeddings(prisma, { batch = 32, limit = Infinity,
     where: {
       text: { not: '' },
       file: { ocrStatus: 'DONE' },
-      OR: [{ embedding: { equals: null } }, { embeddingModel: { not: EMBED_MODEL } }],
+      OR: [{ embeddedAt: null }, { embeddingModel: { not: EMBED_MODEL } }],
     },
   });
   return { embedded, remaining };
