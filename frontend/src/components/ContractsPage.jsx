@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
@@ -33,6 +33,10 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [editing, setEditing] = useState(null) // the file being re-categorised
+  // Grouping is a view over the rows already loaded, not a server query. With a
+  // customer filter active there is only ever one group, so it turns itself off.
+  const [grouped, setGrouped] = useState(true)
+  const [collapsed, setCollapsed] = useState(() => new Set())
 
   // Deep link from the customer card: ?customerId=12 lands here pre-filtered.
   const customerId = params.get('customerId') || ''
@@ -126,6 +130,67 @@ export default function ContractsPage() {
   }
 
   const canEdit = (f) => isAdmin || f.uploadedBy?.id === user?.id
+
+  // Groups cover the rows fetched so far; "Load more" grows the existing groups
+  // rather than opening a second block for a customer that already has one.
+  const groups = useMemo(() => {
+    const byCustomer = new Map()
+    for (const f of items) {
+      const id = f.customer?.id ?? 0
+      if (!byCustomer.has(id)) byCustomer.set(id, { id, name: f.customer?.name || 'Unknown customer', files: [] })
+      byCustomer.get(id).files.push(f)
+    }
+    return [...byCustomer.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  }, [items])
+
+  const showGrouped = grouped && !customerId
+
+  const toggleGroup = (id) => setCollapsed((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
+  // One row, rendered either standalone or inside a customer group — the group
+  // header already names the customer, so the row drops that line there.
+  const renderRow = (f, showCustomer) => (
+    <li key={f.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+          {/* Only shown while a file is unreadable — a green tick on every
+              row once the backlog clears would be noise. */}
+          {ocrNeedsBadge(f.ocrStatus) && (
+            <Badge tone={ocrMeta(f.ocrStatus).tone} title={ocrMeta(f.ocrStatus).zh}>
+              {ocrMeta(f.ocrStatus).label}
+            </Badge>
+          )}
+          <button onClick={() => doDownload(f)} className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 transition hover:text-brand-600">
+            {f.filename}
+          </button>
+        </div>
+        {showCustomer && (
+          <button
+            onClick={() => navigate(`/customers/${f.customer.id}`)}
+            className="mt-0.5 block max-w-full truncate text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
+          >
+            {f.customer?.name}
+          </button>
+        )}
+        {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
+        </p>
+      </div>
+      {canEdit(f) && (
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">Edit</button>
+          <button onClick={() => doDelete(f)} className="text-xs font-semibold text-slate-400 transition hover:text-rose-500">Delete</button>
+        </div>
+      )}
+    </li>
+  )
 
   // ── Locked ─────────────────────────────────────────────────────────────────
   if (!unlock) {
@@ -268,50 +333,58 @@ export default function ContractsPage() {
             </span>
           )}
           <span className="text-xs text-slate-400">{total} file{total === 1 ? '' : 's'}</span>
+          {!customerId && (
+            <button
+              onClick={() => setGrouped((v) => !v)}
+              className="ml-auto rounded-full px-3 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
+            >
+              {grouped ? '☰ Flat list' : '▤ Group by customer'}
+            </button>
+          )}
         </div>
 
         {items.length === 0 ? (
           <Card className="p-10 text-center text-sm text-slate-400">
             {loading ? 'Loading…' : 'No contract files match these filters.'}
           </Card>
-        ) : (
-          <ul className="space-y-2">
-            {items.map((f) => (
-              <li key={f.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
-                    {/* Only shown while a file is unreadable — a green tick on every
-                        row once the backlog clears would be noise. */}
-                    {ocrNeedsBadge(f.ocrStatus) && (
-                      <Badge tone={ocrMeta(f.ocrStatus).tone} title={ocrMeta(f.ocrStatus).zh}>
-                        {ocrMeta(f.ocrStatus).label}
-                      </Badge>
-                    )}
-                    <button onClick={() => doDownload(f)} className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 transition hover:text-brand-600">
-                      {f.filename}
+        ) : showGrouped ? (
+          <div className="space-y-4">
+            {groups.map((g) => {
+              const isCollapsed = collapsed.has(g.id)
+              return (
+                <section key={g.id}>
+                  {/* The header collapses; opening the customer is the small
+                      arrow on the right. Putting the navigation on the name
+                      would send people to another page on the click they meant
+                      as "fold this away". */}
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <button
+                      onClick={() => toggleGroup(g.id)}
+                      aria-expanded={!isCollapsed}
+                      className="flex min-w-0 items-center gap-2 text-left transition hover:opacity-70"
+                    >
+                      <span className="text-xs text-slate-400">{isCollapsed ? '▸' : '▾'}</span>
+                      <span className="min-w-0 truncate text-sm font-bold text-slate-800">{g.name}</span>
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                        {g.files.length}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => navigate(`/customers/${g.id}`)}
+                      title={`Open ${g.name}`}
+                      aria-label={`Open ${g.name}`}
+                      className="shrink-0 text-xs font-semibold text-slate-300 transition hover:text-brand-600"
+                    >
+                      ↗
                     </button>
                   </div>
-                  <button
-                    onClick={() => navigate(`/customers/${f.customer.id}`)}
-                    className="mt-0.5 block max-w-full truncate text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
-                  >
-                    {f.customer?.name}
-                  </button>
-                  {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
-                  </p>
-                </div>
-                {canEdit(f) && (
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">Edit</button>
-                    <button onClick={() => doDelete(f)} className="text-xs font-semibold text-slate-400 transition hover:text-rose-500">Delete</button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+                  {!isCollapsed && <ul className="space-y-2">{g.files.map((f) => renderRow(f, false))}</ul>}
+                </section>
+              )
+            })}
+          </div>
+        ) : (
+          <ul className="space-y-2">{items.map((f) => renderRow(f, true))}</ul>
         )}
 
         {items.length < total && (
