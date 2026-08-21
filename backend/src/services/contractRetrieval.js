@@ -36,6 +36,12 @@ const EXPAND = [
     add: ['付款', '支付', 'payment', 'terms of payment'] },
   { triggers: ['交货', '交付', '货期', '交期', 'delivery', 'deliver', 'lead time'],
     add: ['交货', '交付', 'delivery', 'shipment'] },
+  // Equipment / model. A "what machine / model / type was sold" question rarely
+  // shares words with the page that names it: contracts write "HERKULES HEAVY
+  // DUTY ROLL GRINDER, Model WS 180 CNC", not "machine type". Without this, the
+  // model page is never retrieved and the answer is "not found".
+  { triggers: ['machine', 'equipment', 'model', 'grinder', 'grinding', '设备', '机床', '机型', '型号', '磨床', '规格', '几台', '什么型号', '哪些设备'],
+    add: ['grinder', 'grinding', 'model', 'machine', 'cnc', 'roll grinder', 'polishing', '磨床', '机床', '设备', '型号', '规格'] },
 ];
 
 // Break a question into search terms. CJK runs become overlapping bigrams (Chinese
