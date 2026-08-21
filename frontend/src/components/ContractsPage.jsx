@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Badge, Button, Card, Input, Select } from './ui'
-import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
@@ -133,14 +133,22 @@ export default function ContractsPage() {
 
   // Groups cover the rows fetched so far; "Load more" grows the existing groups
   // rather than opening a second block for a customer that already has one.
+  //
+  // Customers are ordered by their most recent file, not by name — whoever we
+  // last filed something for sits at the top. Sorted explicitly rather than
+  // leaning on the server's createdAt-desc order, so the view keeps its meaning
+  // if that ever changes. Since "Load more" only ever appends older rows, no
+  // group's newest date can move, and the order on screen never reshuffles.
   const groups = useMemo(() => {
     const byCustomer = new Map()
     for (const f of items) {
       const id = f.customer?.id ?? 0
-      if (!byCustomer.has(id)) byCustomer.set(id, { id, name: f.customer?.name || 'Unknown customer', files: [] })
-      byCustomer.get(id).files.push(f)
+      if (!byCustomer.has(id)) byCustomer.set(id, { id, name: f.customer?.name || 'Unknown customer', files: [], newest: 0 })
+      const g = byCustomer.get(id)
+      g.files.push(f)
+      g.newest = Math.max(g.newest, new Date(f.createdAt).getTime() || 0)
     }
-    return [...byCustomer.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+    return [...byCustomer.values()].sort((a, b) => b.newest - a.newest)
   }, [items])
 
   const showGrouped = grouped && !customerId
@@ -171,8 +179,15 @@ export default function ContractsPage() {
               {ocrMeta(f.ocrStatus).label}
             </Badge>
           )}
-          <button onClick={() => doDownload(f)} className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 transition hover:text-brand-600">
-            {f.filename}
+          {/* Lighter than the group header on purpose: bold on every row
+              competes with the customer name and the eye loses the grouping.
+              title keeps the real stored name one hover away. */}
+          <button
+            onClick={() => doDownload(f)}
+            title={f.filename}
+            className="min-w-0 truncate text-left text-sm font-medium text-slate-700 transition hover:text-brand-600"
+          >
+            {displayFilename(f.filename)}
           </button>
         </div>
         {showCustomer && (
@@ -353,7 +368,7 @@ export default function ContractsPage() {
             {loading ? 'Loading…' : 'No contract files match these filters.'}
           </Card>
         ) : showGrouped ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {groups.map((g) => {
               const isCollapsed = collapsed.has(g.id)
               return (
