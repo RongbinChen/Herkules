@@ -151,7 +151,19 @@ const ASK_MAX_PAGES = Number(process.env.ASK_MAX_PAGES || 12);
 const ASK_MODEL = process.env.ASK_MODEL || 'qwen3:latest';
 const ASK_NUM_CTX = Number(process.env.ASK_NUM_CTX || 32768);
 
-function askPrompt(question, context, history = []) {
+function askPrompt(question, context, history = [], files = []) {
+  // The authoritative list of the customer's files. Retrieval only surfaces the
+  // few pages that match the question by content, so a file with little text
+  // (e.g. a one-page "Kom. No." sheet) never appears in the pages below — and the
+  // model would wrongly conclude it does not exist. This list answers "which
+  // files are on record / what is file X" from ground truth, not from whatever
+  // pages happened to be retrieved.
+  const DOC_ZH = { COMMERCIAL: '商务合同', TECHNICAL: '技术协议', QUOTATION: '报价单', FAT: 'FAT', FAC: 'FAC', OTHER: '其他' };
+  const fileList = files.length
+    ? `Contract files on record for this customer (authoritative — use THIS to answer which files exist or what a named file is; the pages below are only excerpts retrieved from some of them):\n${files
+        .map((f) => `- ${f.filename} (${DOC_ZH[f.docType] || f.docType || 'other'}${f.ocrStatus && f.ocrStatus !== 'DONE' ? ', not yet readable' : ''})`)
+        .join('\n')}\n\n`
+    : '';
   // Prior turns let a follow-up resolve "它/那份/第二台/那付款呢" against what was
   // already asked. Marked clearly as history so the model answers the CURRENT
   // question, not an old one.
@@ -175,10 +187,11 @@ Rules:
 - Use ONLY the pages below; if the answer is not there, say so plainly ("not found in the provided pages") — do not guess.
 - Answer per contract file. For a total/amount, report only the figure stated as "合同总价为 X / TOTAL CONTRACT VALUE: X"; never treat an installment ("合同总价的百分之N") as the total, and never sum installments.
 - If different files give different values (e.g. two contract versions), list each value with its file; do not merge them.
+- For "which files exist / is there a file X / what is <name>.pdf": answer from the "Contract files on record" list above — it is the complete list. Never say a file does not exist just because its text is absent from the excerpts below.
 - This is a running conversation; the last "Question" is the one to answer — use the prior turns to resolve references.
 - Cite sources (file · page). Be concise; do not restate every page.
 
-Contract pages:
+${fileList}Contract pages:
 ${context}
 
 ${convo}Question: ${question}
@@ -188,7 +201,7 @@ ${cue}`;
 
 // pages: [{ filename, pageNo, text }]. The VPS has already checked the PIN,
 // picked the pages and included their transcription. This only prompts the model.
-async function answerFromPages(question, pages, history = []) {
+async function answerFromPages(question, pages, history = [], files = []) {
   const wanted = pages.filter((p) => p && p.text).slice(0, ASK_MAX_PAGES);
   if (!wanted.length) throw new Error('no page text supplied');
 
@@ -201,7 +214,7 @@ async function answerFromPages(question, pages, history = []) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: ASK_MODEL,
-      prompt: askPrompt(question, context, history),
+      prompt: askPrompt(question, context, history, files),
       stream: false,
       // Qwen3's thinking mode roughly doubles the latency for no accuracy gain on
       // a lookup like this — the /no_think tag and this flag both turn it off.
@@ -432,14 +445,14 @@ createServer((req, res) => {
     req.on('end', async () => {
       if (tooBig) return;
       try {
-        const { question, pages, history } = JSON.parse(body || '{}');
+        const { question, pages, history, files } = JSON.parse(body || '{}');
         if (!question || !Array.isArray(pages) || !pages.length) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end('{"error":"question and pages are required"}');
           return;
         }
         log(`收到提问（${pages.length} 页）: ${String(question).slice(0, 40)}`);
-        const answer = await answerFromPages(String(question), pages, Array.isArray(history) ? history : []);
+        const answer = await answerFromPages(String(question), pages, Array.isArray(history) ? history : [], Array.isArray(files) ? files : []);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ answer }));
       } catch (e) {

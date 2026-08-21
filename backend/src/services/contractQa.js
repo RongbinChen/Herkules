@@ -99,7 +99,7 @@ export async function retrievePages({ customerId, team, question, maxPages = MAX
 // Hand the located pages to the DGX and get an answer read off the original
 // images. The stored token authenticates the VPS to the worker; the worker only
 // accepts this on the loopback port the tunnel lands on.
-export async function askDgx({ question, pages, history = [] }) {
+export async function askDgx({ question, pages, history = [], files = [] }) {
   const token = process.env.OCR_TOKEN;
   if (!token || token.length < 16) {
     throw new DgxOfflineError('contract Q&A is not configured');
@@ -109,7 +109,7 @@ export async function askDgx({ question, pages, history = [] }) {
     res = await fetch(ASK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Ocr-Token': token },
-      body: JSON.stringify({ question, pages, history }),
+      body: JSON.stringify({ question, pages, history, files }),
       signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
     });
   } catch (err) {
@@ -148,9 +148,22 @@ export async function answerContractQuestion({ customerId, team, question, histo
   // The DGX gets only what it needs to answer: the page text with its label. It
   // already has the files; it does not need storedName here, and the snippet is
   // for the UI, not the model.
+  // The authoritative list of this customer's files (all of them, not only the
+  // ones with retrieved pages), so questions like "which files are on record" or
+  // "what is X.pdf" are answered from ground truth rather than from whichever
+  // pages the keyword search happened to surface. A small file whose text never
+  // ranks (e.g. a one-page "Kom. No." sheet) would otherwise look nonexistent.
+  const fileRows = await prisma.contractFile.findMany({
+    where: { customerId, team },
+    select: { filename: true, docType: true, ocrStatus: true },
+    orderBy: { createdAt: 'asc' },
+    take: 100,
+  });
+
   const answer = await askDgx({
     question,
     history,
+    files: fileRows,
     pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
   });
 
