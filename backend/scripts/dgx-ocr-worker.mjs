@@ -149,6 +149,24 @@ async function transcribePage(jpegPath) {
 const ASK_TIMEOUT_MS = Number(process.env.ASK_TIMEOUT_MS || 120000);
 const ASK_MAX_PAGES = Number(process.env.ASK_MAX_PAGES || 12);
 const ASK_MODEL = process.env.ASK_MODEL || 'qwen3:latest';
+// Multilingual embedding model for semantic retrieval (strong on zh+en). bge-m3
+// is 1024-dim. Page text is capped before embedding — the first ~2k chars carry
+// a page's topic, and bge-m3 truncates long input anyway.
+const EMBED_MODEL = process.env.EMBED_MODEL || 'bge-m3';
+const EMBED_MAX_CHARS = Number(process.env.EMBED_MAX_CHARS || 2000);
+
+async function embedTexts(texts) {
+  const res = await fetch(`${OLLAMA}/api/embed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error(`ollama embed ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data.embeddings)) throw new Error('embed: no embeddings in response');
+  return data.embeddings;
+}
 const ASK_NUM_CTX = Number(process.env.ASK_NUM_CTX || 32768);
 
 function askPrompt(question, context, history = [], files = []) {
@@ -457,6 +475,43 @@ createServer((req, res) => {
         res.end(JSON.stringify({ answer }));
       } catch (e) {
         log('提问处理失败:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message.slice(0, 200) }));
+      }
+    });
+    return;
+  }
+  // Embedding: a pure function, text in → vectors out, for semantic search. The
+  // VPS pushes text here (question at query time, page text at backfill) and
+  // stores the vectors; this never reads anything back from the VPS, so it does
+  // not widen what a stolen token can reach.
+  if (req.method === 'POST' && req.url === '/embed') {
+    if (String(req.headers['x-ocr-token'] || '') !== OCR_TOKEN) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"unauthorized"}');
+      return;
+    }
+    let body = '';
+    let tooBig = false;
+    req.on('data', (c) => {
+      body += c;
+      if (body.length > 4 * 1024 * 1024) { tooBig = true; req.destroy(); }
+    });
+    req.on('end', async () => {
+      if (tooBig) return;
+      try {
+        const { input } = JSON.parse(body || '{}');
+        const texts = (Array.isArray(input) ? input : [input]).map((t) => String(t ?? '').slice(0, EMBED_MAX_CHARS));
+        if (!texts.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end('{"error":"input required"}');
+          return;
+        }
+        const embeddings = await embedTexts(texts);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ model: EMBED_MODEL, dim: embeddings[0]?.length || 0, embeddings }));
+      } catch (e) {
+        log('embed 失败:', e.message);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message.slice(0, 200) }));
       }

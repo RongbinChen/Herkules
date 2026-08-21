@@ -19,6 +19,7 @@ import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { wakeDgx } from '../services/dgxWake.js';
 import { answerContractQuestion, DgxOfflineError } from '../services/contractQa.js';
+import { embedPagesForFile } from '../services/contractEmbeddings.js';
 import { summariseContractFile } from '../services/contractSummary.js';
 import { sendMail } from '../services/mailer.js';
 import { renderEmail } from '../services/emailTemplate.js';
@@ -733,7 +734,15 @@ router.post('/ocr/result/:id', requireOcrToken, async (req, res) => {
         },
       }),
     ]);
+    // Answer the worker first, then embed the new pages for semantic search.
+    // Best-effort and fire-and-forget: a page with no embedding still answers
+    // via keyword retrieval, and the backfill script catches any that were
+    // missed here (embed worker busy, tunnel flapping).
     res.json({ ok: true, status: skipped ? 'SKIPPED' : 'DONE', pages: pages.length });
+    if (!skipped && pages.length) {
+      embedPagesForFile(prisma, id)
+        .catch((e) => console.warn(`[ocr] auto-embed file ${id} failed: ${e.message}`));
+    }
   } catch (error) {
     console.error('[ocr] result failed:', error.message);
     res.status(500).json({ error: 'result failed' });
