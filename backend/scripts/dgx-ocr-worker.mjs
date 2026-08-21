@@ -267,6 +267,10 @@ let draining = false;
 async function drain() {
   if (draining) return;            // a wake during a run must not start a second pass
   draining = true;
+  // Totals for the "queue is empty" mail. Scoped to this pass, not the process:
+  // what the reader wants to know is "the batch I just uploaded is ready", not
+  // a lifetime counter.
+  const pass = { processed: 0, pages: 0, failed: 0, startedAt: Date.now() };
   try {
     let done = 0;
     for (;;) {
@@ -303,9 +307,12 @@ async function drain() {
             // forever because nothing ever told the queue it had failed.
             if (!r.ok) throw new Error(`回传被拒: HTTP ${r.status}`);
             log(`  ✓ ${pages.length} 页，${((Date.now() - t0) / 1000 / 60).toFixed(1)} 分钟`);
+            pass.processed += 1;
+            pass.pages += pages.length;
           }
         } catch (e) {
           log(`  ✗ ${e.message}`);
+          pass.failed += 1;
           if (!DRY_RUN) {
             await api(`/ocr/result/${file.id}`, {
               method: 'POST',
@@ -319,6 +326,20 @@ async function drain() {
     }
   } finally {
     draining = false;
+    // Only after real work: an idle poll finding nothing to do is not news.
+    // The VPS still checks the queue itself before mailing, so a pass that
+    // stopped early (--limit, an error) does not announce a false finish.
+    if (pass.processed > 0 && !DRY_RUN) {
+      await api('/ocr/drained', {
+        method: 'POST',
+        body: JSON.stringify({
+          processed: pass.processed,
+          pages: pass.pages,
+          failed: pass.failed,
+          elapsedMs: Date.now() - pass.startedAt,
+        }),
+      }).catch((e) => log('汇报失败（不影响已入库的结果）:', e.message));
+    }
   }
 }
 
