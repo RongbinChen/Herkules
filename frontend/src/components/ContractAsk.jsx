@@ -2,7 +2,22 @@ import { useEffect, useRef, useState } from 'react'
 import { contractsAPI } from '../api/api'
 import { Button, Card, Textarea } from './ui'
 import ContractCustomerPicker from './ContractCustomerPicker'
+import Markdown from './Markdown'
 import { displayFilename } from '../constants/contract'
+
+// Tidy the model's answer for display: drop the "Answer:" prefix it echoes from
+// the prompt cue, and the trailing "Source: …" line it appends — sources are
+// shown as their own chips below, so repeating them in the text is just clutter.
+function cleanAnswer(text) {
+  const lines = String(text || '').split('\n')
+  if (lines.length) lines[0] = lines[0].replace(/^\s*(answer|答)\s*[:：]\s*/i, '')
+  while (lines.length) {
+    const last = lines[lines.length - 1].trim()
+    if (last === '' || /^(sources?|来源|出处)\s*[:：]/i.test(last)) lines.pop()
+    else break
+  }
+  return lines.join('\n').trim()
+}
 
 // "Ask AI" over one customer's contracts — a short conversation, so a follow-up
 // ("那第二台呢", "and the warranty?") builds on what was already asked rather than
@@ -102,7 +117,7 @@ export default function ContractAsk({ token, initialCustomer = null }) {
               </div>
               {t.answer ? (
                 <div className="rounded-2xl rounded-bl-sm border border-slate-200 bg-white p-3">
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{t.answer}</div>
+                  <Markdown>{cleanAnswer(t.answer)}</Markdown>
                   {t.sources?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {t.sources.map((s, j) => (
