@@ -146,24 +146,34 @@ function askPrompt(question, context, history = []) {
   // already asked. Marked clearly as history so the model answers the CURRENT
   // question, not an old one.
   const convo = history.length
-    ? `之前的对话（供理解追问中的指代，不要重复回答旧问题）：\n${history
+    ? `Prior turns (for resolving references in the follow-up; do not re-answer them):\n${history
         .map((h) => `Q: ${h.question}\nA: ${h.answer}`)
         .join('\n')}\n\n`
     : '';
+  // Default to English. qwen3 otherwise mirrors the language of the question and
+  // the (mostly Chinese) contract text, so the cue has to be the LAST thing
+  // before generation — a directive up top gets overridden by the Chinese pages
+  // right above the answer. An explicit request in the question flips it back.
+  const wantsZh = /用中文|中文(回答|作答|答复|说)|(answer|reply|respond)[^.]{0,12}chinese|in chinese/i.test(question);
+  const cue = wantsZh
+    ? '请用中文作答（把英文条款/数值也用中文表述）。\n答：'
+    : 'Write your answer in English (translate any Chinese values/terms into English).\nAnswer:';
   return `/no_think
-你在回答关于某客户合同的问题。下面是若干合同页，每页都标了所属文件名和页码。
+You are answering questions about one customer's contracts. Below are contract pages, each labelled with its file name and page number.
 
-规则：
-- 只依据这些页的内容回答；页面上没有的，就直说"未在提供的页面中找到"，不要猜。
-- 按合同文件分别作答。问总额/金额时，只报明确写着"合同总价为 X / TOTAL CONTRACT VALUE: X"的那个数；不要把"合同总价的百分之N（某一期付款）"当成总额，也不要把各期相加。
-- 若不同文件给出不同的值（例如两份合同版本），分别列出每个值及其文件，不要合并成一个。
-- 这是一段连续对话，最后一个"问题"才是要回答的；用上面的对话历史理解其中的指代。
-- 严格用提问所用的语言作答（英文问就用英文答，中文问就用中文答）。标注出处（文件名 · 第几页），简洁，不要逐页复述。
+Rules:
+- Use ONLY the pages below; if the answer is not there, say so plainly ("not found in the provided pages") — do not guess.
+- Answer per contract file. For a total/amount, report only the figure stated as "合同总价为 X / TOTAL CONTRACT VALUE: X"; never treat an installment ("合同总价的百分之N") as the total, and never sum installments.
+- If different files give different values (e.g. two contract versions), list each value with its file; do not merge them.
+- This is a running conversation; the last "Question" is the one to answer — use the prior turns to resolve references.
+- Cite sources (file · page). Be concise; do not restate every page.
 
-${convo}问题：${question}
+Contract pages:
+${context}
 
-合同页内容：
-${context}`;
+${convo}Question: ${question}
+
+${cue}`;
 }
 
 // pages: [{ filename, pageNo, text }]. The VPS has already checked the PIN,
