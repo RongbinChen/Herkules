@@ -25,13 +25,19 @@ const ASK_URL = process.env.DGX_ASK_URL || 'http://127.0.0.1:9099/ask';
 // The vision model can take tens of seconds per page plus generation. Generous,
 // but bounded: a hung DGX must not hold the request open forever.
 const ASK_TIMEOUT_MS = Number(process.env.DGX_ASK_TIMEOUT_MS || 150000);
-// How many pages we send to the model. Few on purpose: retrieval was measured
-// as the bottleneck, not the model — 3 pages answered in 24s where 16 took 45s
-// — and a wall of pages both slows the answer and dilutes it.
-const MAX_PAGES = Number(process.env.CONTRACT_QA_MAX_PAGES || 5);
-// At most this many pages from any single file, so one long technical appendix
+// How many keyword-hit pages ("seeds") to keep before neighbour expansion. A
+// customer may have several contracts (versions, or one per machine), and the
+// answer might legitimately differ between them, so this is not tiny.
+const MAX_PAGES = Number(process.env.CONTRACT_QA_MAX_PAGES || 6);
+// At most this many seeds from any single file, so one long technical appendix
 // cannot crowd out the commercial contract that actually holds the price.
 const MAX_PAGES_PER_FILE = 3;
+// Pages either side of a seed to include for context (same file only).
+const NEIGHBOUR_WINDOW = Number(process.env.CONTRACT_QA_NEIGHBOURS || 1);
+// Hard ceiling on pages of text sent to the model, after expansion. Enough to
+// carry two contracts' price sections; small enough to stay fast (~20s) and
+// well under the VPS's 60s proxy timeout.
+const MAX_SENT_PAGES = Number(process.env.CONTRACT_QA_SENT_PAGES || 12);
 
 export class DgxOfflineError extends Error {
   constructor(message) {
@@ -62,10 +68,32 @@ export async function retrievePages({ customerId, team, question, maxPages = MAX
     pageNo: r.pageNo, text: r.text, fileId: r.fileId,
     filename: r.file.filename, storedName: r.file.storedName,
   }));
-  const { pages: chosen, terms } = rankPages(pages, question, {
+  const { pages: seeds, terms } = rankPages(pages, question, {
     maxPages, maxPerFile: MAX_PAGES_PER_FILE,
   });
-  return { pages: chosen, candidatePages: pages.length, terms };
+
+  // Neighbour expansion. A contract states the total on one page and pays it out
+  // over the next few, so the answer often sits a page either side of the keyword
+  // hit. Since we answer from cheap text, not a rendered image, widening by ±1
+  // costs almost nothing and lets the model see "总价为 X" next to "80% = Y".
+  const byFile = new Map();
+  for (const p of pages) {
+    if (!byFile.has(p.fileId)) byFile.set(p.fileId, new Map());
+    byFile.get(p.fileId).set(p.pageNo, p);
+  }
+  const picked = new Map(); // `${fileId}:${pageNo}` → page, deduped
+  for (const s of seeds) {
+    const fm = byFile.get(s.fileId);
+    for (let d = -NEIGHBOUR_WINDOW; d <= NEIGHBOUR_WINDOW; d++) {
+      const pg = fm.get(s.pageNo + d);
+      if (pg) picked.set(`${pg.fileId}:${pg.pageNo}`, pg);
+    }
+  }
+  const sent = [...picked.values()]
+    .sort((a, b) => a.fileId - b.fileId || a.pageNo - b.pageNo)
+    .slice(0, MAX_SENT_PAGES);
+
+  return { seeds, sent, candidatePages: pages.length, terms };
 }
 
 // Hand the located pages to the DGX and get an answer read off the original
@@ -102,19 +130,26 @@ export async function askDgx({ question, pages }) {
 // as-is. `reason` is set (and `answer` null) for the states that are not an
 // error but still have no answer to give, so the UI can explain them.
 export async function answerContractQuestion({ customerId, team, question }) {
-  const { pages, candidatePages, terms } = await retrievePages({ customerId, team, question });
+  const { seeds, sent, candidatePages, terms } = await retrievePages({ customerId, team, question });
 
   if (candidatePages === 0) {
     return { answer: null, reason: 'no-readable-pages', sources: [], candidatePages: 0, terms };
   }
-  if (pages.length === 0) {
+  if (!sent.length) {
     return { answer: null, reason: 'no-match', sources: [], candidatePages, terms };
   }
 
-  const answer = await askDgx({ question, pages });
-  // The sources are exactly the pages we sent — the model answered from these
-  // and nothing else, so this is an honest "where it came from", openable in the
-  // UI by downloading the file.
-  const sources = pages.map((p) => ({ fileId: p.fileId, filename: p.filename, pageNo: p.pageNo, snippet: p.snippet }));
+  // The DGX gets only what it needs to answer: the page text with its label. It
+  // already has the files; it does not need storedName here, and the snippet is
+  // for the UI, not the model.
+  const answer = await askDgx({
+    question,
+    pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
+  });
+
+  // Sources are the keyword hits, not every neighbour we sent for context — those
+  // are the pages worth citing. filename + page only: the request is to show
+  // where it came from, not to offer a download.
+  const sources = seeds.map((p) => ({ filename: p.filename, pageNo: p.pageNo, snippet: p.snippet }));
   return { answer, reason: null, sources, candidatePages, terms };
 }

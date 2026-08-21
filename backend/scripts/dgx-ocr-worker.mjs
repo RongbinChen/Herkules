@@ -124,77 +124,66 @@ async function transcribePage(jpegPath) {
   return text === '[no readable content]' ? '' : text;
 }
 
-// ── Q&A (read the answer off the ORIGINAL page image, not the transcription) ──
+// ── Q&A (answer from the 32b transcription text, with a fast text model) ──────
 //
-// The VPS located the pages by text and relays the question here; this renders
-// those exact pages from the local PDF and asks the vision model. Answering from
-// the image, not the transcription, is the whole point — a value that landed in
-// the wrong column of a transcribed table would be read back wrong, and a
-// contract is exactly where that matters.
-const ASK_TIMEOUT_MS = Number(process.env.ASK_TIMEOUT_MS || 140000);
-const ASK_MAX_PAGES = Number(process.env.ASK_MAX_PAGES || 6);
+// The pages were transcribed by qwen2.5vl:32b, which keeps tables as Markdown
+// tables — the layout that the original "answer off the image" design existed to
+// protect is already preserved in that text. So Q&A reads the transcription with
+// a fast TEXT model (qwen3) instead of re-rendering and re-reading every page
+// with the vision model: seconds instead of a minute, no PDF rendering, no scp,
+// and no risk of the answer request tripping the VPS's 60s proxy timeout.
+//
+// The VPS locates the pages (keyword score + a boost for the page that STATES a
+// value, not merely references it) and relays their text here. This only prompts
+// the model — it never touches the PDFs.
+const ASK_TIMEOUT_MS = Number(process.env.ASK_TIMEOUT_MS || 120000);
+const ASK_MAX_PAGES = Number(process.env.ASK_MAX_PAGES || 12);
+const ASK_MODEL = process.env.ASK_MODEL || 'qwen3:latest';
+const ASK_NUM_CTX = Number(process.env.ASK_NUM_CTX || 32768);
 
-function askPrompt(question) {
-  return `You are answering a question about a customer's contract. The images are the exact contract pages, in the order listed below. Read them and answer.
+function askPrompt(question, context) {
+  return `/no_think
+你在回答关于某客户合同的问题。下面是若干合同页，每页都标了所属文件名和页码。
 
-Question: ${question}
+规则：
+- 只依据这些页的内容回答；页面上没有的，就直说"未在提供的页面中找到"，不要猜。
+- 按合同文件分别作答。问总额/金额时，只报明确写着"合同总价为 X / TOTAL CONTRACT VALUE: X"的那个数；不要把"合同总价的百分之N（某一期付款）"当成总额，也不要把各期相加。
+- 若不同文件给出不同的值（例如两份合同版本），分别列出每个值及其文件，不要合并成一个。
+- 标注出处（文件名 · 第几页）。用提问所用的语言作答，简洁，不要逐页复述。
 
-Rules:
-- Answer ONLY from what is shown in these pages. If the answer is not on them, say so plainly (in the language of the question) — do not guess.
-- Read values from their actual position in the page. A number belongs to the row and column it physically sits in; a blank cell is blank, never borrow a neighbour's value.
-- Cite where each fact comes from as (file, page N), using the labels given below.
-- Keep Chinese as Chinese and English as English; answer in the language of the question.
-- Be concise: give the figure or clause asked for, with its citation, not a summary of the whole page.`;
+问题：${question}
+
+合同页内容：
+${context}`;
 }
 
-// Render one page of a PDF to a base64 JPEG. `-f/-l pageNo` renders just that
-// page; `-singlefile` drops the -NN suffix so the output name is predictable.
-async function renderPage(src, pageNo, work) {
-  const stem = path.join(work, `pg-${pageNo}`);
-  await run('pdftoppm', [
-    '-r', String(DPI), '-jpeg', '-q',
-    '-f', String(pageNo), '-l', String(pageNo), '-singlefile',
-    src, stem,
-  ], { timeout: 120000 });
-  return (await fs.readFile(`${stem}.jpg`)).toString('base64');
-}
-
-// pages: [{ storedName, pageNo, filename, fileId }]. Returns the model's answer
-// text. The VPS has already checked the PIN and picked the pages; this only
-// renders and asks.
+// pages: [{ filename, pageNo, text }]. The VPS has already checked the PIN,
+// picked the pages and included their transcription. This only prompts the model.
 async function answerFromPages(question, pages) {
-  const wanted = pages.slice(0, ASK_MAX_PAGES).filter((p) => isPdf(p.storedName || ''));
-  if (!wanted.length) throw new Error('no renderable pages');
+  const wanted = pages.filter((p) => p && p.text).slice(0, ASK_MAX_PAGES);
+  if (!wanted.length) throw new Error('no page text supplied');
 
-  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'ask-'));
-  try {
-    const images = [];
-    const labels = [];
-    for (const p of wanted) {
-      const src = await ensureLocal(p.storedName);
-      images.push(await renderPage(src, p.pageNo, work));
-      labels.push(`- Image ${images.length}: ${p.filename || p.storedName}, page ${p.pageNo}`);
-    }
-    const prompt = `${askPrompt(question)}\n\nPages provided:\n${labels.join('\n')}`;
-    const res = await fetch(`${OLLAMA}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: VLM_MODEL,
-        prompt,
-        images,
-        stream: false,
-        // Low but not zero: a contract answer is a reading task, not creative
-        // writing, but a touch of slack reads a smudged digit better than a hard 0.
-        options: { temperature: 0.1, num_ctx: 16384 },
-      }),
-      signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`ollama ${res.status}`);
-    return (await res.json()).response?.trim() || '';
-  } finally {
-    await fs.rm(work, { recursive: true, force: true }).catch(() => {});
-  }
+  const context = wanted
+    .map((p) => `【${p.filename || 'contract'} · 第${p.pageNo}页】\n${p.text}`)
+    .join('\n\n---\n\n');
+
+  const res = await fetch(`${OLLAMA}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: ASK_MODEL,
+      prompt: askPrompt(question, context),
+      stream: false,
+      // Qwen3's thinking mode roughly doubles the latency for no accuracy gain on
+      // a lookup like this — the /no_think tag and this flag both turn it off.
+      think: false,
+      // Zero temperature: reading a figure out of a contract is not a creative act.
+      options: { temperature: 0, num_ctx: ASK_NUM_CTX },
+    }),
+    signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`ollama ${res.status}`);
+  return (await res.json()).response?.trim() || '';
 }
 
 // PDFs only for now. A .docx already has a text layer and deserves a plain
@@ -382,7 +371,9 @@ createServer((req, res) => {
     req.on('data', (c) => {
       body += c;
       // Page coordinates and a question are tiny; anything large is not ours.
-      if (body.length > 64 * 1024) { tooBig = true; req.destroy(); }
+      // Now carries the pages' transcription text, not just coordinates, so the
+      // ceiling is larger — but still bounded, a question is not a file upload.
+      if (body.length > 2 * 1024 * 1024) { tooBig = true; req.destroy(); }
     });
     req.on('end', async () => {
       if (tooBig) return;
