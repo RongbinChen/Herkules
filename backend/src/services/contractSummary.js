@@ -19,12 +19,12 @@
 // clauses that name them, both of which keyword retrieval finds cheaply.
 import { prisma } from '../index.js';
 import { askDgx, DgxOfflineError } from './contractQa.js';
-import { parseSummary, pickSummaryPages, summaryPrompt } from './contractSummaryFormat.js';
+import { parseSummary, pickSummaryPages, summaryPrompt, SUMMARY_VERSION } from './contractSummaryFormat.js';
 
 export { DgxOfflineError };
 
 // Load one file's readable pages and hand them to the pure picker.
-export async function selectSummaryPages(fileId) {
+export async function selectSummaryPages(fileId, docType) {
   const rows = await prisma.contractPage.findMany({
     where: { fileId, text: { not: '' } },
     select: { pageNo: true, text: true, fileId: true, file: { select: { filename: true } } },
@@ -33,7 +33,7 @@ export async function selectSummaryPages(fileId) {
   const pages = rows.map((r) => ({
     pageNo: r.pageNo, text: r.text, fileId: r.fileId, filename: r.file.filename,
   }));
-  return { sent: pickSummaryPages(pages), candidatePages: pages.length };
+  return { sent: pickSummaryPages(pages, docType), candidatePages: pages.length };
 }
 
 // Produce (or return the cached) summary for one file. Team-scoped by the
@@ -45,30 +45,39 @@ export async function selectSummaryPages(fileId) {
 export async function summariseContractFile({ fileId, team, refresh = false }) {
   const file = await prisma.contractFile.findFirst({
     where: { id: fileId, team },
-    select: { id: true, filename: true, ocrStatus: true, summary: true, summaryAt: true },
+    select: { id: true, filename: true, docType: true, ocrStatus: true, summary: true, summaryAt: true },
   });
   if (!file) return null; // caller turns this into a 404
 
-  if (!refresh && file.summary) {
+  // A stored summary is only reusable if it was produced by this version of the
+  // prompt AND for the type the file is filed under now. Re-categorising a file
+  // from commercial to technical changes which questions it should have been
+  // asked, so the old answer is not merely stale, it is the wrong questions.
+  const reusable = file.summary
+    && file.summary.version === SUMMARY_VERSION
+    && file.summary.docType === file.docType;
+  if (!refresh && reusable) {
     return { ...file.summary, cached: true, summaryAt: file.summaryAt };
   }
   if (file.ocrStatus !== 'DONE') {
     return { fields: [], reason: 'not-read', ocrStatus: file.ocrStatus, cached: false };
   }
 
-  const { sent, candidatePages } = await selectSummaryPages(fileId);
+  const { sent, candidatePages } = await selectSummaryPages(fileId, file.docType);
   if (!sent.length) {
     return { fields: [], reason: 'no-readable-pages', candidatePages, cached: false };
   }
 
   const answer = await askDgx({
-    question: summaryPrompt(),
+    question: summaryPrompt(file.docType),
     pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
   });
 
   const payload = {
-    fields: parseSummary(answer),
+    fields: parseSummary(answer, file.docType),
     raw: answer,
+    version: SUMMARY_VERSION,
+    docType: file.docType,
     pages: sent.map((p) => p.pageNo),
     candidatePages,
     reason: null,

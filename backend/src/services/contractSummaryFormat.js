@@ -22,63 +22,124 @@ const MAX_SENT_CHARS = Number(process.env.CONTRACT_SUMMARY_CHARS || 26000);
 //
 // The terms are written the way a contract writes them, in both languages,
 // because that is what the page text contains.
-const TOPICS = [
-  { key: 'amount', q: '合同金额 总价 总额 total contract value contract price' },
-  { key: 'payment', q: '付款条件 支付 terms of payment' },
-  { key: 'delivery', q: '交货期 交货 交付 delivery time shipment' },
-  { key: 'warranty', q: '质保期 质量保证期 保证期 warranty period guarantee period' },
-  { key: 'parties', q: '买方 卖方 buyer seller 合同号 contract no' },
-  { key: 'komNo', q: 'kom nr kom no 委托号 机器号' },
-];
+// Retrieval topics, keyed to the fields that need them. A single query naming
+// every concept makes them compete: the ranker returned the payment and price
+// pages and dropped the warranty clause, so the model — correctly — reported the
+// warranty as absent from a contract that states it on page 12. Retrieving per
+// topic guarantees each field its own page or two, and the union is still small.
+//
+// The terms are written the way a contract writes them, in both languages,
+// because the page text is bilingual and the model reads whichever half matched.
+const TOPICS = {
+  parties: '买方 卖方 buyer seller 合同号 contract no',
+  amount: '合同金额 总价 总额 total contract value contract price',
+  payment: '付款条件 支付 terms of payment',
+  delivery: '交货期 交货 交付 delivery time shipment',
+  warranty: '质保期 质量保证期 保证期 warranty period guarantee period',
+  machine: '机床型号 设备型号 型号 machine type model 磨床 车床 grinder lathe roll',
+  scope: '供货范围 供货清单 scope of supply scope of delivery 供货内容',
+  signedDate: '签订日期 签署日期 签字 签订于 date of signature signed on entered into',
+  komNo: 'kom nr kom no 委托号 机器号',
+};
 // Pages to take per topic. Two, because the clause and the figure it refers to
 // are often on facing pages.
 const PER_TOPIC = Number(process.env.CONTRACT_SUMMARY_PER_TOPIC || 2);
 
-export const SUMMARY_FIELDS = [
-  { key: 'contractNo', label: '合同号' },
-  { key: 'buyer', label: '买方' },
-  { key: 'seller', label: '卖方' },
-  { key: 'amount', label: '合同金额' },
-  { key: 'payment', label: '付款条件' },
-  { key: 'delivery', label: '交货期' },
-  { key: 'warranty', label: '质保期' },
-  { key: 'komNo', label: 'Kom. No.' },
+// A technical agreement has no price, no payment schedule and no warranty — it
+// specifies a machine. Asking it the commercial questions produced a column of
+// dashes, which reads as a failure rather than as "wrong question". So the
+// field set follows the document type.
+//
+// `topic` names the retrieval query that finds this field's page; `hint` is the
+// extra instruction the model needs for the fields where the obvious reading is
+// the wrong one.
+const COMMERCIAL_FIELDS = [
+  { key: 'contractNo', label: 'Contract No.', topic: 'parties' },
+  { key: 'buyer', label: 'Buyer', topic: 'parties' },
+  { key: 'seller', label: 'Seller', topic: 'parties' },
+  { key: 'amount', label: 'Contract value', topic: 'amount',
+    hint: 'copy the currency and figure exactly as printed — do not convert or round' },
+  { key: 'payment', label: 'Payment terms', topic: 'payment',
+    hint: 'condense to one line, e.g. "20% advance / 70% on shipment / 10% on acceptance"' },
+  { key: 'delivery', label: 'Delivery time', topic: 'delivery' },
+  { key: 'warranty', label: 'Warranty', topic: 'warranty' },
+  { key: 'komNo', label: 'Kom. No.', topic: 'komNo' },
 ];
 
+const TECHNICAL_FIELDS = [
+  { key: 'contractNo', label: 'Contract No.', topic: 'parties' },
+  { key: 'buyer', label: 'Buyer', topic: 'parties' },
+  { key: 'seller', label: 'Seller', topic: 'parties' },
+  { key: 'machine', label: 'Machine model', topic: 'machine',
+    hint: 'the machine type designation, e.g. "ProfiMill 300" or "WS 450 x 6000"' },
+  { key: 'scope', label: 'Scope of supply', topic: 'scope',
+    hint: 'one line — what is being supplied, and how many' },
+  { key: 'signedDate', label: 'Signed on', topic: 'signedDate' },
+  { key: 'komNo', label: 'Kom. No.', topic: 'komNo' },
+];
+
+// Bumped whenever the fields or the prompt change, so summaries stored under
+// the old shape are regenerated instead of being rendered with labels that no
+// longer match what was asked.
+export const SUMMARY_VERSION = 2;
+
+export function summaryFields(docType) {
+  return docType === 'TECHNICAL' ? TECHNICAL_FIELDS : COMMERCIAL_FIELDS;
+}
+
+// The queries whose pages this document type needs — deduped, since several
+// fields share the parties page.
+export function summaryTopics(docType) {
+  return [...new Set(summaryFields(docType).map((f) => f.topic))].map((k) => TOPICS[k]);
+}
+
 // "Not in these pages" has to be a value the model can pick, or it invents one.
-const NONE = '—';
-// The worker's own ask prompt tells the model to say "未在提供的页面中找到" when
+const NONE = '\u2014';
+// The worker's own ask prompt tells the model to say "\u672a\u5728\u63d0\u4f9b\u7684\u9875\u9762\u4e2d\u627e\u5230" when
 // a fact is absent, and that instruction reaches the model alongside this one.
 // Rather than have the two prompts argue, the answer is normalised here — any
-// phrasing of "I could not find it" becomes the same empty marker.
-const ABSENT = /^(—|-|无|未找到|没有找到|未提及|未注明|未在.*找到|not (found|specified|mentioned)|n\/?a)[。.\s]*$/i;
+// phrasing of "I could not find it" becomes the same empty marker, in either
+// language.
+const ABSENT = /^(\u2014|-|\u65e0|\u672a\u627e\u5230|\u6ca1\u6709\u627e\u5230|\u672a\u63d0\u53ca|\u672a\u6ce8\u660e|\u672a\u5728.*\u627e\u5230|not (found|specified|mentioned|stated|given)|none|n\/?a)[\u3002.\s]*$/i;
 
-export function summaryPrompt() {
-  return `请把这份合同的关键信息按下面固定的格式列出来，一行一项，顺序不要变，除这几行外不要输出别的内容：
+// Written in English because the answer has to come back in English: the
+// worker's own ask prompt tells the model to reply in the language of the
+// question, and these contracts are bilingual, so left in Chinese it would
+// answer in Chinese half the time.
+export function summaryPrompt(docType) {
+  const fields = summaryFields(docType);
+  const hints = fields.filter((f) => f.hint).map((f) => `- ${f.label}: ${f.hint}.`);
+  return `List the key terms of this contract in exactly the format below, one per line, in this order, and output nothing else:
 
-${SUMMARY_FIELDS.map((f) => `${f.label}: <值> ｜ 出处: <第N页>`).join('\n')}
+${fields.map((f) => `${f.label}: <value> | source: <p.N>`).join('\n')}
 
-规则：
-- 提供的页面里找不到的项，值和出处都写 ${NONE}，不要猜。
-- 合同金额照抄币种和数字原样，不要换算、不要四舍五入。
-- 付款条件压缩成一行，例如"20% 预付 / 70% 装运 / 10% 验收"。
-- 买方卖方写公司全称。
-- Kom. No. 是卖方内部的机器委托号，形如 30-0004 或 98950，通常跟在 "Kom. No." /
-  "Kom. Nr." 后面。它不是合同号——页面上没有单独写出 Kom. No. 就填 ${NONE}，
-  不要拿合同号顶替。
-- 出处只写页码。`;
+Rules:
+- Answer in English. Where the page gives a company name or a term in both
+  Chinese and English, use the English one; where it is only in Chinese,
+  translate it.
+- If a term is not in the pages provided, write ${NONE} for both the value and
+  the source. Do not guess.
+${hints.join('\n')}
+- Kom. No. is the seller's internal commission number, shaped like 30-0004 or
+  98950, usually printed after "Kom. No." / "Kom. Nr.". It is NOT the contract
+  number — if no Kom. No. is written on the pages, put ${NONE} rather than
+  repeating the contract number.
+- The source is the page number only.`;
 }
 
 // Lenient on purpose. The model is told to emit exactly these lines, but a
 // stray bullet, a bolded label or a full-width colon should not cost the whole
 // summary — an unparsed line falls through and the raw text is kept alongside.
-export function parseSummary(answer) {
+export function parseSummary(answer, docType) {
   const lines = String(answer || '').split('\n');
-  const fields = SUMMARY_FIELDS.map((f) => ({ ...f, value: NONE, source: null }));
+  // hint is a prompt detail; it has no business travelling to the browser.
+  const fields = summaryFields(docType).map(({ key, label }) => ({ key, label, value: NONE, source: null }));
 
   for (const line of lines) {
-    // Drop list markers and markdown emphasis before matching the label.
-    const clean = line.replace(/^\s*[-*•]\s*/, '').replace(/\*\*/g, '').trim();
+    // Emphasis first, then the list marker. The other order eats the first
+    // asterisk of a bolded label and leaves "*Contract No." behind, which then
+    // matches nothing — the whole line is silently dropped.
+    const clean = line.replace(/\*\*/g, '').replace(/^\s*([-*•]|\d+[.)])\s*/, '').trim();
     if (!clean) continue;
     const field = fields.find((f) => {
       const head = clean.slice(0, f.label.length + 2).toLowerCase();
@@ -89,7 +150,7 @@ export function parseSummary(answer) {
     let rest = clean.slice(clean.indexOf(field.label) + field.label.length).replace(/^\s*[:：]\s*/, '');
     // The source rides after a pipe; both widths appear in practice.
     const [value, ...srcParts] = rest.split(/[｜|]/);
-    const src = srcParts.join(' ').replace(/^\s*出处\s*[:：]?\s*/, '').trim();
+    const src = srcParts.join(' ').replace(/^\s*(出处|source)\s*[:：]?\s*/i, '').trim();
     const v = value.trim();
     field.value = !v || ABSENT.test(v) ? NONE : v;
     field.source = src && !ABSENT.test(src) && field.value !== NONE ? src : null;
@@ -103,7 +164,7 @@ export function parseSummary(answer) {
 // attention; characters guard its context window — ten dense pages of a
 // bilingual contract run past what num_ctx holds, and an overflowing prompt is
 // silently truncated at the far end, which is where the answer was.
-export function pickSummaryPages(pages) {
+export function pickSummaryPages(pages, docType) {
   if (!pages.length) return [];
   const byNo = new Map(pages.map((p) => [p.pageNo, p]));
 
@@ -111,8 +172,8 @@ export function pickSummaryPages(pages) {
   // the contract head — the one region that carries several fields at once.
   const picked = new Map();
   for (const p of pages.slice(0, LEAD_PAGES)) picked.set(p.pageNo, p);
-  for (const topic of TOPICS) {
-    const { pages: seeds } = rankPages(pages, topic.q, {
+  for (const query of summaryTopics(docType)) {
+    const { pages: seeds } = rankPages(pages, query, {
       maxPages: PER_TOPIC,
       // One file, so the per-file cap that stops an appendix crowding out the
       // contract has nothing to protect against here.
