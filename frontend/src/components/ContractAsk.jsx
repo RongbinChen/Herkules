@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { contractsAPI } from '../api/api'
 import { Button, Card, Textarea } from './ui'
-import CustomerPicker from './CustomerPicker'
+import ContractCustomerPicker from './ContractCustomerPicker'
 import { displayFilename } from '../constants/contract'
 
 // "Ask AI" over one customer's contracts. Scoped to a single customer on
@@ -58,11 +58,11 @@ export default function ContractAsk({ token, initialCustomer = null }) {
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold text-slate-500">Customer</span>
         <div className="min-w-[16rem] flex-1">
-          <CustomerPicker
+          <ContractCustomerPicker
+            token={token}
             value={customer}
             onChange={setCustomer}
-            allowCreate={false}
-            placeholder="Select a customer…"
+            placeholder="Select or search a customer…"
           />
         </div>
       </div>
