@@ -327,6 +327,36 @@ router.get('/files/summary', authenticateToken, requireUnlock, async (req, res) 
   }
 });
 
+// The customers that actually have contracts on file, for this team. Feeds the
+// Ask-AI picker: there is no point offering the other ~500 customers when a
+// question can only be answered from a customer that has files. `readable` is
+// how many of those files the DGX has already transcribed — a customer with 0
+// readable can be picked but cannot be answered yet.
+router.get('/customers', authenticateToken, requireUnlock, async (req, res) => {
+  try {
+    const [all, done] = await Promise.all([
+      prisma.contractFile.groupBy({ by: ['customerId'], where: { team: req.contractTeam }, _count: { _all: true } }),
+      prisma.contractFile.groupBy({ by: ['customerId'], where: { team: req.contractTeam, ocrStatus: 'DONE' }, _count: { _all: true } }),
+    ]);
+    const readableById = new Map(done.map((r) => [r.customerId, r._count._all]));
+    const ids = all.map((r) => r.customerId);
+    const customers = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+    const nameById = new Map(customers.map((c) => [c.id, c.name]));
+    const items = all
+      .map((r) => ({
+        id: r.customerId,
+        name: nameById.get(r.customerId) || `#${r.customerId}`,
+        files: r._count._all,
+        readable: readableById.get(r.customerId) || 0,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ team: req.contractTeam, items });
+  } catch (error) {
+    console.error('[contracts] customers error:', error.message);
+    res.status(500).json({ error: 'Failed to list contract customers' });
+  }
+});
+
 // Fix a wrong category or note. Picking the wrong type on upload is a certainty,
 // and without this the only remedy is delete-and-reupload, which throws away the
 // upload record and timestamp.

@@ -155,6 +155,9 @@ export const contractsAPI = {
   // takes it from the unlock token and ignores anything the client claims.
   listAll: (params, token) => api.get('/contracts/files', withUnlock(token, { params })),
   summary: (token) => api.get('/contracts/files/summary', withUnlock(token)),
+  // Customers that have contracts on file for the unlocked team — feeds the
+  // Ask-AI picker so it only offers customers a question can be answered from.
+  askCustomers: (token) => api.get('/contracts/customers', withUnlock(token)),
   patch: (fileId, data, token) => api.patch(`/contracts/files/${fileId}`, data, withUnlock(token)),
   // Ask AI about one customer's contracts. The vision model reads the original
   // page images on the DGX, so this can take tens of seconds — override the
