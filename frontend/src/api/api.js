@@ -165,11 +165,11 @@ export const contractsAPI = {
   // stored copy, and the server only lets the uploader or an admin do that.
   summarize: (fileId, token, refresh = false) =>
     api.post(`/contracts/files/${fileId}/summary`, { refresh }, withUnlock(token, { timeout: 180000 })),
-  // Ask AI about one customer's contracts. The vision model reads the original
-  // page images on the DGX, so this can take tens of seconds — override the
-  // client's default timeout for this one call.
-  ask: (customerId, question, token) =>
-    api.post('/contracts/ask', { customerId, question }, withUnlock(token, { timeout: 180000 })),
+  // Ask AI about one customer's contracts. A local model on the DGX reads the
+  // transcribed pages, so this can take a few seconds — override the client's
+  // default timeout. `history` carries prior turns for follow-up questions.
+  ask: (customerId, question, token, history = []) =>
+    api.post('/contracts/ask', { customerId, question, history }, withUnlock(token, { timeout: 180000 })),
 }
 
 export const usersAPI = {
