@@ -154,8 +154,13 @@ export default function ContractsPage() {
 
   // One row, rendered either standalone or inside a customer group — the group
   // header already names the customer, so the row drops that line there.
-  const renderRow = (f, showCustomer) => (
-    <li key={f.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+  const renderRow = (f, { showCustomer = true, boxed = true } = {}) => (
+    <li
+      key={f.id}
+      className={`flex items-start justify-between gap-3 p-3 ${
+        boxed ? 'rounded-xl border border-slate-200 bg-white' : ''
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
@@ -348,24 +353,27 @@ export default function ContractsPage() {
             {loading ? 'Loading…' : 'No contract files match these filters.'}
           </Card>
         ) : showGrouped ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {groups.map((g) => {
               const isCollapsed = collapsed.has(g.id)
               return (
-                <section key={g.id}>
+                /* One box per customer, not one per file. Rows carrying their
+                   own border made every group look the same as the last, which
+                   is the thing that made the boundaries hard to find. */
+                <section key={g.id} className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
                   {/* The header collapses; opening the customer is the small
                       arrow on the right. Putting the navigation on the name
                       would send people to another page on the click they meant
                       as "fold this away". */}
-                  <div className="mb-1.5 flex items-center gap-2">
+                  <div className={`flex items-center gap-2 bg-slate-100 px-3 py-2 ${isCollapsed ? '' : 'border-b border-slate-200'}`}>
                     <button
                       onClick={() => toggleGroup(g.id)}
                       aria-expanded={!isCollapsed}
-                      className="flex min-w-0 items-center gap-2 text-left transition hover:opacity-70"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left transition hover:opacity-70"
                     >
                       <span className="text-xs text-slate-400">{isCollapsed ? '▸' : '▾'}</span>
                       <span className="min-w-0 truncate text-sm font-bold text-slate-800">{g.name}</span>
-                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                         {g.files.length}
                       </span>
                     </button>
@@ -373,18 +381,22 @@ export default function ContractsPage() {
                       onClick={() => navigate(`/customers/${g.id}`)}
                       title={`Open ${g.name}`}
                       aria-label={`Open ${g.name}`}
-                      className="shrink-0 text-xs font-semibold text-slate-300 transition hover:text-brand-600"
+                      className="shrink-0 text-xs font-semibold text-slate-400 transition hover:text-brand-600"
                     >
                       ↗
                     </button>
                   </div>
-                  {!isCollapsed && <ul className="space-y-2">{g.files.map((f) => renderRow(f, false))}</ul>}
+                  {!isCollapsed && (
+                    <ul className="divide-y divide-slate-100">
+                      {g.files.map((f) => renderRow(f, { showCustomer: false, boxed: false }))}
+                    </ul>
+                  )}
                 </section>
               )
             })}
           </div>
         ) : (
-          <ul className="space-y-2">{items.map((f) => renderRow(f, true))}</ul>
+          <ul className="space-y-2">{items.map((f) => renderRow(f))}</ul>
         )}
 
         {items.length < total && (
