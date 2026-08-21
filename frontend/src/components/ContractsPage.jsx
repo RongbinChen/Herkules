@@ -8,6 +8,7 @@ import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, ocrMe
 import useContractUnlock from '../hooks/useContractUnlock'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
+import TranscriptionToggle from './TranscriptionToggle'
 import ContractSummary from './ContractSummary'
 
 const PAGE = 50
@@ -47,6 +48,8 @@ export default function ContractsPage() {
   const [customerName, setCustomerName] = useState('')
 
   const isAdmin = user?.isAdmin === true
+  // Transcription pause control is restricted to one owner (server-enforced too).
+  const isOcrOwner = String(user?.email || '').toLowerCase() === 'rongbin.chen@waldrich-siegen.com'
 
   // Hand-rolled debounce; the project has no lodash and one input does not
   // justify adding it.
@@ -311,6 +314,7 @@ export default function ContractsPage() {
             Contracts <span className="ml-1 text-sm font-semibold text-brand-600">{unlock.team}</span>
           </h1>
           <div className="flex items-center gap-2">
+            {isOcrOwner && <TranscriptionToggle />}
             <Button size="sm" onClick={() => setUploadOpen(true)}>＋ Upload</Button>
             <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Modules</Button>
           </div>

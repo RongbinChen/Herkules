@@ -523,6 +523,74 @@ router.post('/files/:id/summary', authenticateToken, requireUnlock, async (req, 
   }
 });
 
+// ── Transcription pause control (one owner only) ─────────────────────────────
+//
+// OCR transcription and Q&A share one worker and one GPU on the DGX. Pausing
+// transcription frees the GPU for fast answers without taking the worker (and
+// thus Q&A) down. This is an operator control, deliberately restricted to a
+// single person — NOT all admins — so it is gated on the exact account rather
+// than on isAdmin. No PIN/unlock: it touches no contract data, only the queue.
+const OCR_ADMIN_EMAIL = (process.env.CONTRACT_OCR_ADMIN_EMAIL || 'rongbin.chen@waldrich-siegen.com').toLowerCase();
+// The worker's loopback port, reached over the same reverse tunnel Q&A uses.
+const DGX_OCR_BASE = (process.env.DGX_OCR_URL || 'http://127.0.0.1:9099').replace(/\/$/, '');
+
+function requireOcrAdmin(req, res, next) {
+  if (String(req.user?.email || '').toLowerCase() !== OCR_ADMIN_EMAIL) {
+    return res.status(403).json({ error: 'Not permitted' });
+  }
+  next();
+}
+
+// Relay a control call to the DGX worker. Returns the worker's JSON, or throws
+// so the route can answer 503 when the DGX is unreachable (tunnel down / off).
+async function dgxOcrControl(pathname, method = 'GET') {
+  const token = process.env.OCR_TOKEN;
+  if (!token || token.length < 16) throw new DgxOfflineError('OCR control is not configured');
+  let res;
+  try {
+    res = await fetch(`${DGX_OCR_BASE}${pathname}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Ocr-Token': token },
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    throw new DgxOfflineError(`worker unreachable (${err.name})`);
+  }
+  if (!res.ok) throw new Error(`worker returned ${res.status}`);
+  return res.json();
+}
+
+router.get('/ocr/control', authenticateToken, requireOcrAdmin, async (req, res) => {
+  try {
+    const h = await dgxOcrControl('/health', 'GET');
+    res.json({ paused: h.paused === true, draining: h.draining === true, online: true });
+  } catch (error) {
+    // The worker being offline is a normal, reportable state, not a 500 — the
+    // button shows "worker offline" rather than an error.
+    if (error instanceof DgxOfflineError) return res.json({ online: false });
+    console.error('[contracts] ocr status error:', error.message);
+    res.status(500).json({ error: 'Failed to read status' });
+  }
+});
+
+router.post('/ocr/control', authenticateToken, requireOcrAdmin, async (req, res) => {
+  const action = req.body?.action;
+  if (action !== 'pause' && action !== 'resume') {
+    return res.status(400).json({ error: 'action must be pause or resume' });
+  }
+  try {
+    const out = await dgxOcrControl(`/${action}`, 'POST');
+    console.warn(`[contracts] transcription ${action} by ${req.user.email}`);
+    res.json({ paused: out.paused === true });
+  } catch (error) {
+    if (error instanceof DgxOfflineError) {
+      return res.status(503).json({ error: 'The DGX worker is offline — cannot change transcription.', offline: true });
+    }
+    console.error('[contracts] ocr control error:', error.message);
+    res.status(500).json({ error: `Failed to ${action}` });
+  }
+});
+
 export default router;
 
 // ── OCR queue (machine endpoints, worker token — NOT the PIN) ────────────────

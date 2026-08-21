@@ -170,6 +170,10 @@ export const contractsAPI = {
   // default timeout. `history` carries prior turns for follow-up questions.
   ask: (customerId, question, token, history = []) =>
     api.post('/contracts/ask', { customerId, question, history }, withUnlock(token, { timeout: 180000 })),
+  // Transcription pause control — owner-gated server-side, no unlock token. GET
+  // reads {paused, draining, online}; POST {action:'pause'|'resume'} toggles it.
+  ocrControlStatus: () => api.get('/contracts/ocr/control'),
+  ocrControl: (action) => api.post('/contracts/ocr/control', { action }),
 }
 
 export const usersAPI = {
