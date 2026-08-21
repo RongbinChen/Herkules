@@ -141,7 +141,15 @@ const ASK_MAX_PAGES = Number(process.env.ASK_MAX_PAGES || 12);
 const ASK_MODEL = process.env.ASK_MODEL || 'qwen3:latest';
 const ASK_NUM_CTX = Number(process.env.ASK_NUM_CTX || 32768);
 
-function askPrompt(question, context) {
+function askPrompt(question, context, history = []) {
+  // Prior turns let a follow-up resolve "它/那份/第二台/那付款呢" against what was
+  // already asked. Marked clearly as history so the model answers the CURRENT
+  // question, not an old one.
+  const convo = history.length
+    ? `之前的对话（供理解追问中的指代，不要重复回答旧问题）：\n${history
+        .map((h) => `Q: ${h.question}\nA: ${h.answer}`)
+        .join('\n')}\n\n`
+    : '';
   return `/no_think
 你在回答关于某客户合同的问题。下面是若干合同页，每页都标了所属文件名和页码。
 
@@ -149,9 +157,10 @@ function askPrompt(question, context) {
 - 只依据这些页的内容回答；页面上没有的，就直说"未在提供的页面中找到"，不要猜。
 - 按合同文件分别作答。问总额/金额时，只报明确写着"合同总价为 X / TOTAL CONTRACT VALUE: X"的那个数；不要把"合同总价的百分之N（某一期付款）"当成总额，也不要把各期相加。
 - 若不同文件给出不同的值（例如两份合同版本），分别列出每个值及其文件，不要合并成一个。
-- 标注出处（文件名 · 第几页）。用提问所用的语言作答，简洁，不要逐页复述。
+- 这是一段连续对话，最后一个"问题"才是要回答的；用上面的对话历史理解其中的指代。
+- 严格用提问所用的语言作答（英文问就用英文答，中文问就用中文答）。标注出处（文件名 · 第几页），简洁，不要逐页复述。
 
-问题：${question}
+${convo}问题：${question}
 
 合同页内容：
 ${context}`;
@@ -159,7 +168,7 @@ ${context}`;
 
 // pages: [{ filename, pageNo, text }]. The VPS has already checked the PIN,
 // picked the pages and included their transcription. This only prompts the model.
-async function answerFromPages(question, pages) {
+async function answerFromPages(question, pages, history = []) {
   const wanted = pages.filter((p) => p && p.text).slice(0, ASK_MAX_PAGES);
   if (!wanted.length) throw new Error('no page text supplied');
 
@@ -172,7 +181,7 @@ async function answerFromPages(question, pages) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: ASK_MODEL,
-      prompt: askPrompt(question, context),
+      prompt: askPrompt(question, context, history),
       stream: false,
       // Qwen3's thinking mode roughly doubles the latency for no accuracy gain on
       // a lookup like this — the /no_think tag and this flag both turn it off.
@@ -378,14 +387,14 @@ createServer((req, res) => {
     req.on('end', async () => {
       if (tooBig) return;
       try {
-        const { question, pages } = JSON.parse(body || '{}');
+        const { question, pages, history } = JSON.parse(body || '{}');
         if (!question || !Array.isArray(pages) || !pages.length) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end('{"error":"question and pages are required"}');
           return;
         }
         log(`收到提问（${pages.length} 页）: ${String(question).slice(0, 40)}`);
-        const answer = await answerFromPages(String(question), pages);
+        const answer = await answerFromPages(String(question), pages, Array.isArray(history) ? history : []);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ answer }));
       } catch (e) {
