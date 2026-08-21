@@ -99,7 +99,7 @@ export async function retrievePages({ customerId, team, question, maxPages = MAX
 // Hand the located pages to the DGX and get an answer read off the original
 // images. The stored token authenticates the VPS to the worker; the worker only
 // accepts this on the loopback port the tunnel lands on.
-export async function askDgx({ question, pages }) {
+export async function askDgx({ question, pages, history = [] }) {
   const token = process.env.OCR_TOKEN;
   if (!token || token.length < 16) {
     throw new DgxOfflineError('contract Q&A is not configured');
@@ -109,7 +109,7 @@ export async function askDgx({ question, pages }) {
     res = await fetch(ASK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Ocr-Token': token },
-      body: JSON.stringify({ question, pages }),
+      body: JSON.stringify({ question, pages, history }),
       signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
     });
   } catch (err) {
@@ -129,8 +129,14 @@ export async function askDgx({ question, pages }) {
 // Orchestrate: locate, then answer. Returns a small object the route serialises
 // as-is. `reason` is set (and `answer` null) for the states that are not an
 // error but still have no answer to give, so the UI can explain them.
-export async function answerContractQuestion({ customerId, team, question }) {
-  const { seeds, sent, candidatePages, terms } = await retrievePages({ customerId, team, question });
+export async function answerContractQuestion({ customerId, team, question, history = [] }) {
+  // A follow-up often names its subject only through the previous turn ("那第二台
+  // 呢", "它的质保期"). Prepend the last question to the RETRIEVAL query so those
+  // pages are still found; the answer question itself stays exactly what was
+  // asked, and the full history goes to the model for the answer.
+  const lastQ = history.length ? String(history[history.length - 1].question || '') : '';
+  const retrievalQuery = lastQ ? `${lastQ} ${question}` : question;
+  const { seeds, sent, candidatePages, terms } = await retrievePages({ customerId, team, question: retrievalQuery });
 
   if (candidatePages === 0) {
     return { answer: null, reason: 'no-readable-pages', sources: [], candidatePages: 0, terms };
@@ -144,6 +150,7 @@ export async function answerContractQuestion({ customerId, team, question }) {
   // for the UI, not the model.
   const answer = await askDgx({
     question,
+    history,
     pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
   });
 

@@ -19,6 +19,7 @@ import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { wakeDgx } from '../services/dgxWake.js';
 import { answerContractQuestion, DgxOfflineError } from '../services/contractQa.js';
+import { summariseContractFile } from '../services/contractSummary.js';
 import { sendMail } from '../services/mailer.js';
 import { renderEmail } from '../services/emailTemplate.js';
 
@@ -199,6 +200,9 @@ const FILE_SELECT = {
   // being read" instead of letting the assistant answer from nothing and look
   // like it is wrong about the contract.
   ocrStatus: true, ocrPages: true,
+  // Only the timestamp travels with a list row — the summary body is a
+  // kilobyte apiece and is fetched when someone actually opens one.
+  summaryAt: true,
   uploadedBy: { select: { id: true, name: true } },
 };
 
@@ -440,6 +444,13 @@ router.delete('/files/:id', authenticateToken, requireUnlock, async (req, res) =
 const askSchema = z.object({
   customerId: z.coerce.number().int().positive(),
   question: z.string().trim().min(2).max(500),
+  // Prior turns of this conversation, for follow-up questions. Capped and
+  // trimmed: only the last few turns matter for resolving a reference, and a
+  // long answer is truncated so the history cannot blow the model's context.
+  history: z.array(z.object({
+    question: z.string().trim().max(500),
+    answer: z.string().trim().max(4000),
+  })).max(8).optional().default([]),
 });
 
 router.post('/ask', authenticateToken, requireUnlock, async (req, res) => {
@@ -459,7 +470,7 @@ router.post('/ask', authenticateToken, requireUnlock, async (req, res) => {
     });
     if (!has) return res.status(404).json({ error: 'No contracts for this customer' });
 
-    const result = await answerContractQuestion({ customerId, team: req.contractTeam, question });
+    const result = await answerContractQuestion({ customerId, team: req.contractTeam, question, history: parsed.data.history.slice(-6) });
     res.json(result);
   } catch (error) {
     if (error instanceof DgxOfflineError) {
@@ -470,6 +481,45 @@ router.post('/ask', authenticateToken, requireUnlock, async (req, res) => {
     }
     console.error('[contracts] ask error:', error.message);
     res.status(500).json({ error: 'Failed to answer' });
+  }
+});
+
+// Key-terms summary of one file — contract number, parties, value, payment,
+// delivery, warranty. Cached on the row, so the second reader pays nothing.
+//
+// POST rather than GET because the uncached path spends a minute of GPU: it is
+// an action someone chose to take, not something a list render should trigger.
+// `refresh` re-runs it, and is restricted to the uploader or an admin for the
+// same reason — anyone may read the summary, but re-spending the GPU is not a
+// decision every viewer should be able to make on someone else's file.
+router.post('/files/:id/summary', authenticateToken, requireUnlock, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+  const refresh = req.body?.refresh === true;
+
+  try {
+    if (refresh) {
+      const file = await prisma.contractFile.findFirst({
+        where: { id, team: req.contractTeam },
+        select: { uploadedById: true },
+      });
+      if (!file) return res.status(404).json({ error: 'File not found' });
+      if (req.user.isAdmin !== true && file.uploadedById !== req.user.userId) {
+        return res.status(403).json({ error: 'Only the uploader or an admin can regenerate' });
+      }
+    }
+
+    const result = await summariseContractFile({ fileId: id, team: req.contractTeam, refresh });
+    // 404 for a file this team cannot see, matching download / patch / delete:
+    // whether the id exists is not the other team's business.
+    if (!result) return res.status(404).json({ error: 'File not found' });
+    res.json(result);
+  } catch (error) {
+    if (error instanceof DgxOfflineError) {
+      return res.status(503).json({ error: error.message, offline: true });
+    }
+    console.error('[contracts] summary error:', error.message);
+    res.status(500).json({ error: 'Failed to summarise' });
   }
 });
 

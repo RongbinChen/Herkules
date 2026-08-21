@@ -8,6 +8,7 @@ import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, ocrMe
 import useContractUnlock from '../hooks/useContractUnlock'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
+import ContractSummary from './ContractSummary'
 
 const PAGE = 50
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
@@ -37,6 +38,9 @@ export default function ContractsPage() {
   // customer filter active there is only ever one group, so it turns itself off.
   const [grouped, setGrouped] = useState(true)
   const [collapsed, setCollapsed] = useState(() => new Set())
+  // Which rows have their key-terms panel open. Opening one is what spends the
+  // GPU, so it is per-row and explicit rather than anything the list does.
+  const [openSummary, setOpenSummary] = useState(() => new Set())
 
   // Deep link from the customer card: ?customerId=12 lands here pre-filtered.
   const customerId = params.get('customerId') || ''
@@ -160,54 +164,86 @@ export default function ContractsPage() {
     return next
   })
 
+  const toggleSummary = (id) => setOpenSummary((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
   // One row, rendered either standalone or inside a customer group — the group
   // header already names the customer, so the row drops that line there.
   const renderRow = (f, { showCustomer = true, boxed = true } = {}) => (
     <li
       key={f.id}
-      className={`flex items-start justify-between gap-3 p-3 ${
-        boxed ? 'rounded-xl border border-slate-200 bg-white' : ''
-      }`}
+      className={boxed ? 'overflow-hidden rounded-xl border border-slate-200 bg-white' : ''}
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
-          {/* Only shown while a file is unreadable — a green tick on every
-              row once the backlog clears would be noise. */}
-          {ocrNeedsBadge(f.ocrStatus) && (
-            <Badge tone={ocrMeta(f.ocrStatus).tone} title={ocrMeta(f.ocrStatus).zh}>
-              {ocrMeta(f.ocrStatus).label}
-            </Badge>
+      <div className="flex items-start justify-between gap-3 p-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+            {/* Only shown while a file is unreadable — a green tick on every
+                row once the backlog clears would be noise. */}
+            {ocrNeedsBadge(f.ocrStatus) && (
+              <Badge tone={ocrMeta(f.ocrStatus).tone} title={ocrMeta(f.ocrStatus).zh}>
+                {ocrMeta(f.ocrStatus).label}
+              </Badge>
+            )}
+            {/* Lighter than the group header on purpose: bold on every row
+                competes with the customer name and the eye loses the grouping.
+                title keeps the real stored name one hover away. */}
+            <button
+              onClick={() => doDownload(f)}
+              title={f.filename}
+              className="min-w-0 truncate text-left text-sm font-medium text-slate-700 transition hover:text-brand-600"
+            >
+              {displayFilename(f.filename)}
+            </button>
+          </div>
+          {showCustomer && (
+            <button
+              onClick={() => navigate(`/customers/${f.customer.id}`)}
+              className="mt-0.5 block max-w-full truncate text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
+            >
+              {f.customer?.name}
+            </button>
           )}
-          {/* Lighter than the group header on purpose: bold on every row
-              competes with the customer name and the eye loses the grouping.
-              title keeps the real stored name one hover away. */}
-          <button
-            onClick={() => doDownload(f)}
-            title={f.filename}
-            className="min-w-0 truncate text-left text-sm font-medium text-slate-700 transition hover:text-brand-600"
-          >
-            {displayFilename(f.filename)}
-          </button>
+          {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
+          </p>
         </div>
-        {showCustomer && (
-          <button
-            onClick={() => navigate(`/customers/${f.customer.id}`)}
-            className="mt-0.5 block max-w-full truncate text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
-          >
-            {f.customer?.name}
-          </button>
-        )}
-        {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
-        <p className="mt-0.5 text-[11px] text-slate-400">
-          {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
-        </p>
-      </div>
-      {canEdit(f) && (
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">Edit</button>
-          <button onClick={() => doDelete(f)} className="text-xs font-semibold text-slate-400 transition hover:text-rose-500">Delete</button>
+          {/* Everyone with the PIN may read a summary; only the uploader or an
+              admin may spend the GPU regenerating one (enforced server-side).
+              Disabled until the file has been transcribed, since there is
+              nothing to read from before that. */}
+          <button
+            onClick={() => toggleSummary(f.id)}
+            disabled={f.ocrStatus !== 'DONE'}
+            title={f.ocrStatus === 'DONE'
+              ? (f.summaryAt ? 'Key terms — already generated' : 'Key terms — reads the contract, takes about a minute')
+              : 'Not readable yet'}
+            className="text-xs font-semibold text-slate-400 transition hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {openSummary.has(f.id) ? 'Hide' : 'Summary'}
+            {f.summaryAt && !openSummary.has(f.id) && <span className="ml-1 text-emerald-500">•</span>}
+          </button>
+          {canEdit(f) && (
+            <>
+              <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">Edit</button>
+              <button onClick={() => doDelete(f)} className="text-xs font-semibold text-slate-400 transition hover:text-rose-500">Delete</button>
+            </>
+          )}
         </div>
+      </div>
+      {openSummary.has(f.id) && (
+        <ContractSummary
+          fileId={f.id}
+          token={unlock.token}
+          canRefresh={canEdit(f)}
+          onAuthError={handleAuthError}
+        />
       )}
     </li>
   )
