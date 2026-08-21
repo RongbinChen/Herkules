@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { Badge } from './ui'
-import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, fmtFileSize, ocrMeta, ocrNeedsBadge } from '../constants/contract'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, fmtFileSize, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import FileDropZone from './FileDropZone'
 
@@ -237,7 +237,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
                         {ocrMeta(f.ocrStatus).label}
                       </Badge>
                     )}
-                      <span className="truncate text-sm font-semibold text-slate-800 hover:text-brand-600">{f.filename}</span>
+                      <span title={f.filename} className="truncate text-sm font-medium text-slate-700 hover:text-brand-600">{displayFilename(f.filename)}</span>
                     </p>
                     {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
                     <p className="mt-0.5 text-[11px] text-slate-400">

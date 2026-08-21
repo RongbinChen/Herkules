@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { contractsAPI } from '../api/api'
 import { Button, Card, Textarea } from './ui'
 import ContractCustomerPicker from './ContractCustomerPicker'
+import { displayFilename } from '../constants/contract'
 
 // "Ask AI" over one customer's contracts. Scoped to a single customer on
 // purpose: the question is answered by a local model on the DGX reading the
@@ -106,7 +107,7 @@ export default function ContractAsk({ token, initialCustomer = null }) {
                         title={s.snippet}
                         className="max-w-full truncate rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
                       >
-                        {s.filename} · p.{s.pageNo}
+                        {displayFilename(s.filename)} · p.{s.pageNo}
                       </span>
                     ))}
                   </div>

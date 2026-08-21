@@ -73,3 +73,16 @@ export const OCR_STATUS = {
 // green tick would be noise. Only the states that explain a missing answer show.
 export const ocrNeedsBadge = (s) => s === 'PENDING' || s === 'RUNNING' || s === 'FAILED'
 export const ocrMeta = (s) => OCR_STATUS[s] || OCR_STATUS.PENDING
+
+// ── Display name ─────────────────────────────────────────────────────────────
+// Scans get run through a shrinker before upload, and whoever does it prefixes
+// the file with （已压缩）/(已瘦身). That is a note about the file's history, not
+// part of its name, and repeated down a list it pushes the part people actually
+// read off to the right. Stripped for display only — download still saves, and
+// search still matches, the real stored name.
+const SIZE_MARK = /^[\s]*[（(]\s*已\s*(压缩|瘦身)\s*[)）][\s]*/
+export function displayFilename(name = '') {
+  let out = name
+  while (SIZE_MARK.test(out)) out = out.replace(SIZE_MARK, '')
+  return out.trim() || name
+}
