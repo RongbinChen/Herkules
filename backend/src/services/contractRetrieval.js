@@ -97,12 +97,15 @@ export function snippetAround(text, terms) {
 // "here is the value" phrasing, that page is pushed to the front.
 const DEFINE_BOOST = [
   { triggers: ['金额', '价格', '价款', '总价', '总额', '合同价', '多少钱', '价值', '货款', 'amount', 'price', 'value', 'cost'],
-    // Deliberately narrow: the phrasing that STATES the figure ("合同总价为：CIF
-    // … 3,067,000 欧元", "TOTAL CONTRACT VALUE: EUR 1,546,500"), not the phrasing
-    // that references it ("合同总价的80%", "total contract value shall be paid").
-    // The discriminator is a colon or 为 straight after the phrase — a reference
-    // uses 的 or "shall".
-    pattern: /合同总价\s*[为：:]|合同价格\s*[为：:]|总价\s*为|total\s+contract\s+(price|value)\s*[：:]/i,
+    // The page that STATES the figure, not the ones that reference it. Chinese
+    // stays narrow (a colon or 为 right after the phrase) because "合同总价" recurs
+    // on every installment page ("合同总价的80%"). English is broader: contracts
+    // phrase the total as "The total price … amounts to: EURO X" or "TOTAL
+    // CONTRACT VALUE: EUR X", so "total price/value/amount" and "amounts to
+    // <currency>" both qualify. Installment pages may also match, but they land
+    // beside the stating page, not instead of it, and the prompt tells the model
+    // to report the stated total rather than an installment.
+    pattern: /(?:合同总价|合同价格|合同价款|总价|总额)\s*[为：:]|(?:total\s+(?:contract\s+)?(?:price|value|amount)|amounts?\s+to)\b[^。\n]{0,60}(?:eur|euro|usd|rmb|cny|€|\$|欧元|美元)\s*[\d.,]{4,}/i,
     bonus: 60 },
 ];
 

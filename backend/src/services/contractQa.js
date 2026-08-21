@@ -18,7 +18,7 @@
 // this fails loudly with DgxOfflineError rather than falling back to answering
 // from the lossy text, which is exactly the path that misreads a spec table.
 import { prisma } from '../index.js';
-import { rankPages } from './contractRetrieval.js';
+import { rankPages, extractTerms } from './contractRetrieval.js';
 
 // Reached over the reverse tunnel; loopback on the VPS lands on the DGX worker.
 const ASK_URL = process.env.DGX_ASK_URL || 'http://127.0.0.1:9099/ask';
@@ -134,8 +134,15 @@ export async function answerContractQuestion({ customerId, team, question, histo
   // 呢", "它的质保期"). Prepend the last question to the RETRIEVAL query so those
   // pages are still found; the answer question itself stays exactly what was
   // asked, and the full history goes to the model for the answer.
+  // Only borrow the previous question for retrieval when THIS one can't stand on
+  // its own — a referential/short follow-up ("那第二台呢", "and the warranty?").
+  // A self-contained question ("what is the delivery time?") must not be polluted
+  // with the previous turn's words: a prior "list all the files" would drag in
+  // file/list pages and push the delivery page out of the top results.
   const lastQ = history.length ? String(history[history.length - 1].question || '') : '';
-  const retrievalQuery = lastQ ? `${lastQ} ${question}` : question;
+  const referential = /(^|[\s，,])(那|这|它|他|她|其|该|前述|上述|同上|前一|后一|它们|他们|再|还有|和|及)|\b(and|then|also|too|what about|how about|it|that|those|these|previous|former|latter|first|second|third|next)\b/i.test(question);
+  const augment = lastQ && (referential || extractTerms(question).length <= 2);
+  const retrievalQuery = augment ? `${lastQ} ${question}` : question;
   const { seeds, sent, candidatePages, terms } = await retrievePages({ customerId, team, question: retrievalQuery });
 
   if (candidatePages === 0) {
