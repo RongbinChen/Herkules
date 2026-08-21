@@ -79,8 +79,14 @@ export default function ContractSummary({ fileId, token, canRefresh, onAuthError
             <dd className={`text-xs ${f.value === NONE ? 'text-slate-400' : 'text-slate-800'}`}>
               {f.value}
               {/* The page is the point: a term without one cannot be checked,
-                  and these summaries are read before signing something. */}
-              {f.source && <span className="ml-1.5 text-[11px] text-slate-400">{f.source}</span>}
+                  and these summaries are read before signing something. A value
+                  taken from the uploader's note is marked differently — it was
+                  typed by a colleague, not read out of the contract. */}
+              {f.source && (
+                f.source === 'note'
+                  ? <span className="ml-1.5 rounded bg-amber-50 px-1 text-[11px] text-amber-700">from note</span>
+                  : <span className="ml-1.5 text-[11px] text-slate-400">{f.source}</span>
+              )}
             </dd>
           </div>
         ))}

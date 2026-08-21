@@ -19,7 +19,9 @@
 // clauses that name them, both of which keyword retrieval finds cheaply.
 import { prisma } from '../index.js';
 import { askDgx, DgxOfflineError } from './contractQa.js';
-import { parseSummary, pickSummaryPages, summaryPrompt, SUMMARY_VERSION } from './contractSummaryFormat.js';
+import {
+  komFromNote, NOTE_SOURCE, parseSummary, pickSummaryPages, summaryPrompt, SUMMARY_VERSION,
+} from './contractSummaryFormat.js';
 
 export { DgxOfflineError };
 
@@ -45,7 +47,7 @@ export async function selectSummaryPages(fileId, docType) {
 export async function summariseContractFile({ fileId, team, refresh = false }) {
   const file = await prisma.contractFile.findFirst({
     where: { id: fileId, team },
-    select: { id: true, filename: true, docType: true, ocrStatus: true, summary: true, summaryAt: true },
+    select: { id: true, filename: true, docType: true, note: true, ocrStatus: true, summary: true, summaryAt: true },
   });
   if (!file) return null; // caller turns this into a 404
 
@@ -73,8 +75,24 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
     pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
   });
 
+  const fields = parseSummary(answer, file.docType);
+
+  // Kom. No. is the one field the contract body reliably does not carry; it is
+  // written into the note when the file is filed. Falling back to the note is
+  // the difference between a permanently empty row and a useful one — but the
+  // source says so, because a colleague's typing and the model's reading are
+  // not the same kind of evidence and the reader is entitled to tell them apart.
+  const kom = fields.find((f) => f.key === 'komNo');
+  if (kom && kom.value === '—') {
+    const fromNote = komFromNote(file.note);
+    if (fromNote) {
+      kom.value = fromNote;
+      kom.source = NOTE_SOURCE;
+    }
+  }
+
   const payload = {
-    fields: parseSummary(answer, file.docType),
+    fields,
     raw: answer,
     version: SUMMARY_VERSION,
     docType: file.docType,
