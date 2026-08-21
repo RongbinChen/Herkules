@@ -40,7 +40,6 @@ export default function ContractSummary({ fileId, token, canRefresh, onAuthError
     return (
       <div className="border-t border-slate-100 bg-slate-50 px-3 py-3 text-xs text-slate-500">
         Reading the contract… the first time takes up to a minute.
-        <span className="ml-1 text-slate-400">第一次要花上一分钟</span>
       </div>
     )
   }
