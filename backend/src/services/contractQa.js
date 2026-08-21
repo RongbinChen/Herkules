@@ -167,9 +167,17 @@ export async function answerContractQuestion({ customerId, team, question, histo
     pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
   });
 
-  // Sources are the keyword hits, not every neighbour we sent for context — those
-  // are the pages worth citing. filename + page only: the request is to show
-  // where it came from, not to offer a download.
-  const sources = seeds.map((p) => ({ filename: p.filename, pageNo: p.pageNo, snippet: p.snippet }));
+  // Show only the pages the answer actually cited, not every page we retrieved.
+  // A metadata answer ("this customer has 3 files") is built from the file list,
+  // not from the keyword-hit pages, so listing those pages as "sources" is
+  // misleading. The model is told to cite as "(file · page N)"; keep a retrieved
+  // page only when its number appears in the answer with a page marker. If the
+  // answer cites nothing, show nothing.
+  const cited = (pageNo) => new RegExp(
+    `(?:第\\s*${pageNo}\\s*页|page\\s*${pageNo}\\b|p\\.?\\s*${pageNo}\\b|·\\s*${pageNo}\\b)`, 'i',
+  ).test(answer || '');
+  const sources = seeds
+    .filter((p) => cited(p.pageNo))
+    .map((p) => ({ filename: p.filename, pageNo: p.pageNo, snippet: p.snippet }));
   return { answer, reason: null, sources, candidatePages, terms };
 }
