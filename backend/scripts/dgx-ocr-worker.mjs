@@ -35,6 +35,7 @@
 import { spawn } from 'child_process';
 import { createServer } from 'http';
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -56,6 +57,15 @@ const WAKE_PORT = Number(process.env.WAKE_PORT || 9099);
 const IDLE_POLL_MS = Number(process.env.IDLE_POLL_MS || 15 * 60 * 1000);
 const DPI = Number(process.env.OCR_DPI || 300);
 const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS || 180000);
+
+// Pause switch. When this file exists, the worker stops claiming NEW files to
+// transcribe, but keeps serving Q&A (/ask) — the two share this process and the
+// GPU, so this frees the GPU for fast answers without taking the worker down.
+// A file (not an in-memory flag) so it survives a restart and can be toggled
+// from the shell (touch/rm) as well as over HTTP. The current file, if one is
+// mid-transcription, is allowed to finish; pause only stops the NEXT claim.
+const PAUSE_FILE = process.env.OCR_PAUSE_FILE || '/home/henner/.config/contract-ocr.paused';
+const isPaused = () => existsSync(PAUSE_FILE);
 
 const ONCE = process.argv.includes('--once');
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -274,6 +284,7 @@ let draining = false;
 
 async function drain() {
   if (draining) return;            // a wake during a run must not start a second pass
+  if (isPaused()) { log('转写已暂停（存在暂停标记），只服务问答，不领取新文件'); return; }
   draining = true;
   // Totals for the "queue is empty" mail. Scoped to this pass, not the process:
   // what the reader wants to know is "the batch I just uploaded is ready", not
@@ -294,6 +305,9 @@ async function drain() {
 
       for (const item of queue.items) {
         if (LIMIT && done >= LIMIT) { log(`到达 --limit ${LIMIT}`); return; }
+        // Re-checked each file so a pause set mid-pass takes effect at the next
+        // file boundary rather than only at the start of a drain.
+        if (isPaused()) { log('转写已暂停，停在当前文件之后'); return; }
         const c = await api(`/ocr/claim/${item.id}`, { method: 'POST' });
         if (c.status === 409) continue;          // someone else got it
         if (!c.ok) { log(`认领 ${item.id} 失败: ${c.status}`); continue; }
@@ -373,7 +387,28 @@ createServer((req, res) => {
   }
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, draining, model: VLM_MODEL }));
+    res.end(JSON.stringify({ ok: true, draining, paused: isPaused(), model: VLM_MODEL }));
+    return;
+  }
+  // Toggle the transcription pause. Same token as /ask; Q&A keeps working while
+  // paused. /resume kicks a drain so queued files start again without waiting
+  // for the idle poll. touch/rm on PAUSE_FILE does the same thing from a shell.
+  if (req.method === 'POST' && (req.url === '/pause' || req.url === '/resume')) {
+    if (String(req.headers['x-ocr-token'] || '') !== OCR_TOKEN) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"unauthorized"}');
+      return;
+    }
+    const pause = req.url === '/pause';
+    (pause
+      ? fs.writeFile(PAUSE_FILE, `paused ${new Date().toISOString()}\n`).catch(() => {})
+      : fs.unlink(PAUSE_FILE).catch(() => {})
+    ).then(() => {
+      log(pause ? '转写已暂停（收到 /pause）' : '转写已恢复（收到 /resume）');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, paused: pause }));
+      if (!pause) drain().catch((e) => log('resume drain 出错:', e.message));
+    });
     return;
   }
   // Q&A: the VPS relays a question plus the pages it located. Same token as the
