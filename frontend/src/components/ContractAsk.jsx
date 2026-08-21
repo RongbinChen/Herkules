@@ -4,9 +4,8 @@ import { Button, Card, Textarea } from './ui'
 import CustomerPicker from './CustomerPicker'
 
 // "Ask AI" over one customer's contracts. Scoped to a single customer on
-// purpose (see the backend note): the question is answered by a local vision
-// model on the DGX reading the original contract pages, so it needs a customer
-// to bound which files are in scope.
+// purpose: the question is answered by a local model on the DGX reading the
+// transcribed pages, so it needs a customer to bound which files are in scope.
 //
 // Deliberately honest about its states: when the files are not read yet, or the
 // model is offline, it says so rather than inventing an answer — a confidently
@@ -30,54 +29,39 @@ export default function ContractAsk({ token, initialCustomer = null }) {
       setResult(data)
     } catch (e) {
       if (e.response?.status === 503 && e.response.data?.offline) {
-        // The local model is unreachable. We show this, and crucially do not
-        // retry against the transcribed text — that is the path that misreads a
-        // spec table, which is the whole reason the model reads the image.
-        setError('本地模型离线（DGX 未连接）。合同问答需要本地模型在线，稍后再试。')
+        // The local model is unreachable. We show this rather than falling back
+        // to a less reliable path.
+        setError('The local model is offline (DGX not connected). Contract Q&A needs it online — please try again later.')
       } else if (e.code === 'ECONNABORTED') {
-        setError('等待超时。原页较多时读取会慢，稍后再试或把问题问得更具体。')
+        setError('Timed out. Try again, or ask a more specific question.')
       } else {
-        setError(e.response?.data?.error || '提问失败')
+        setError(e.response?.data?.error || 'Failed to get an answer')
       }
     } finally {
       setLoading(false)
     }
   }
 
-  async function openSource(s) {
-    try {
-      const res = await contractsAPI.download(s.fileId, token)
-      const url = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = s.filename
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      setError('打开原文件失败')
-    }
-  }
-
   const reasonText = {
-    'no-readable-pages': '这个客户名下的合同还没识别完，暂时没有可检索的文字。识别完成后再来问。',
-    'no-match': '在该客户的合同里没找到和问题相关的页。换个说法、或用更具体的词再试一次。',
+    'no-readable-pages': 'This customer’s contracts have not been read yet, so there is no text to search. Try again once OCR has finished.',
+    'no-match': 'No pages in this customer’s contracts matched the question. Try rephrasing or using more specific terms.',
   }
 
   return (
     <Card className="mb-4 border-brand-100 bg-brand-50/40 p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-sm font-bold text-slate-800">问 AI</span>
-        <span className="text-xs text-slate-500">针对某个客户名下的合同问答，答案由本地模型读原页给出</span>
+        <span className="text-sm font-bold text-slate-800">Ask AI</span>
+        <span className="text-xs text-slate-500">Answers about one customer’s contracts, from a local model.</span>
       </div>
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-slate-500">客户</span>
+        <span className="text-xs font-semibold text-slate-500">Customer</span>
         <div className="min-w-[16rem] flex-1">
           <CustomerPicker
             value={customer}
             onChange={setCustomer}
             allowCreate={false}
-            placeholder="选择要提问的客户…"
+            placeholder="Select a customer…"
           />
         </div>
       </div>
@@ -89,16 +73,16 @@ export default function ContractAsk({ token, initialCustomer = null }) {
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ask() }}
           rows={2}
           maxLength={500}
-          placeholder={customer ? `就「${customer.name}」的合同提问，例如：质保期是多久？合同金额是多少？` : '先选一个客户'}
+          placeholder={customer ? `Ask about ${customer.name}’s contracts — e.g. What is the contract value? What is the warranty period?` : 'Select a customer first'}
           className="flex-1"
         />
         <Button size="sm" onClick={ask} disabled={!canAsk} className="shrink-0">
-          {loading ? '读原页中…' : '提问'}
+          {loading ? 'Asking…' : 'Ask'}
         </Button>
       </div>
 
       {loading && (
-        <p className="mt-2 text-xs text-slate-500">正在把命中的原页交给本地模型阅读，通常十几到几十秒…</p>
+        <p className="mt-2 text-xs text-slate-500">Reading the matched pages with the local model…</p>
       )}
 
       {error && (
@@ -114,17 +98,16 @@ export default function ContractAsk({ token, initialCustomer = null }) {
               </div>
               {result.sources?.length > 0 && (
                 <div className="mt-2">
-                  <p className="mb-1 text-[11px] font-semibold text-slate-400">依据（点开原文件核对）</p>
+                  <p className="mb-1 text-[11px] font-semibold text-slate-400">Sources</p>
                   <div className="flex flex-wrap gap-1.5">
                     {result.sources.map((s, i) => (
-                      <button
+                      <span
                         key={i}
-                        onClick={() => openSource(s)}
                         title={s.snippet}
-                        className="max-w-full truncate rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-brand-100 hover:text-brand-700"
+                        className="max-w-full truncate rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
                       >
-                        {s.filename} · 第 {s.pageNo} 页
-                      </button>
+                        {s.filename} · p.{s.pageNo}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -132,7 +115,7 @@ export default function ContractAsk({ token, initialCustomer = null }) {
             </>
           ) : (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              {reasonText[result.reason] || '暂时无法回答。'}
+              {reasonText[result.reason] || 'No answer is available right now.'}
             </p>
           )}
         </div>

@@ -82,6 +82,24 @@ export function snippetAround(text, terms) {
   return (start > 0 ? '…' : '') + text.slice(start, at + 120).trim() + (at + 120 < text.length ? '…' : '');
 }
 
+// Definition boost. Keyword frequency can find the pages that *mention* a
+// concept but not the one page that *states its value*: in one contract "合同总价"
+// appears on a dozen pages ("合同总价的80%…") while the actual figure ("合同总价为
+// CIF … 3,067,000 欧元") sits on exactly one. Without this, an amount question
+// retrieves the installment pages and the model reports the 80% figure as the
+// total. When the question is about a concept below and a page carries its
+// "here is the value" phrasing, that page is pushed to the front.
+const DEFINE_BOOST = [
+  { triggers: ['金额', '价格', '价款', '总价', '总额', '合同价', '多少钱', '价值', '货款', 'amount', 'price', 'value', 'cost'],
+    // Deliberately narrow: the phrasing that STATES the figure ("合同总价为：CIF
+    // … 3,067,000 欧元", "TOTAL CONTRACT VALUE: EUR 1,546,500"), not the phrasing
+    // that references it ("合同总价的80%", "total contract value shall be paid").
+    // The discriminator is a colon or 为 straight after the phrase — a reference
+    // uses 的 or "shall".
+    pattern: /合同总价\s*[为：:]|合同价格\s*[为：:]|总价\s*为|total\s+contract\s+(price|value)\s*[：:]/i,
+    bonus: 60 },
+];
+
 // Score pages against the question and return the top ones, capped per file so a
 // long appendix can't crowd out the page that holds the answer.
 //
@@ -90,6 +108,8 @@ export function snippetAround(text, terms) {
 export function rankPages(pages, question, { maxPages = 5, maxPerFile = 3 } = {}) {
   const terms = extractTerms(question);
   if (!terms.length || !pages.length) return { pages: [], terms };
+  const q = String(question || '').toLowerCase();
+  const boosts = DEFINE_BOOST.filter((b) => b.triggers.some((t) => q.includes(t)));
 
   const scored = pages.map((p) => {
     const hay = String(p.text || '').toLowerCase();
@@ -110,7 +130,14 @@ export function rankPages(pages, question, { maxPages = 5, maxPerFile = 3 } = {}
     }
     // Matching several distinct terms is a stronger signal than one term many
     // times, so weight breadth over depth.
-    return { p, score: score + distinct * 3 };
+    let total = score + distinct * 3;
+    // The page that states the value, not merely references it, jumps the queue —
+    // but only if it already matched the question at all, so an unrelated page
+    // carrying the phrase is not dragged in.
+    if (total > 0) {
+      for (const b of boosts) { if (b.pattern.test(p.text || '')) { total += b.bonus; break; } }
+    }
+    return { p, score: total };
   }).filter((s) => s.score > 0);
 
   scored.sort((a, b) => b.score - a.score || a.p.pageNo - b.p.pageNo);
