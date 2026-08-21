@@ -159,6 +159,12 @@ export const contractsAPI = {
   // Ask-AI picker so it only offers customers a question can be answered from.
   askCustomers: (token) => api.get('/contracts/customers', withUnlock(token)),
   patch: (fileId, data, token) => api.patch(`/contracts/files/${fileId}`, data, withUnlock(token)),
+  // Key-terms summary of one file. Uncached it spends a minute in the local
+  // model, so the timeout is generous — but bounded, since a wedged DGX must
+  // not hold the tab open forever. `refresh` re-runs it instead of reading the
+  // stored copy, and the server only lets the uploader or an admin do that.
+  summarize: (fileId, token, refresh = false) =>
+    api.post(`/contracts/files/${fileId}/summary`, { refresh }, withUnlock(token, { timeout: 180000 })),
   // Ask AI about one customer's contracts. The vision model reads the original
   // page images on the DGX, so this can take tens of seconds — override the
   // client's default timeout for this one call.

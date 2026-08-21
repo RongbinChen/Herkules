@@ -17,33 +17,33 @@ enum UserTeam {
 }
 
 model User {
-  id                Int      @id @default(autoincrement())
-  email             String   @unique
+  id                Int                @id @default(autoincrement())
+  email             String             @unique
   password          String
   name              String
-  isAdmin           Boolean  @default(false)
-  team              UserTeam @default(HRC)
-  calendarFeedToken String?  @unique
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  isAdmin           Boolean            @default(false)
+  team              UserTeam           @default(HRC)
+  calendarFeedToken String?            @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   events            Event[]
-  createdTrips      Trip[]   @relation("TripCreator")
-  assignedTrips     Trip[]   @relation("TripAssignees")
+  createdTrips      Trip[]             @relation("TripCreator")
+  assignedTrips     Trip[]             @relation("TripAssignees")
   visitReports      VisitReport[]
   hotProjects       HotProject[]       @relation("HotProjectOwner")
   hotProjectUpdates HotProjectUpdate[]
   customerNotes     CustomerNote[]
-  contractUploads   ContractFile[]    @relation("ContractUploader")
-  contractPinEdits  TeamContractPin[] @relation("ContractPinEditor")
+  contractUploads   ContractFile[]     @relation("ContractUploader")
+  contractPinEdits  TeamContractPin[]  @relation("ContractPinEditor")
 }
 
 // ── Hot projects (internal sales open-projects list, from the WAV template) ──
 // Sensitive module: per-record visibility. TEAM = all logged-in staff;
 // PRIVATE = owner + admin only. The AI assistant applies the same filter.
 enum HotProjectCategory {
-  OPEN      // Enquiry - Open Projects
+  OPEN // Enquiry - Open Projects
   POTENTIAL // Potential Projects
-  REVAMP    // Revamp — upgrades / retrofits of machines already in the field
+  REVAMP // Revamp — upgrades / retrofits of machines already in the field
 }
 
 enum HotProjectVisibility {
@@ -92,56 +92,56 @@ model HotProjectUpdate {
 }
 
 model Event {
-  id          Int              @id @default(autoincrement())
-  title       String
-  description String?
-  start       DateTime
-  end         DateTime
-  allDay      Boolean          @default(false)
-  color       String           @default("#2563eb")
-  location    String?
-  category    ActivityCategory @default(WORK_SESSION)
-  status      ActivityStatus   @default(PLANNED)
-  priority    ActivityPriority @default(MEDIUM)
-  userId      Int
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  customerId  Int?
-  customer    Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  agentId     Int?
-  agent       Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  id            Int              @id @default(autoincrement())
+  title         String
+  description   String?
+  start         DateTime
+  end           DateTime
+  allDay        Boolean          @default(false)
+  color         String           @default("#2563eb")
+  location      String?
+  category      ActivityCategory @default(WORK_SESSION)
+  status        ActivityStatus   @default(PLANNED)
+  priority      ActivityPriority @default(MEDIUM)
+  userId        Int
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  customerId    Int?
+  customer      Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  agentId       Int?
+  agent         Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
   // Auto-created reminders link back to their source visit report.
   visitReportId Int?
-  visitReport   VisitReport?   @relation(fields: [visitReportId], references: [id], onDelete: SetNull)
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  visitReport   VisitReport?     @relation(fields: [visitReportId], references: [id], onDelete: SetNull)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Customer {
-  id           Int            @id @default(autoincrement())
-  name         String
-  address      String?
-  contactName  String?
-  contactPhone String?
-  email        String?
-  contacts     Json?          // 多联系人 [{name, phone, title, email}]；上面的 contactName/Phone/email 为主联系人（第一个）
-  notes        String?
-  latitude     Float?
-  longitude    Float?
-  status       CustomerStatus @default(LEAD) // 潜在 / 合作中 / 暂停 / 流失
-  tier         CustomerTier   @default(C)    // A=战略 / B=重点 / C=普通
-  tags         String[]                       // 自由标签（行业、来源等）
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  events       Event[]
-  tripStops    TripStop[]
-  visitReports VisitReport[]
-  projectLinks CustomerProjectLink[]
-  hotProjects  HotProject[]
+  id            Int                   @id @default(autoincrement())
+  name          String
+  address       String?
+  contactName   String?
+  contactPhone  String?
+  email         String?
+  contacts      Json? // 多联系人 [{name, phone, title, email}]；上面的 contactName/Phone/email 为主联系人（第一个）
+  notes         String?
+  latitude      Float?
+  longitude     Float?
+  status        CustomerStatus        @default(LEAD) // 潜在 / 合作中 / 暂停 / 流失
+  tier          CustomerTier          @default(C) // A=战略 / B=重点 / C=普通
+  tags          String[] // 自由标签（行业、来源等）
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  events        Event[]
+  tripStops     TripStop[]
+  visitReports  VisitReport[]
+  projectLinks  CustomerProjectLink[]
+  hotProjects   HotProject[]
   // Timestamped log entries, each attributed to whoever wrote it. Named
   // noteEntries rather than notes because the free-text `notes` field above is
   // already taken — that one is the customer's standing description, this is
   // the running record of what happened.
-  noteEntries  CustomerNote[]
+  noteEntries   CustomerNote[]
   contractFiles ContractFile[]
 
   @@index([status])
@@ -184,23 +184,23 @@ model CustomerProjectLink {
 
 // 拜访报告：销售现场记录（照片/随手记）经 AI 整理成结构化报告，关联客户/招投标项目
 model VisitReport {
-  id          Int               @id @default(autoincrement())
-  title       String
-  visitDate   DateTime
-  customerId  Int?
-  customer    Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  threadKey   String?           // 关联的招投标项目线索键（BidProject.threadKey）
-  authorId    Int               // 创建人（按创建人权限：本人/管理员可编辑）
-  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  summary     String?           // 一句话摘要（AI）
-  content     Json?             // 结构化正文：{ attendees, needs, equipment, competitors, budgetTimeline, nextSteps, risks }
-  rawNotes    String?           // 原始输入（随手记 + 照片 OCR 文本）
-  attachments Json?             // 附件元信息 [{ name, kind }]
-  status      VisitReportStatus @default(DRAFT)
-  aiModel     String?
+  id             Int               @id @default(autoincrement())
+  title          String
+  visitDate      DateTime
+  customerId     Int?
+  customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  threadKey      String? // 关联的招投标项目线索键（BidProject.threadKey）
+  authorId       Int // 创建人（按创建人权限：本人/管理员可编辑）
+  author         User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  summary        String? // 一句话摘要（AI）
+  content        Json? // 结构化正文：{ attendees, needs, equipment, competitors, budgetTimeline, nextSteps, risks }
+  rawNotes       String? // 原始输入（随手记 + 照片 OCR 文本）
+  attachments    Json? // 附件元信息 [{ name, kind }]
+  status         VisitReportStatus @default(DRAFT)
+  aiModel        String?
   reminderEvents Event[] // calendar reminders auto-created from this report's targets
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([customerId])
   @@index([authorId])
@@ -225,40 +225,40 @@ model CustomerShare {
 
 // 行程：给某位同事安排的一次出差/拜访，含多个客户站点，可生成公开分享链接
 model Trip {
-  id          Int        @id @default(autoincrement())
+  id               Int        @id @default(autoincrement())
   title            String
   notes            String?
   startTime        DateTime
   endTime          DateTime
   hidePhoneOnShare Boolean    @default(false) // 公开分享页是否隐藏联系电话
   shareToken       String     @unique // 公开分享令牌（免登录访问）
-  flights          Json?      // 可选航班：[{date, flightNo, routing, time, notes}]
-  constraints      String?    // 规划约束/偏好（自由文本，喂给模型）
-  itinerary        Json?      // 模型生成：{ days:[{date,day,location,program,logistics}], notes:[...] }
-  itineraryModel   String?    // 生成所用模型
-  itineraryAt      DateTime?  // 生成时间
-  createdById Int
-  createdBy   User       @relation("TripCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  assignees   User[]     @relation("TripAssignees")
-  stops       TripStop[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  flights          Json? // 可选航班：[{date, flightNo, routing, time, notes}]
+  constraints      String? // 规划约束/偏好（自由文本，喂给模型）
+  itinerary        Json? // 模型生成：{ days:[{date,day,location,program,logistics}], notes:[...] }
+  itineraryModel   String? // 生成所用模型
+  itineraryAt      DateTime? // 生成时间
+  createdById      Int
+  createdBy        User       @relation("TripCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignees        User[]     @relation("TripAssignees")
+  stops            TripStop[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   @@index([shareToken])
 }
 
 // 行程站点：行程中的一个客户拜访点，按 order 排序（最近邻路线优化后的顺序）
 model TripStop {
-  id              Int       @id @default(autoincrement())
-  tripId          Int
-  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  customerId      Int
-  customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  order           Int       @default(0) // 拜访顺序（0-based）
-  plannedArrival  DateTime? // 建议到访时间（按起止时间均分）
-  priority        String?   @default("NORMAL") // PRIORITY / NORMAL / BACKUP
-  visitDuration   String?   // 拜访时长提示，如 "half day" / "1 day" / "1-1.5 days"
-  notes           String?
+  id             Int       @id @default(autoincrement())
+  tripId         Int
+  trip           Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  customerId     Int
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order          Int       @default(0) // 拜访顺序（0-based）
+  plannedArrival DateTime? // 建议到访时间（按起止时间均分）
+  priority       String?   @default("NORMAL") // PRIORITY / NORMAL / BACKUP
+  visitDuration  String? // 拜访时长提示，如 "half day" / "1 day" / "1-1.5 days"
+  notes          String?
 
   @@index([tripId])
 }
@@ -278,36 +278,36 @@ model Agent {
 }
 
 model BidProject {
-  id          Int       @id @default(autoincrement())
-  projectName String
+  id               Int             @id @default(autoincrement())
+  projectName      String
   // NOT unique: re-tenders/multiple announcements of one project share the code
   // (e.g. "...(1)" and "...(2)"); identity is sourceUrl, project grain is threadKey.
-  projectCode String?
-  region      String?
-  industry    String?
-  biddingType BidType   @default(NEW)
-  publishDate DateTime?
-  deadline    DateTime?
-  budget      String?
-  status      BidStatus @default(PUBLISHED)
-  sourceUrl        String    @unique
+  projectCode      String?
+  region           String?
+  industry         String?
+  biddingType      BidType         @default(NEW)
+  publishDate      DateTime?
+  deadline         DateTime?
+  budget           String?
+  status           BidStatus       @default(PUBLISHED)
+  sourceUrl        String          @unique
   rawContent       String?
   summary          String?
   lastStatusChange DateTime?
   bidStage         BidStage? // 生命周期阶段（由 infoClass 派生：招标→变更→评标→中标）
   // ── Structured fields (DeepSeek extraction) ──
-  purchaser     String? // 采购单位
-  winner        String? // 中标方（中标公告）
-  winningPrice  String? // 中标价
-  equipmentType String? // 设备类型标签（轧辊磨床/龙门铣/加工中心…）
-  infoClass     String? // 公告类型：New Tenders / Tender Changes / Evaluation Results / Tender Awards
-  threadKey     String? // 项目线索键（Bidding NO，归并同一项目的多条公告）
-  competitorId  Int? // 中标方匹配到的竞争对手
-  competitor    Competitor?     @relation(fields: [competitorId], references: [id])
-  follows       ProjectFollow[]
-  notifications Notification[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  purchaser        String? // 采购单位
+  winner           String? // 中标方（中标公告）
+  winningPrice     String? // 中标价
+  equipmentType    String? // 设备类型标签（轧辊磨床/龙门铣/加工中心…）
+  infoClass        String? // 公告类型：New Tenders / Tender Changes / Evaluation Results / Tender Awards
+  threadKey        String? // 项目线索键（Bidding NO，归并同一项目的多条公告）
+  competitorId     Int? // 中标方匹配到的竞争对手
+  competitor       Competitor?     @relation(fields: [competitorId], references: [id])
+  follows          ProjectFollow[]
+  notifications    Notification[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([threadKey])
   @@index([publishDate])
@@ -382,16 +382,16 @@ model SavedSearch {
 // 开标记录：人工上传 Excel，DeepSeek 识别结构化字段后入库
 model BidOpening {
   id           Int       @id @default(autoincrement())
-  biddingNo    String?   // 招标编号（识别）
+  biddingNo    String? // 招标编号（识别）
   projectName  String?
   openDate     DateTime? // 开标日期（识别）
-  purchaser    String?   // 采购/招标单位（识别）
-  bidders      Json?     // 投标人清单 [{name, price, note}]
-  summary      String?   // 一句话摘要（识别）
-  rawText      String?   // 从 Excel 提取的原始文本（备查）
+  purchaser    String? // 采购/招标单位（识别）
+  bidders      Json? // 投标人清单 [{name, price, note}]
+  summary      String? // 一句话摘要（识别）
+  rawText      String? // 从 Excel 提取的原始文本（备查）
   fileName     String?
   shareToken   String?   @unique // 公开分享令牌（免登录查看）
-  translations Json?     // 语言翻译缓存，如 { en: { projectName, purchaser, bidders:[{country,...}] } }
+  translations Json? // 语言翻译缓存，如 { en: { projectName, purchaser, bidders:[{country,...}] } }
   uploadedById Int?
   createdAt    DateTime  @default(now())
 
@@ -437,21 +437,21 @@ enum BidType {
 
 // 公告推导的项目生命周期阶段（自动，来自抓取的 infoClass）
 enum BidStage {
-  TENDER     // 招标公告 New Tenders
-  CHANGE     // 变更公告 Tenders Changes
+  TENDER // 招标公告 New Tenders
+  CHANGE // 变更公告 Tenders Changes
   EVALUATION // 评标结果 Evaluation Results
-  AWARD      // 中标公告 Tender Awards
+  AWARD // 中标公告 Tender Awards
 }
 
 // 我方投标跟踪状态（手工，销售团队视角）
 enum OurBidStatus {
-  WATCHING    // 关注中
-  PREPARING   // 准备投标
-  SUBMITTED   // 已投标
+  WATCHING // 关注中
+  PREPARING // 准备投标
+  SUBMITTED // 已投标
   SHORTLISTED // 入围
-  WON         // 中标
-  LOST        // 落标
-  ABANDONED   // 放弃
+  WON // 中标
+  LOST // 落标
+  ABANDONED // 放弃
 }
 
 // 我方对某个真实项目（按 threadKey 归并）的手工投标跟踪
@@ -509,12 +509,13 @@ enum CustomerTier {
 // 合同文档分类。这些是稳定的机器标识，中文标签在前端 constants/contract.js。
 enum ContractDocType {
   COMMERCIAL // 商务合同
-  TECHNICAL  // 技术协议
-  QUOTATION  // 报价单
-  FAT        // 出厂验收 Factory Acceptance Test
-  FAC        // 最终验收证书
-  OTHER      // 其他/未分类
+  TECHNICAL // 技术协议
+  QUOTATION // 报价单
+  FAT // 出厂验收 Factory Acceptance Test
+  FAC // 最终验收证书
+  OTHER // 其他/未分类
 }
+
 // Commercial and technical contracts, kept behind a per-team PIN. The PIN is
 // checked server-side and the file bytes never leave the box without it — a
 // front-end-only gate would still ship the data to every browser that asks.
@@ -531,9 +532,9 @@ model TeamContractPin {
 }
 
 model ContractFile {
-  id           Int      @id @default(autoincrement())
+  id           Int             @id @default(autoincrement())
   customerId   Int
-  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   // Which team's PIN unlocks this file.
   team         UserTeam
   // Non-null with a default rather than optional: `db push` can add a column
@@ -545,27 +546,41 @@ model ContractFile {
   filename     String // original name as uploaded, shown in the UI
   // Name on disk (uuid + extension). Never derived from the uploaded name, so a
   // crafted filename cannot escape the storage directory.
-  storedName   String   @unique
+  storedName   String          @unique
   mimeType     String?
   size         Int
   note         String?
   uploadedById Int?
-  uploadedBy   User?    @relation("ContractUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  createdAt    DateTime @default(now())
+  uploadedBy   User?           @relation("ContractUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
 
   // ── OCR (every contract on file is a scan; see ContractPage) ──────────────
   // Existing rows default to PENDING, which is the truth: nothing has been
   // read yet. The worker picks them up in the same queue as new uploads, so
   // the backfill needs no separate code path.
-  ocrStatus    OcrStatus @default(PENDING)
-  ocrPages     Int?
-  ocrError     String?   // last failure, kept so a stuck file can be diagnosed
-  ocrAt        DateTime?
+  ocrStatus  OcrStatus      @default(PENDING)
+  ocrPages   Int?
+  ocrError   String? // last failure, kept so a stuck file can be diagnosed
+  ocrAt      DateTime?
   // Bumped when a file is re-queued, so a result arriving late from an
   // abandoned attempt can be recognised and dropped rather than overwriting a
   // newer pass.
-  ocrAttempt   Int       @default(0)
-  pages        ContractPage[]
+  ocrAttempt Int            @default(0)
+  pages      ContractPage[]
+
+  // ── Key-terms summary (on demand, cached) ─────────────────────────────────
+  // A generated read of the contract's headline terms — number, parties, value,
+  // payment, delivery, warranty. Cached because producing it costs tens of
+  // seconds on a GPU shared with transcription, and the answer does not change
+  // unless the file does. Nullable rather than defaulted: "never asked for" and
+  // "asked for and found nothing" are different states, and only the second one
+  // should stop us asking again.
+  //
+  // Json, not a column per term: the field list is a prompt detail that will be
+  // tuned, and every tweak would otherwise be a migration on a database that
+  // has to be migrated by hand.
+  summary   Json?
+  summaryAt DateTime?
 
   @@index([customerId])
   @@index([team])
@@ -580,8 +595,8 @@ model ContractPage {
   id        Int          @id @default(autoincrement())
   fileId    Int
   file      ContractFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  pageNo    Int          // 1-based, matching what a person sees in a PDF reader
-  text      String       // transcription; may be empty for a blank or unreadable page
+  pageNo    Int // 1-based, matching what a person sees in a PDF reader
+  text      String // transcription; may be empty for a blank or unreadable page
   createdAt DateTime     @default(now())
 
   @@unique([fileId, pageNo])
@@ -589,9 +604,9 @@ model ContractPage {
 }
 
 enum OcrStatus {
-  PENDING   // queued — the state every pre-existing row starts in
-  RUNNING   // claimed by the worker
+  PENDING // queued — the state every pre-existing row starts in
+  RUNNING // claimed by the worker
   DONE
-  FAILED    // see ocrError; re-queued by setting this back to PENDING
-  SKIPPED   // nothing to read (unsupported type)
+  FAILED // see ocrError; re-queued by setting this back to PENDING
+  SKIPPED // nothing to read (unsupported type)
 }
