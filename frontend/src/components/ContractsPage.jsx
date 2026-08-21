@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { contractsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Badge, Button, Card, Input, Select } from './ui'
-import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
+import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
@@ -133,14 +133,22 @@ export default function ContractsPage() {
 
   // Groups cover the rows fetched so far; "Load more" grows the existing groups
   // rather than opening a second block for a customer that already has one.
+  //
+  // Customers are ordered by their most recent file, not by name — whoever we
+  // last filed something for sits at the top. Sorted explicitly rather than
+  // leaning on the server's createdAt-desc order, so the view keeps its meaning
+  // if that ever changes. Since "Load more" only ever appends older rows, no
+  // group's newest date can move, and the order on screen never reshuffles.
   const groups = useMemo(() => {
     const byCustomer = new Map()
     for (const f of items) {
       const id = f.customer?.id ?? 0
-      if (!byCustomer.has(id)) byCustomer.set(id, { id, name: f.customer?.name || 'Unknown customer', files: [] })
-      byCustomer.get(id).files.push(f)
+      if (!byCustomer.has(id)) byCustomer.set(id, { id, name: f.customer?.name || 'Unknown customer', files: [], newest: 0 })
+      const g = byCustomer.get(id)
+      g.files.push(f)
+      g.newest = Math.max(g.newest, new Date(f.createdAt).getTime() || 0)
     }
-    return [...byCustomer.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+    return [...byCustomer.values()].sort((a, b) => b.newest - a.newest)
   }, [items])
 
   const showGrouped = grouped && !customerId
@@ -154,8 +162,13 @@ export default function ContractsPage() {
 
   // One row, rendered either standalone or inside a customer group — the group
   // header already names the customer, so the row drops that line there.
-  const renderRow = (f, showCustomer) => (
-    <li key={f.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+  const renderRow = (f, { showCustomer = true, boxed = true } = {}) => (
+    <li
+      key={f.id}
+      className={`flex items-start justify-between gap-3 p-3 ${
+        boxed ? 'rounded-xl border border-slate-200 bg-white' : ''
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
@@ -166,8 +179,15 @@ export default function ContractsPage() {
               {ocrMeta(f.ocrStatus).label}
             </Badge>
           )}
-          <button onClick={() => doDownload(f)} className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 transition hover:text-brand-600">
-            {f.filename}
+          {/* Lighter than the group header on purpose: bold on every row
+              competes with the customer name and the eye loses the grouping.
+              title keeps the real stored name one hover away. */}
+          <button
+            onClick={() => doDownload(f)}
+            title={f.filename}
+            className="min-w-0 truncate text-left text-sm font-medium text-slate-700 transition hover:text-brand-600"
+          >
+            {displayFilename(f.filename)}
           </button>
         </div>
         {showCustomer && (
@@ -352,20 +372,23 @@ export default function ContractsPage() {
             {groups.map((g) => {
               const isCollapsed = collapsed.has(g.id)
               return (
-                <section key={g.id}>
+                /* One box per customer, not one per file. Rows carrying their
+                   own border made every group look the same as the last, which
+                   is the thing that made the boundaries hard to find. */
+                <section key={g.id} className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
                   {/* The header collapses; opening the customer is the small
                       arrow on the right. Putting the navigation on the name
                       would send people to another page on the click they meant
                       as "fold this away". */}
-                  <div className="mb-1.5 flex items-center gap-2">
+                  <div className={`flex items-center gap-2 bg-slate-100 px-3 py-2 ${isCollapsed ? '' : 'border-b border-slate-200'}`}>
                     <button
                       onClick={() => toggleGroup(g.id)}
                       aria-expanded={!isCollapsed}
-                      className="flex min-w-0 items-center gap-2 text-left transition hover:opacity-70"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left transition hover:opacity-70"
                     >
                       <span className="text-xs text-slate-400">{isCollapsed ? '▸' : '▾'}</span>
                       <span className="min-w-0 truncate text-sm font-bold text-slate-800">{g.name}</span>
-                      <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                         {g.files.length}
                       </span>
                     </button>
@@ -373,18 +396,22 @@ export default function ContractsPage() {
                       onClick={() => navigate(`/customers/${g.id}`)}
                       title={`Open ${g.name}`}
                       aria-label={`Open ${g.name}`}
-                      className="shrink-0 text-xs font-semibold text-slate-300 transition hover:text-brand-600"
+                      className="shrink-0 text-xs font-semibold text-slate-400 transition hover:text-brand-600"
                     >
                       ↗
                     </button>
                   </div>
-                  {!isCollapsed && <ul className="space-y-2">{g.files.map((f) => renderRow(f, false))}</ul>}
+                  {!isCollapsed && (
+                    <ul className="divide-y divide-slate-100">
+                      {g.files.map((f) => renderRow(f, { showCustomer: false, boxed: false }))}
+                    </ul>
+                  )}
                 </section>
               )
             })}
           </div>
         ) : (
-          <ul className="space-y-2">{items.map((f) => renderRow(f, true))}</ul>
+          <ul className="space-y-2">{items.map((f) => renderRow(f))}</ul>
         )}
 
         {items.length < total && (
