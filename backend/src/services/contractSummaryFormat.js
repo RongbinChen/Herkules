@@ -66,7 +66,7 @@ const COMMERCIAL_FIELDS = [
   { key: 'seller', label: 'Seller', topic: 'parties', aliases: ['卖方', '供货方', '供方'] },
   { key: 'amount', label: 'Contract value', topic: 'amount',
     aliases: ['合同价值', '合同金额', '合同总价', '合同总额', '总金额', '总价', '总额'],
-    hint: 'copy the currency and figure exactly as printed — do not convert or round' },
+    hint: 'keep the figure exactly; do not convert between currencies or round' },
   { key: 'payment', label: 'Payment terms', topic: 'payment',
     aliases: ['支付条款', '付款条件', '付款条款', '支付方式', '付款方式'],
     hint: 'condense to one line, e.g. "20% advance / 70% on shipment / 10% on acceptance"' },
@@ -96,14 +96,19 @@ const TECHNICAL_FIELDS = [
 ];
 
 // Bumped whenever the fields, the prompt, or the reader change, so summaries
-// stored under the old shape are not served as-is. Whether an old summary can
-// be refreshed from its stored model text or has to be re-asked is a separate
-// question, decided by field coverage rather than by this number — see
-// summariseContractFile. A parser-only bump (3 → 4, which taught the reader to
-// read Chinese row labels) re-reads the stored text for free; a bump that adds
-// a field (4 → 5, which added Signed on to commercial contracts) cannot, because
-// the old text was never asked for that field.
-export const SUMMARY_VERSION = 5;
+// stored under the old shape are not served as-is.
+export const SUMMARY_VERSION = 6;
+
+// Bumped only when the PROMPT changes what the model writes (fields, wording,
+// the language it answers in) — not when only the reader/parser changes. It is
+// what decides whether an old summary can be refreshed from its stored model
+// text or has to be re-asked: the stored text is a faithful record of an answer
+// to one prompt, so re-reading it is valid only for the same prompt. A
+// reader-only fix (like teaching the parser Chinese row labels) keeps this
+// number and re-reads for free; a wording change (like forcing English values,
+// v1 here) bumps it and forces a real re-ask, because the old Chinese text
+// cannot be re-read into English. See summariseContractFile.
+export const PROMPT_VERSION = 1;
 
 export function summaryFields(docType) {
   return docType === 'TECHNICAL' ? TECHNICAL_FIELDS : COMMERCIAL_FIELDS;
@@ -124,10 +129,15 @@ const NONE = '\u2014';
 // language.
 const ABSENT = /^(\u2014|-|\u65e0|\u672a\u627e\u5230|\u6ca1\u6709\u627e\u5230|\u672a\u63d0\u53ca|\u672a\u6ce8\u660e|\u672a\u5728.*\u627e\u5230|not (found|specified|mentioned|stated|given)|none|n\/?a)[\u3002.\s]*$/i;
 
-// Written in English because the answer has to come back in English: the
-// worker's own ask prompt tells the model to reply in the language of the
-// question, and these contracts are bilingual, so left in Chinese it would
-// answer in Chinese half the time.
+// Written in English, and forcefully so. These contracts are bilingual and the
+// clause values are often printed only in Chinese; a mild "answer in English"
+// loses to the model's pull to copy the source verbatim, so it comes back in
+// Chinese perhaps a third of the time. The rule therefore leads, forbids
+// copying Chinese outright, and shows worked examples — the transformation a
+// small model follows where an abstract instruction it ignores. The figures,
+// dates and percentages are pinned to the source so translation cannot alter a
+// number, only the words around it. If the wording here changes, bump
+// PROMPT_VERSION so stored Chinese answers are re-asked, not re-read.
 export function summaryPrompt(docType) {
   const fields = summaryFields(docType);
   const hints = fields.filter((f) => f.hint).map((f) => `- ${f.label}: ${f.hint}.`);
@@ -136,9 +146,15 @@ export function summaryPrompt(docType) {
 ${fields.map((f) => `${f.label}: <value> | source: <p.N>`).join('\n')}
 
 Rules:
-- Answer in English. Where the page gives a company name or a term in both
-  Chinese and English, use the English one; where it is only in Chinese,
-  translate it.
+- EVERY value MUST be in English. Where the contract prints a value only in
+  Chinese, TRANSLATE it into English — never copy Chinese characters into the
+  output. Keep numbers, currency, percentages and dates exactly as printed, and
+  translate the currency word (欧元 → EUR, 美元 → USD, 人民币 → RMB). Where a
+  company or term is printed in both languages, use the English one.
+  Examples:
+    「质保期：从签署验收证书之日起12个月」 → Warranty: 12 months from the date of signing the acceptance certificate
+    「20%预付款 / 80%信用证支付」 → Payment terms: 20% advance / 80% by letter of credit
+    「欧元5,900,000.-（大写：伍佰玖拾万元整）」 → Contract value: EUR 5,900,000
 - If a term is not in the pages provided, write ${NONE} for both the value and
   the source. Do not guess.
 ${hints.join('\n')}

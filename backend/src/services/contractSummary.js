@@ -20,7 +20,8 @@
 import { prisma } from '../index.js';
 import { askDgx, DgxOfflineError } from './contractQa.js';
 import {
-  komFromNote, NOTE_SOURCE, parseSummary, pickSummaryPages, summaryFields, summaryPrompt, SUMMARY_VERSION,
+  komFromNote, NOTE_SOURCE, parseSummary, pickSummaryPages, PROMPT_VERSION,
+  summaryFields, summaryPrompt, SUMMARY_VERSION,
 } from './contractSummaryFormat.js';
 
 export { DgxOfflineError };
@@ -92,9 +93,13 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
   const wantKeys = summaryFields(file.docType).map((f) => f.key);
   const rawCovers = Array.isArray(file.summary?.fieldKeys)
     && wantKeys.every((k) => file.summary.fieldKeys.includes(k));
-  if (!refresh && sameType && file.summary.raw && rawCovers) {
+  // ...and only when the stored text answered the SAME prompt. A wording change
+  // (forcing English) leaves the fields identical but the old Chinese text
+  // cannot be re-read into the new shape, so a mismatch here forces a re-ask.
+  const samePrompt = file.summary?.promptVersion === PROMPT_VERSION;
+  if (!refresh && sameType && file.summary.raw && rawCovers && samePrompt) {
     const fields = fieldsFromAnswer(file.summary.raw, file.docType, file.note);
-    const payload = { ...file.summary, fields, fieldKeys: wantKeys, version: SUMMARY_VERSION, docType: file.docType, reason: null };
+    const payload = { ...file.summary, fields, fieldKeys: wantKeys, version: SUMMARY_VERSION, promptVersion: PROMPT_VERSION, docType: file.docType, reason: null };
     await prisma.contractFile.update({ where: { id: fileId }, data: { summary: payload } });
     // summaryAt is left untouched: it marks when the model read the file, and
     // re-reading its own words did not change that.
@@ -121,6 +126,7 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
     fields,
     raw: answer,
     version: SUMMARY_VERSION,
+    promptVersion: PROMPT_VERSION,
     docType: file.docType,
     // What was asked, so a later version can tell whether this stored text
     // already covers its fields and can be re-read without a fresh DGX call.
