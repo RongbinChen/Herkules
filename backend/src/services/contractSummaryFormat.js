@@ -74,6 +74,8 @@ const COMMERCIAL_FIELDS = [
     aliases: ['交货时间', '交货期限', '交货期', '交付时间'] },
   { key: 'warranty', label: 'Warranty', topic: 'warranty',
     aliases: ['质保期', '质量保证期', '保证期', '保修期', '质保'] },
+  { key: 'signedDate', label: 'Signed on', topic: 'signedDate',
+    aliases: ['签订日期', '签署日期', '签字日期', '签订时间'] },
   { key: 'komNo', label: 'Kom. No.', topic: 'komNo', aliases: ['委托号', '委托编号', '机器号'] },
 ];
 
@@ -93,12 +95,15 @@ const TECHNICAL_FIELDS = [
   { key: 'komNo', label: 'Kom. No.', topic: 'komNo', aliases: ['委托号', '委托编号', '机器号'] },
 ];
 
-// Bumped whenever the fields or the prompt change, so summaries stored under
-// the old shape are regenerated instead of being rendered with labels that no
-// longer match what was asked. A parser-only bump (like 3 → 4, which taught the
-// reader to read Chinese row labels) is re-applied to the stored model text
-// without another DGX call — see summariseContractFile.
-export const SUMMARY_VERSION = 4;
+// Bumped whenever the fields, the prompt, or the reader change, so summaries
+// stored under the old shape are not served as-is. Whether an old summary can
+// be refreshed from its stored model text or has to be re-asked is a separate
+// question, decided by field coverage rather than by this number — see
+// summariseContractFile. A parser-only bump (3 → 4, which taught the reader to
+// read Chinese row labels) re-reads the stored text for free; a bump that adds
+// a field (4 → 5, which added Signed on to commercial contracts) cannot, because
+// the old text was never asked for that field.
+export const SUMMARY_VERSION = 5;
 
 export function summaryFields(docType) {
   return docType === 'TECHNICAL' ? TECHNICAL_FIELDS : COMMERCIAL_FIELDS;
