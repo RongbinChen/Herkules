@@ -224,8 +224,12 @@ async function answerFromPages(question, pages, history = [], files = []) {
   const wanted = pages.filter((p) => p && p.text).slice(0, ASK_MAX_PAGES);
   if (!wanted.length) throw new Error('no page text supplied');
 
+  // Label pages in English ("p.N"), because the model cites in whatever form it
+  // sees here: a Chinese "第N页" label comes back as a Chinese citation inside
+  // an otherwise English answer. The VPS-side source filter matches p.N too, so
+  // the source chips still populate.
   const context = wanted
-    .map((p) => `【${p.filename || 'contract'} · 第${p.pageNo}页】\n${p.text}`)
+    .map((p) => `【${p.filename || 'contract'} · p.${p.pageNo}】\n${p.text}`)
     .join('\n\n---\n\n');
 
   const res = await fetch(`${OLLAMA}/api/generate`, {
