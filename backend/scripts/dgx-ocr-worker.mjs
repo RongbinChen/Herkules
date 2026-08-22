@@ -38,6 +38,7 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
+import mammoth from 'mammoth';
 
 const VPS_URL = (process.env.VPS_URL || 'https://www.herkulesgroup-china.com').replace(/\/$/, '');
 const OCR_TOKEN = process.env.OCR_TOKEN;
@@ -246,9 +247,55 @@ async function answerFromPages(question, pages, history = [], files = []) {
   return (await res.json()).response?.trim() || '';
 }
 
-// PDFs only for now. A .docx already has a text layer and deserves a plain
-// extractor rather than a vision model reading pictures of its own words.
+// A .docx already carries a text layer, so it goes through a plain extractor
+// rather than a vision model reading pictures of its own words — the quotation
+// bodies are real text and the embedded photos are captioned "for example
+// only". A scanned .pdf has no text layer and needs the model. Anything else
+// (legacy .doc, spreadsheets) is still skipped: none are on record, and each
+// would want its own extractor.
 const isPdf = (f) => f.toLowerCase().endsWith('.pdf');
+const isDocx = (f) => f.toLowerCase().endsWith('.docx');
+
+// A .docx has no page boundaries — pagination is a rendering concept the file
+// does not store — so the text is cut into pseudo-pages on paragraph breaks,
+// each kept under a ceiling. Two reasons the whole document cannot be one page:
+// the retrieval ranker scores per page and cannot localise a hit inside a
+// 130k-character blob, and the summary drops any single page over its ~26k
+// character budget, which a whole quotation would always exceed — the same
+// empty-summary trap, arrived at from the other side.
+const DOCX_PAGE_CHARS = Number(process.env.DOCX_PAGE_CHARS || 3000);
+function chunkDocxPages(text, target = DOCX_PAGE_CHARS) {
+  const paras = String(text)
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/[ \t]+\n/g, '\n').trim())
+    .filter(Boolean);
+  const pages = [];
+  let buf = '';
+  for (const p of paras) {
+    // Start a new page before this paragraph would push the current one over.
+    if (buf && buf.length + p.length + 2 > target) { pages.push(buf); buf = ''; }
+    buf = buf ? `${buf}\n\n${p}` : p;
+    // A single paragraph already past the target is its own page rather than
+    // being split mid-sentence.
+    if (buf.length >= target) { pages.push(buf); buf = ''; }
+  }
+  if (buf) pages.push(buf);
+  return pages.map((t, i) => ({ pageNo: i + 1, text: t }));
+}
+
+async function processDocx(src, filename) {
+  const { value, messages } = await mammoth.extractRawText({ path: src });
+  const warn = messages.filter((m) => m.type === 'warning' || m.type === 'error').length;
+  const pages = chunkDocxPages(value);
+  log(`  Word 文档，抽取文本 ${value.length} 字符 → ${pages.length} 页${warn ? `（${warn} 条格式告警，已忽略）` : ''}`);
+  // Nothing extractable (an empty document, or one that is only images) is a
+  // real skip, not a blank DONE that would claim the file is readable.
+  if (!pages.length) {
+    log(`  跳过（Word 文档没有可提取文本）: ${filename}`);
+    return { pages: [], skipped: true };
+  }
+  return { pages, skipped: false };
+}
 
 // Return the absolute path to a stored file, fetching it over SSH if the nightly
 // sync has not brought it down yet. Shared by transcription and by Q&A, which
@@ -273,8 +320,11 @@ async function ensureLocal(storedName) {
 async function processFile(file) {
   const src = await ensureLocal(file.storedName);
 
+  if (isDocx(file.storedName)) {
+    return processDocx(src, file.filename);
+  }
   if (!isPdf(file.storedName)) {
-    log(`  跳过（非 PDF）: ${file.filename}`);
+    log(`  跳过（不支持的类型）: ${file.filename}`);
     return { pages: [], skipped: true };
   }
 
