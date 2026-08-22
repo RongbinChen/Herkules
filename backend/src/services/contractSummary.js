@@ -20,7 +20,7 @@
 import { prisma } from '../index.js';
 import { askDgx, DgxOfflineError } from './contractQa.js';
 import {
-  komFromNote, NOTE_SOURCE, parseSummary, pickSummaryPages, summaryPrompt, SUMMARY_VERSION,
+  komFromNote, NOTE_SOURCE, parseSummary, pickSummaryPages, summaryFields, summaryPrompt, SUMMARY_VERSION,
 } from './contractSummaryFormat.js';
 
 export { DgxOfflineError };
@@ -82,13 +82,19 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
     return { ...file.summary, cached: true, summaryAt: file.summaryAt };
   }
 
-  // A stored answer asked the right questions (docType unchanged) but was read
-  // by an older parser: the model's text is in `raw`, so re-read it here rather
-  // than paying another minute of shared GPU to be told the same thing. This is
-  // what carries a parser-only version bump across the existing summaries.
-  if (!refresh && sameType && file.summary.raw) {
+  // An older summary can be refreshed from its stored model text — no GPU — but
+  // only when that text was already asked for every field the current shape
+  // wants. `fieldKeys` records what was asked; if the current spec adds a field
+  // (Signed on, say), the old raw has no line for it and re-parsing would stamp
+  // a permanent "—". So re-read only when the stored answer covers the current
+  // fields; otherwise fall through to a real re-ask. A parser-only bump keeps
+  // the same fields and takes this fast path.
+  const wantKeys = summaryFields(file.docType).map((f) => f.key);
+  const rawCovers = Array.isArray(file.summary?.fieldKeys)
+    && wantKeys.every((k) => file.summary.fieldKeys.includes(k));
+  if (!refresh && sameType && file.summary.raw && rawCovers) {
     const fields = fieldsFromAnswer(file.summary.raw, file.docType, file.note);
-    const payload = { ...file.summary, fields, version: SUMMARY_VERSION, docType: file.docType, reason: null };
+    const payload = { ...file.summary, fields, fieldKeys: wantKeys, version: SUMMARY_VERSION, docType: file.docType, reason: null };
     await prisma.contractFile.update({ where: { id: fileId }, data: { summary: payload } });
     // summaryAt is left untouched: it marks when the model read the file, and
     // re-reading its own words did not change that.
@@ -116,6 +122,9 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
     raw: answer,
     version: SUMMARY_VERSION,
     docType: file.docType,
+    // What was asked, so a later version can tell whether this stored text
+    // already covers its fields and can be re-read without a fresh DGX call.
+    fieldKeys: fields.map((f) => f.key),
     pages: sent.map((p) => p.pageNo),
     candidatePages,
     reason: null,
