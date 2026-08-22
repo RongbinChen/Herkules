@@ -25,6 +25,27 @@ import {
 
 export { DgxOfflineError };
 
+// Parse a model answer into fields and apply the Kom. No. note fallback. Shared
+// by the DGX path and the re-parse path so both read a raw answer the same way.
+//
+// Kom. No. is the one field the contract body reliably does not carry; it is
+// written into the note when the file is filed. Falling back to the note is the
+// difference between a permanently empty row and a useful one — but the source
+// says so, because a colleague's typing and the model's reading are not the same
+// kind of evidence and the reader is entitled to tell them apart.
+function fieldsFromAnswer(answer, docType, note) {
+  const fields = parseSummary(answer, docType);
+  const kom = fields.find((f) => f.key === 'komNo');
+  if (kom && kom.value === '—') {
+    const fromNote = komFromNote(note);
+    if (fromNote) {
+      kom.value = fromNote;
+      kom.source = NOTE_SOURCE;
+    }
+  }
+  return fields;
+}
+
 // Load one file's readable pages and hand them to the pure picker.
 export async function selectSummaryPages(fileId, docType) {
   const rows = await prisma.contractPage.findMany({
@@ -55,12 +76,25 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
   // prompt AND for the type the file is filed under now. Re-categorising a file
   // from commercial to technical changes which questions it should have been
   // asked, so the old answer is not merely stale, it is the wrong questions.
-  const reusable = file.summary
-    && file.summary.version === SUMMARY_VERSION
-    && file.summary.docType === file.docType;
+  const sameType = file.summary && file.summary.docType === file.docType;
+  const reusable = sameType && file.summary.version === SUMMARY_VERSION;
   if (!refresh && reusable) {
     return { ...file.summary, cached: true, summaryAt: file.summaryAt };
   }
+
+  // A stored answer asked the right questions (docType unchanged) but was read
+  // by an older parser: the model's text is in `raw`, so re-read it here rather
+  // than paying another minute of shared GPU to be told the same thing. This is
+  // what carries a parser-only version bump across the existing summaries.
+  if (!refresh && sameType && file.summary.raw) {
+    const fields = fieldsFromAnswer(file.summary.raw, file.docType, file.note);
+    const payload = { ...file.summary, fields, version: SUMMARY_VERSION, docType: file.docType, reason: null };
+    await prisma.contractFile.update({ where: { id: fileId }, data: { summary: payload } });
+    // summaryAt is left untouched: it marks when the model read the file, and
+    // re-reading its own words did not change that.
+    return { ...payload, cached: true, summaryAt: file.summaryAt };
+  }
+
   if (file.ocrStatus !== 'DONE') {
     return { fields: [], reason: 'not-read', ocrStatus: file.ocrStatus, cached: false };
   }
@@ -75,21 +109,7 @@ export async function summariseContractFile({ fileId, team, refresh = false }) {
     pages: sent.map((p) => ({ filename: p.filename, pageNo: p.pageNo, text: p.text })),
   });
 
-  const fields = parseSummary(answer, file.docType);
-
-  // Kom. No. is the one field the contract body reliably does not carry; it is
-  // written into the note when the file is filed. Falling back to the note is
-  // the difference between a permanently empty row and a useful one — but the
-  // source says so, because a colleague's typing and the model's reading are
-  // not the same kind of evidence and the reader is entitled to tell them apart.
-  const kom = fields.find((f) => f.key === 'komNo');
-  if (kom && kom.value === '—') {
-    const fromNote = komFromNote(file.note);
-    if (fromNote) {
-      kom.value = fromNote;
-      kom.source = NOTE_SOURCE;
-    }
-  }
+  const fields = fieldsFromAnswer(answer, file.docType, file.note);
 
   const payload = {
     fields,

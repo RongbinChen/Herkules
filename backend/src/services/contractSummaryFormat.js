@@ -53,35 +53,52 @@ const PER_TOPIC = Number(process.env.CONTRACT_SUMMARY_PER_TOPIC || 2);
 // `topic` names the retrieval query that finds this field's page; `hint` is the
 // extra instruction the model needs for the fields where the obvious reading is
 // the wrong one.
+// `aliases` are the labels the model puts on a line when it ignores "answer in
+// English" and writes the row heading in Chinese — which it does whenever the
+// contract's pages are mostly Chinese. The value it produces is correct; only
+// the label's language differs, so recognising these rescues a whole summary
+// that would otherwise parse as a column of dashes. Written the way a contract
+// heads the row, not the way a dictionary translates the word.
 const COMMERCIAL_FIELDS = [
-  { key: 'contractNo', label: 'Contract No.', topic: 'parties' },
-  { key: 'buyer', label: 'Buyer', topic: 'parties' },
-  { key: 'seller', label: 'Seller', topic: 'parties' },
+  { key: 'contractNo', label: 'Contract No.', topic: 'parties',
+    aliases: ['合同编号', '合同号码', '合同号'] },
+  { key: 'buyer', label: 'Buyer', topic: 'parties', aliases: ['买方', '购买方', '需方'] },
+  { key: 'seller', label: 'Seller', topic: 'parties', aliases: ['卖方', '供货方', '供方'] },
   { key: 'amount', label: 'Contract value', topic: 'amount',
+    aliases: ['合同价值', '合同金额', '合同总价', '合同总额', '总金额', '总价', '总额'],
     hint: 'copy the currency and figure exactly as printed — do not convert or round' },
   { key: 'payment', label: 'Payment terms', topic: 'payment',
+    aliases: ['支付条款', '付款条件', '付款条款', '支付方式', '付款方式'],
     hint: 'condense to one line, e.g. "20% advance / 70% on shipment / 10% on acceptance"' },
-  { key: 'delivery', label: 'Delivery time', topic: 'delivery' },
-  { key: 'warranty', label: 'Warranty', topic: 'warranty' },
-  { key: 'komNo', label: 'Kom. No.', topic: 'komNo' },
+  { key: 'delivery', label: 'Delivery time', topic: 'delivery',
+    aliases: ['交货时间', '交货期限', '交货期', '交付时间'] },
+  { key: 'warranty', label: 'Warranty', topic: 'warranty',
+    aliases: ['质保期', '质量保证期', '保证期', '保修期', '质保'] },
+  { key: 'komNo', label: 'Kom. No.', topic: 'komNo', aliases: ['委托号', '委托编号', '机器号'] },
 ];
 
 const TECHNICAL_FIELDS = [
-  { key: 'contractNo', label: 'Contract No.', topic: 'parties' },
-  { key: 'buyer', label: 'Buyer', topic: 'parties' },
-  { key: 'seller', label: 'Seller', topic: 'parties' },
+  { key: 'contractNo', label: 'Contract No.', topic: 'parties',
+    aliases: ['合同编号', '合同号码', '合同号'] },
+  { key: 'buyer', label: 'Buyer', topic: 'parties', aliases: ['买方', '购买方', '需方'] },
+  { key: 'seller', label: 'Seller', topic: 'parties', aliases: ['卖方', '供货方', '供方'] },
   { key: 'machine', label: 'Machine model', topic: 'machine',
+    aliases: ['机床型号', '设备型号', '机器型号', '型号'],
     hint: 'the machine type designation, e.g. "ProfiMill 300" or "WS 450 x 6000"' },
   { key: 'scope', label: 'Scope of supply', topic: 'scope',
+    aliases: ['供货范围', '供货清单', '供货内容'],
     hint: 'one line — what is being supplied, and how many' },
-  { key: 'signedDate', label: 'Signed on', topic: 'signedDate' },
-  { key: 'komNo', label: 'Kom. No.', topic: 'komNo' },
+  { key: 'signedDate', label: 'Signed on', topic: 'signedDate',
+    aliases: ['签订日期', '签署日期', '签字日期', '签订时间'] },
+  { key: 'komNo', label: 'Kom. No.', topic: 'komNo', aliases: ['委托号', '委托编号', '机器号'] },
 ];
 
 // Bumped whenever the fields or the prompt change, so summaries stored under
 // the old shape are regenerated instead of being rendered with labels that no
-// longer match what was asked.
-export const SUMMARY_VERSION = 3;
+// longer match what was asked. A parser-only bump (like 3 → 4, which taught the
+// reader to read Chinese row labels) is re-applied to the stored model text
+// without another DGX call — see summariseContractFile.
+export const SUMMARY_VERSION = 4;
 
 export function summaryFields(docType) {
   return docType === 'TECHNICAL' ? TECHNICAL_FIELDS : COMMERCIAL_FIELDS;
@@ -132,8 +149,10 @@ ${hints.join('\n')}
 // summary — an unparsed line falls through and the raw text is kept alongside.
 export function parseSummary(answer, docType) {
   const lines = String(answer || '').split('\n');
-  // hint is a prompt detail; it has no business travelling to the browser.
-  const fields = summaryFields(docType).map(({ key, label }) => ({ key, label, value: NONE, source: null }));
+  const spec = summaryFields(docType);
+  // hint and aliases are prompt/parse details; they have no business
+  // travelling to the browser, so the returned rows carry only key/label.
+  const fields = spec.map(({ key, label }) => ({ key, label, value: NONE, source: null }));
 
   for (const line of lines) {
     // Emphasis first, then the list marker. The other order eats the first
@@ -141,13 +160,26 @@ export function parseSummary(answer, docType) {
     // matches nothing — the whole line is silently dropped.
     const clean = line.replace(/\*\*/g, '').replace(/^\s*([-*•]|\d+[.)])\s*/, '').trim();
     if (!clean) continue;
-    const field = fields.find((f) => {
-      const head = clean.slice(0, f.label.length + 2).toLowerCase();
-      return head.startsWith(f.label.toLowerCase());
-    });
+    const lower = clean.toLowerCase();
+
+    // Match on the label the line actually starts with — English or one of the
+    // Chinese aliases. Longest label first, so "合同号码" is not clipped to
+    // "合同号" (which would leave "码" glued to the value); first field in
+    // document order wins a tie, which the distinct labels never produce.
+    let field = null;
+    let matchedLen = 0;
+    for (let i = 0; i < spec.length; i += 1) {
+      const labels = [spec[i].label, ...(spec[i].aliases || [])].sort((a, b) => b.length - a.length);
+      const hit = labels.find((l) => lower.startsWith(l.toLowerCase()));
+      if (hit) {
+        field = fields[i];
+        matchedLen = hit.length;
+        break;
+      }
+    }
     if (!field) continue;
 
-    let rest = clean.slice(clean.indexOf(field.label) + field.label.length).replace(/^\s*[:：]\s*/, '');
+    let rest = clean.slice(matchedLen).replace(/^\s*[:：]\s*/, '');
     // The source rides after a pipe; both widths appear in practice.
     const [value, ...srcParts] = rest.split(/[｜|]/);
     const src = srcParts.join(' ').replace(/^\s*(出处|source)\s*[:：]?\s*/i, '').trim();
