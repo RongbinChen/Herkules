@@ -66,9 +66,27 @@ function getUserCalendarColor(userId, users = []) {
   return USER_CALENDAR_COLORS[index % USER_CALENDAR_COLORS.length]
 }
 
+// Half-day activities are a duration preset, not a stored flag: picking AM/PM
+// just snaps start/end onto the office window below, so nothing changes in the
+// schema and the event stays a normal timed event everywhere else.
+const DURATION_MODE_OPTIONS = [
+  { value: 'TIMED', label: 'Timed' },
+  { value: 'HALF_DAY', label: 'Half-day' },
+  { value: 'ALL_DAY', label: 'All-day' },
+]
+
+const HALF_DAY_WINDOWS = {
+  AM: { startHour: 8, endHour: 12, label: 'Morning', hint: '8 AM – 12 PM' },
+  PM: { startHour: 13, endHour: 17, label: 'Afternoon', hint: '1 PM – 5 PM' },
+}
+
 const HOUR_OPTIONS = ['12', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11']
 const MINUTE_OPTIONS = ['00', '15', '30', '45']
 const MERIDIEM_OPTIONS = ['AM', 'PM']
+
+function classNames(...values) {
+  return values.filter(Boolean).join(' ')
+}
 
 function toLocalDateTime(value) {
   if (!value) return ''
@@ -92,6 +110,29 @@ function formatPickerDisplayValue(value, allDay) {
 
 function toPickerValue(date, allDay) {
   return format(date, allDay ? "yyyy-MM-dd'T'00:00" : "yyyy-MM-dd'T'HH:mm")
+}
+
+function toHalfDayRange(anchorValue, half) {
+  const window = HALF_DAY_WINDOWS[half]
+  if (!window) return null
+
+  const base = parsePickerDate(anchorValue)
+  const start = new Date(base)
+  start.setHours(window.startHour, 0, 0, 0)
+  const end = new Date(base)
+  end.setHours(window.endHour, 0, 0, 0)
+
+  return { start: toPickerValue(start, false), end: toPickerValue(end, false) }
+}
+
+// Half-day is not persisted, so re-derive it when an existing event is opened.
+function detectHalfDay(startValue, endValue, allDay) {
+  if (allDay || !startValue || !endValue) return ''
+
+  return Object.keys(HALF_DAY_WINDOWS).find((half) => {
+    const range = toHalfDayRange(startValue, half)
+    return range && range.start === startValue && range.end === endValue
+  }) || ''
 }
 
 function getHour12(date) {
@@ -321,6 +362,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
     customerId: '',
     agentId: '',
   })
+  const [halfDay, setHalfDay] = useState('')
   const [dateError, setDateError] = useState('')
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustomer, setNewCustomer] = useState({ name: '', address: '', contactName: '', contactPhone: '' })
@@ -360,6 +402,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
         customerId: event.customerId ? String(event.customerId) : '',
         agentId: event.agentId ? String(event.agentId) : '',
       })
+      setHalfDay(detectHalfDay(toLocalDateTime(event.start), toLocalDateTime(event.end), event.allDay || false))
       return
     }
 
@@ -383,6 +426,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
       customerId: '',
       agentId: '',
     })
+    setHalfDay('')
   }, [event, currentUser])
 
   if (!isOpen) return null
@@ -393,6 +437,37 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
       [key]: value,
       ...(key === 'userId' ? { color: getUserCalendarColor(value, users) } : {}),
     }))
+  }
+
+  function applyHalfDay(nextHalf, anchorValue = form.start) {
+    const range = toHalfDayRange(anchorValue, nextHalf)
+    if (!range) return
+
+    setHalfDay(nextHalf)
+    setDateError('')
+    setForm((prev) => ({ ...prev, allDay: false, start: range.start, end: range.end }))
+  }
+
+  function selectDurationMode(mode) {
+    if (mode === 'ALL_DAY') {
+      setHalfDay('')
+      setDateError('')
+      setForm((prev) => ({
+        ...prev,
+        allDay: true,
+        start: toPickerValue(parsePickerDate(prev.start), true),
+        end: toPickerValue(parsePickerDate(prev.end), true),
+      }))
+      return
+    }
+
+    if (mode === 'HALF_DAY') {
+      applyHalfDay(halfDay || 'AM')
+      return
+    }
+
+    setHalfDay('')
+    setForm((prev) => ({ ...prev, allDay: false }))
   }
 
   function normalizeDate(value, allDay) {
@@ -424,6 +499,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
       agentId: form.agentId ? Number(form.agentId) : null,
     })
   }
+
+  const durationMode = form.allDay ? 'ALL_DAY' : halfDay ? 'HALF_DAY' : 'TIMED'
 
   const selectedCustomer = customers.find((customer) => customer.id === Number(form.customerId))
   const selectedAgent = agents.find((agent) => agent.id === Number(form.agentId))
@@ -723,39 +800,69 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                 </select>
               </label>
 
-              <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
-                <input
-                  type="checkbox"
-                  checked={form.allDay}
-                  onChange={(event) => {
-                    const nextAllDay = event.target.checked
-                    setForm((prev) => ({
-                      ...prev,
-                      allDay: nextAllDay,
-                      start: nextAllDay ? toPickerValue(parsePickerDate(prev.start), true) : prev.start,
-                      end: nextAllDay ? toPickerValue(parsePickerDate(prev.end), true) : prev.end,
-                    }))
-                  }}
-                  disabled={readOnly}
-                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
-                />
-                <span className="text-sm font-medium text-slate-700">All-day activity</span>
-              </label>
+              <div className="rounded-xl border border-slate-200 bg-white p-1">
+                <div className="grid grid-cols-3 gap-1">
+                  {DURATION_MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => selectDurationMode(option.value)}
+                      disabled={readOnly}
+                      className={classNames(
+                        'whitespace-nowrap rounded-lg px-1.5 py-1.5 text-[13px] font-medium transition disabled:cursor-default',
+                        durationMode === option.value
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:bg-slate-100 disabled:hover:bg-transparent',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
+                {durationMode === 'HALF_DAY' && (
+                  <div className="mt-1 grid grid-cols-2 gap-1 border-t border-slate-100 pt-1">
+                    {Object.entries(HALF_DAY_WINDOWS).map(([value, window]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => applyHalfDay(value)}
+                        disabled={readOnly}
+                        className={classNames(
+                          'whitespace-nowrap rounded-lg px-2 py-1.5 text-left transition disabled:cursor-default',
+                          halfDay === value
+                            ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200'
+                            : 'text-slate-600 hover:bg-slate-100 disabled:hover:bg-transparent',
+                        )}
+                      >
+                        <span className="block text-[13px] font-medium">{window.label}</span>
+                        <span className="block text-[11px] text-slate-500">{window.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="grid gap-3">
                 <DateTimePickerField
-                  label="Start"
+                  label={durationMode === 'HALF_DAY' ? 'Start (half-day)' : 'Start'}
                   value={form.start}
                   allDay={form.allDay}
                   disabled={readOnly}
-                  onApply={(nextValue) => updateField('start', nextValue)}
+                  onApply={(nextValue) => {
+                    if (halfDay) {
+                      applyHalfDay(halfDay, nextValue)
+                      return
+                    }
+                    updateField('start', nextValue)
+                  }}
                 />
 
                 <DateTimePickerField
                   label="End"
                   value={form.end}
                   allDay={form.allDay}
-                  disabled={readOnly}
+                  disabled={readOnly || Boolean(halfDay)}
                   onApply={(nextValue) => { updateField('end', nextValue); setDateError('') }}
                 />
                 {dateError && (
