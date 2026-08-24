@@ -14,7 +14,9 @@ export const COMPETITOR_SEED = [
   { name: 'Herkules', watchType: 'OWN', country: 'Germany', notes: '本集团',
     aliases: ['赫库勒斯', 'HerkulesGroup', 'Herkules Group', 'Maschinenfabrik Herkules GmbH & Co.', 'Maschinenfabrik Herkules'] },
   { name: 'Waldrich Siegen', watchType: 'OWN', country: 'Germany', notes: '本集团',
-    aliases: ['WaldrichSiegen', 'Waldrich Siegen', 'WALDRICH SIEGEN', 'WALDRICH SIEGEN GmbH & Co.KG', 'WALDRICH SIEGEN GmbH & Co. KG', '瓦德里希西根'] },
+    // "Waldrichsiggen" is chinabidding.com's own misspelling in the Manufacturer
+    // field — kept as an alias because that is what the notices actually say.
+    aliases: ['WaldrichSiegen', 'Waldrich Siegen', 'WALDRICH SIEGEN', 'WALDRICH SIEGEN GmbH & Co.KG', 'WALDRICH SIEGEN GmbH & Co. KG', 'Waldrichsiggen', 'Waldrich Siggen', '瓦德里希西根'] },
 
   // ── 制造商竞品 (COMPETITOR) ─────────────────────────────────────
   { name: 'Waldrich Coburg', watchType: 'COMPETITOR', country: 'Germany', notes: '重型龙门机床竞品（与Waldrich Siegen为不同公司）',

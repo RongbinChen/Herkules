@@ -113,6 +113,23 @@ export function extractThreadKey(projectName = '') {
   return m ? m[1] : null;
 }
 
+// ── Manufacturer ─────────────────────────────────────────────────────────────
+// Award notices carry the equipment maker in a labelled field of its own:
+//   "...Final-Winner:BESTBAY CO., LIMITEDManufacturer:WaldrichsiggenManufacturer Country:Germany"
+// The winner is frequently a trading company bidding on the maker's behalf, so
+// the maker — not the winner — decides whether a win belongs to us or to a
+// competitor. The field is machine-written by the site, so a regex reads it
+// exactly; there is nothing here worth spending a model call on.
+export function extractManufacturer(rawContent = '') {
+  const text = String(rawContent || '');
+  const m = text.match(/(?:Manufacturer|制造商|生产厂家)\s*[:：]\s*(.+)/i);
+  if (!m) return null;
+  // The page has no line breaks, so the value ends where the next label starts.
+  const value = m[1].split(/Manufacturer\s*Country|Manufacturer\s*[:：]|制造商国别|制造商\s*[:：]/i)[0].trim();
+  if (!value || value === '/' || value === '-' || value.length > 120) return null;
+  return value;
+}
+
 // Map chinabidding.com's announcement type (infoClass) to a lifecycle stage.
 // Tolerant of the two spellings seen in the wild ("Tenders Changes" / "Tender Changes").
 export function infoClassToStage(infoClass = '') {
@@ -159,6 +176,12 @@ export function invalidateCompetitorCache() {
 async function matchCompetitor(winnerText) {
   if (!winnerText) return null;
   const competitors = await getCompetitors();
+  // chinabidding.com sometimes mangles the separators inside a company name
+  // ("WALDRICH？SIEGEN？GmbH？&？Co.KG"), so compare on a form where every
+  // non-alphanumeric run is a single space. Aliases go through the same
+  // flattening, which keeps the longest-alias rule below meaningful.
+  const flat = (t) => String(t).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ').trim();
+  const haystack = flat(winnerText);
 
   // Find the most SPECIFIC match: among all alias hits, keep the longest alias.
   // This prevents a short/broad alias on one company from shadowing a precise
@@ -173,7 +196,7 @@ async function matchCompetitor(winnerText) {
         const re = new RegExp(`(?:^|[^A-Za-z])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^A-Za-z]|$)`, 'i');
         hit = re.test(winnerText);
       } else {
-        hit = winnerText.toLowerCase().includes(alias.toLowerCase());
+        hit = winnerText.toLowerCase().includes(alias.toLowerCase()) || haystack.includes(flat(alias));
       }
       if (hit && alias.length > bestLen) {
         best = c;
@@ -228,6 +251,7 @@ async function emailAwardNotice(project, analysis, competitor) {
       { k: { en: 'Project', zh: '项目' }, v: name },
       { k: { en: 'Winner', zh: '中标人' }, v: winner || 'not published / 未公布' },
     ];
+    if (project.manufacturer) facts.push({ k: { en: 'Manufacturer', zh: '制造商' }, v: project.manufacturer });
     if (analysis.winningPrice) facts.push({ k: { en: 'Winning price', zh: '中标金额' }, v: analysis.winningPrice });
     if (analysis.purchaser) facts.push({ k: { en: 'Purchaser', zh: '采购单位' }, v: analysis.purchaser });
     if (project.publishDate) facts.push({ k: { en: 'Published', zh: '发布日期' }, v: new Date(project.publishDate).toISOString().slice(0, 10) });
@@ -367,8 +391,14 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
     return { isNew: false, isUpdated: false, skipped: true };
   }
 
-  // Match winner against competitor profiles
-  const competitor = await matchCompetitor(analysis.winner);
+  // Match winner against competitor profiles. When the winner is a trading
+  // company (very common on export tenders), fall back to the manufacturer
+  // named in the notice — the machine is still ours or a competitor's, and the
+  // award ranking is about who built it, not who invoiced it.
+  const manufacturer = extractManufacturer(project.rawContent);
+  let competitor = await matchCompetitor(analysis.winner);
+  const viaManufacturer = !competitor && Boolean(manufacturer);
+  if (viaManufacturer) competitor = await matchCompetitor(manufacturer);
 
   const createData = {
     ...project,
@@ -409,15 +439,18 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
   if (competitor && notify && !duplicateAward) {
     const { type, prefix } = winNotification(competitor.watchType);
     const priceSuffix = analysis.winningPrice ? `（${analysis.winningPrice}）` : '';
+    // Say who actually bid when that is someone else — otherwise the notice
+    // claims a company won a tender it never appears in.
+    const bidderSuffix = viaManufacturer && analysis.winner ? `（投标人：${analysis.winner}）` : '';
     await notifyAllUsers(type, created.id,
-      `${prefix}：${competitor.name} — ${name.slice(0, 80)}${priceSuffix}`);
+      `${prefix}：${competitor.name} — ${name.slice(0, 80)}${priceSuffix}${bidderSuffix}`);
   }
 
   // Award news goes out by mail regardless of whether the winner is on the
   // competitor list or anyone follows the thread — an award is the outcome, and
   // the bell alone is easy to miss.
   if (project.bidStage === 'AWARD' && notify && !duplicateAward) {
-    await emailAwardNotice({ ...project, projectName: name, id: created.id }, analysis, competitor);
+    await emailAwardNotice({ ...project, projectName: name, id: created.id, manufacturer }, analysis, competitor);
   }
 
   // If announcements of the same thread exist, notify their followers about the new stage
@@ -1629,7 +1662,8 @@ export async function backfillStructured() {
   let done = 0;
   for (const p of pending) {
     const analysis = await analyzeProject(p.projectName, p.rawContent);
-    const competitor = await matchCompetitor(analysis.winner);
+    const competitor = await matchCompetitor(analysis.winner)
+      || await matchCompetitor(extractManufacturer(p.rawContent));
     await prisma.bidProject.update({
       where: { id: p.id },
       data: {
