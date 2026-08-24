@@ -14,14 +14,15 @@
 import { PrismaClient } from '@prisma/client';
 import { extractManufacturer } from '../src/services/chinabiddingParser.js';
 import { matchCompanyProfile } from '../src/services/companyName.js';
+import { withProfileExclusions } from '../src/data/competitors.js';
 
 const prisma = new PrismaClient();
 const dryRun = process.argv.includes('--dry-run');
 
 async function main() {
-  const competitors = await prisma.competitor.findMany({
+  const competitors = withProfileExclusions(await prisma.competitor.findMany({
     select: { id: true, name: true, aliases: true, watchType: true },
-  });
+  }));
   console.log(`profiles: ${competitors.length} tracked companies`);
 
   const rows = await prisma.bidProject.findMany({
