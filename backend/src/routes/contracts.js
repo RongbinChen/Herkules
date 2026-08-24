@@ -563,8 +563,15 @@ async function dgxOcrControl(pathname, method = 'GET') {
 
 router.get('/ocr/control', authenticateToken, requireOcrAdmin, async (req, res) => {
   try {
-    const h = await dgxOcrControl('/health', 'GET');
-    res.json({ paused: h.paused === true, draining: h.draining === true, online: true });
+    // Queue depth comes from our own table, not the worker: the button is only
+    // worth pressing while something is waiting or being read, so the UI needs
+    // the counts to know whether pausing would actually free the GPU.
+    const [h, pending, running] = await Promise.all([
+      dgxOcrControl('/health', 'GET'),
+      prisma.contractFile.count({ where: { ocrStatus: 'PENDING' } }),
+      prisma.contractFile.count({ where: { ocrStatus: 'RUNNING' } }),
+    ]);
+    res.json({ paused: h.paused === true, draining: h.draining === true, online: true, pending, running });
   } catch (error) {
     // The worker being offline is a normal, reportable state, not a 500 — the
     // button shows "worker offline" rather than an error.
