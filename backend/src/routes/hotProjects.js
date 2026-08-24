@@ -7,6 +7,8 @@ import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { callDeepSeek } from '../services/deepseek.js';
+import { sendMail } from '../services/mailer.js';
+import { renderEmail } from '../services/emailTemplate.js';
 
 const router = express.Router();
 
@@ -26,9 +28,75 @@ export function visibleWhere(user) {
 const canManage = (project, user) => user.isAdmin || project.ownerId === user.userId;
 
 const UPDATE_INCLUDE = {
-  orderBy: [{ date: 'desc' }, { id: 'desc' }],
+  // nulls last: imported entries whose "Updated on" date could not be parsed
+  // are the oldest material here, not the newest — Postgres would sort them
+  // first on a plain DESC and they would pose as the latest update.
+  orderBy: [{ date: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
   include: { author: { select: { id: true, name: true } } },
 };
+
+// When a project last moved. Falls back through the update's own creation time
+// (imported rows have no parsed date) to the project row, so every project has
+// a comparable timestamp and none of them sink to the bottom for lack of one.
+const lastActivityAt = (project) => {
+  const latest = project.updates?.[0];
+  return new Date(latest?.date || latest?.createdAt || project.updatedAt || project.createdAt).getTime() || 0;
+};
+
+const PRIORITY_LABELS = { 1: '1 · High', 2: '2 · Mid time', 3: '3 · Offer done' };
+
+// A new status update is what this list exists to record, so admins hear about
+// it by mail as well as on the page. Best-effort: a mail failure must not fail
+// the write that already succeeded, and the author is left out — they just
+// typed it.
+async function emailAdminsAboutUpdate(project, update, author) {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { isAdmin: true, id: { not: update.authorId ?? undefined } },
+      select: { email: true },
+    });
+    const to = admins.map((a) => a.email).filter(Boolean).join(',');
+    if (!to) return;
+
+    const facts = [
+      { k: { en: 'Customer', zh: '客户' }, v: project.customer },
+      { k: { en: 'List', zh: '列表' }, v: project.category },
+    ];
+    if (project.machineType) facts.push({ k: { en: 'Machine', zh: '机型' }, v: project.machineType });
+    if (project.priority) facts.push({ k: { en: 'Priority', zh: '优先级' }, v: PRIORITY_LABELS[project.priority] || String(project.priority) });
+    if (project.owner?.name) facts.push({ k: { en: 'Owner', zh: '负责人' }, v: project.owner.name });
+    facts.push({ k: { en: 'Written by', zh: '填写人' }, v: author?.name || '—' });
+
+    const mail = renderEmail({
+      title: {
+        en: `Hot project updated — ${project.customer}`,
+        zh: `内部项目有更新 — ${project.customer}`,
+      },
+      intro: {
+        en: update.content,
+        zh: update.content,
+      },
+      facts,
+      action: {
+        label: { en: 'Open in Herkules CRM', zh: '在系统中查看' },
+        url: 'https://www.herkulesgroup-china.com/hotprojects',
+      },
+      note: {
+        en: 'Sent to administrators whenever a hot project gets a new status update.',
+        zh: '内部项目每次新增状态更新，都会发这封邮件给管理员。',
+      },
+    });
+
+    await sendMail({
+      to,
+      subject: `[Herkules Hot Projects] ${project.customer} — 项目更新 / new update`,
+      text: mail.text,
+      html: mail.html,
+    });
+  } catch (err) {
+    console.error(`[hotProjects] update mail failed: ${err.message}`);
+  }
+}
 
 // ── List (visibility-filtered) ────────────────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -57,6 +125,11 @@ router.get('/', async (req, res) => {
         _count: { select: { updates: true } },
       },
     });
+    // Most recently updated first. This is a sort on a related row's date,
+    // which the query layer cannot order by, so it happens here — the list is
+    // one team's open projects, not a paginated feed, so sorting it in memory
+    // costs nothing. The database ordering above still decides ties.
+    projects.sort((a, b) => lastActivityAt(b) - lastActivityAt(a));
     res.json(projects);
   } catch (error) {
     console.error('Error listing hot projects:', error);
@@ -148,6 +221,7 @@ router.post('/:id/updates', async (req, res) => {
   try {
     const project = await prisma.hotProject.findFirst({
       where: { id: parseInt(req.params.id), ...visibleWhere(req.user) },
+      include: { owner: { select: { name: true } } },
     });
     if (!project) return res.status(404).json({ error: 'Not found' });
     const content = String(req.body?.content || '').trim();
@@ -162,6 +236,8 @@ router.post('/:id/updates', async (req, res) => {
       include: { author: { select: { id: true, name: true } } },
     });
     res.status(201).json(update);
+    // After the response: the person filing an update should never wait on SMTP.
+    emailAdminsAboutUpdate(project, update, update.author);
   } catch (error) {
     console.error('Error adding hot project update:', error);
     res.status(500).json({ error: 'Failed to add update' });
