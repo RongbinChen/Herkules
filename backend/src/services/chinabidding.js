@@ -206,8 +206,8 @@ async function notifyAllUsers(type, projectId, message) {
   });
 }
 
-// Award announcements go out by mail as well as to the bell. Who gets them is
-// a standing operator decision, not a per-user subscription: the two people who
+// Our own wins go out by mail as well as to the bell. Who gets them is a
+// standing operator decision, not a per-user subscription: the two people who
 // act on award news. Override with BID_AWARD_EMAIL_TO (comma-separated).
 const AWARD_EMAIL_TO = (process.env.BID_AWARD_EMAIL_TO
   || 'rongbin.chen@waldrich-siegen.com,stefan.elze@waldrich-siegen.com')
@@ -216,7 +216,9 @@ const AWARD_EMAIL_TO = (process.env.BID_AWARD_EMAIL_TO
 // Best-effort: a mail failure must never break the scrape, so this swallows its
 // own errors the same way notifySearchOwner does.
 async function emailAwardNotice(project, analysis, competitor) {
-  if (!AWARD_EMAIL_TO) return;
+  // Guarded here as well as at the call site: this mail says "we won", so it
+  // must never go out for a competitor's award.
+  if (!AWARD_EMAIL_TO || competitor?.watchType !== 'OWN') return;
   try {
     const winner = analysis.winner || '';
     const name = project.projectName || '';
@@ -224,24 +226,22 @@ async function emailAwardNotice(project, analysis, competitor) {
       { k: { en: 'Project', zh: '项目' }, v: name },
       { k: { en: 'Winner', zh: '中标人' }, v: winner || 'not published / 未公布' },
     ];
+    // Our own name is what makes this mail worth sending; the winner line is
+    // often a trading company bidding on our behalf.
+    facts.push({ k: { en: 'Our company', zh: '我方公司' }, v: competitor.name });
     if (project.manufacturer) facts.push({ k: { en: 'Manufacturer', zh: '制造商' }, v: project.manufacturer });
     if (analysis.winningPrice) facts.push({ k: { en: 'Winning price', zh: '中标金额' }, v: analysis.winningPrice });
     if (analysis.purchaser) facts.push({ k: { en: 'Purchaser', zh: '采购单位' }, v: analysis.purchaser });
     if (project.publishDate) facts.push({ k: { en: 'Published', zh: '发布日期' }, v: new Date(project.publishDate).toISOString().slice(0, 10) });
-    if (competitor) {
-      const watch = { OWN: 'our group / 本集团', COMPETITOR: 'competitor / 竞争对手', INTEREST: 'watched company / 关注公司' };
-      facts.push({ k: { en: 'Tracked as', zh: '名单标记' }, v: watch[competitor.watchType] || competitor.watchType });
-    }
 
     const mail = renderEmail({
-      tone: competitor?.watchType === 'COMPETITOR' ? 'alert' : 'info',
       title: {
-        en: winner ? `Award announced — ${winner}` : 'Award announced',
-        zh: winner ? `中标结果 — ${winner}` : '中标结果公布',
+        en: `We won — ${competitor.name}`,
+        zh: `我们中标 — ${competitor.name}`,
       },
       intro: {
-        en: 'A tender you are tracking on chinabidding.com has reached the award stage.',
-        zh: '系统抓取到一条中标公告。',
+        en: 'An award announcement on chinabidding.com names our group as the winner or the manufacturer.',
+        zh: 'chinabidding 的中标公告里，中标人或制造商是我们。',
       },
       items: project.sourceUrl ? [{ label: project.infoClass || 'Tender Awards', title: name, url: project.sourceUrl }] : [],
       facts,
@@ -250,14 +250,14 @@ async function emailAwardNotice(project, analysis, competitor) {
         url: 'https://www.herkulesgroup-china.com/chinabidding',
       },
       note: {
-        en: 'Sent automatically for every award announcement the scraper keeps.',
-        zh: '每条抓到的中标公告都会自动发送这封邮件。',
+        en: 'Sent only when an award goes to our group. Competitor wins stay in the notification bell.',
+        zh: '只有我们中标才会发这封邮件。竞争对手中标仍然只进系统的通知铃铛。',
       },
     });
 
     await sendMail({
       to: AWARD_EMAIL_TO,
-      subject: `[Herkules Bid Watch] 中标结果 / Award${winner ? `: ${winner}` : ''} — ${name.slice(0, 70)}`,
+      subject: `[Herkules Bid Watch] 我们中标 / We won — ${name.slice(0, 70)}`,
       text: mail.text,
       html: mail.html,
     });
@@ -420,10 +420,12 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
       `${prefix}：${competitor.name} — ${name.slice(0, 80)}${priceSuffix}${bidderSuffix}`);
   }
 
-  // Award news goes out by mail regardless of whether the winner is on the
-  // competitor list or anyone follows the thread — an award is the outcome, and
-  // the bell alone is easy to miss.
-  if (project.bidStage === 'AWARD' && notify && !duplicateAward) {
+  // Mail is reserved for our own wins. Competitor and watched-company awards
+  // still raise a bell notification for everyone (above), but they are market
+  // news rather than something to act on, and a mail per award turned the inbox
+  // into a second feed nobody reads.
+  const weWon = competitor?.watchType === 'OWN';
+  if (project.bidStage === 'AWARD' && notify && !duplicateAward && weWon) {
     await emailAwardNotice({ ...project, projectName: name, id: created.id, manufacturer }, analysis, competitor);
   }
 
