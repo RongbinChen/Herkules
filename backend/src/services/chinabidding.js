@@ -177,6 +177,27 @@ async function notifyFollowers(projectId, type, message) {
   });
 }
 
+// Tell the followers of a project thread about a new announcement in it.
+//
+// The notification links to the NEW announcement, not to the row the user
+// happens to follow. The bell sorts and dates its list by the linked
+// announcement's publishDate, so linking back to the followed row (usually the
+// original tender, months old) buried every alert at the bottom of the list and
+// pointed "Source" at the wrong page. Followers are also collapsed to one alert
+// each: following three announcements of one thread is still one piece of news.
+async function notifyThreadFollowers(siblingIds, announcementId, type, message) {
+  if (siblingIds.length === 0) return;
+  const follows = await prisma.projectFollow.findMany({
+    where: { projectId: { in: siblingIds } },
+    select: { userId: true },
+  });
+  const userIds = [...new Set(follows.map(f => f.userId))];
+  if (userIds.length === 0) return;
+  await prisma.notification.createMany({
+    data: userIds.map(userId => ({ userId, type, projectId: announcementId, message })),
+  });
+}
+
 async function notifyAllUsers(type, projectId, message) {
   const users = await prisma.user.findMany({ select: { id: true } });
   if (users.length === 0) return;
@@ -423,9 +444,7 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
     // A republished award was already announced to followers when it first
     // appeared; telling them twice reads as a second, different outcome.
     if (!(isAward && duplicateAward)) {
-      for (const s of siblings) {
-        await notifyFollowers(s.id, 'STATUS_CHANGE', followMessage);
-      }
+      await notifyThreadFollowers(siblings.map(s => s.id), created.id, 'STATUS_CHANGE', followMessage);
     }
   }
 
