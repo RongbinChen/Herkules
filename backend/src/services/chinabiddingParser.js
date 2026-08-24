@@ -139,3 +139,20 @@ export function parseDetailPage(html, detailUrl) {
   project.rawContent = body.slice(0, 5000);
   return project;
 }
+
+// ── Manufacturer ─────────────────────────────────────────────────────────────
+// Award notices carry the equipment maker in a labelled field of its own:
+//   "...Final-Winner:BESTBAY CO., LIMITEDManufacturer:WaldrichsiggenManufacturer Country:Germany"
+// The winner is frequently a trading company bidding on the maker's behalf, so
+// the maker — not the winner — decides whether a win belongs to us or to a
+// competitor. The field is machine-written by the site, so a regex reads it
+// exactly; there is nothing here worth spending a model call on.
+export function extractManufacturer(rawContent = '') {
+  const text = String(rawContent || '');
+  const m = text.match(/(?:Manufacturer|制造商|生产厂家)\s*[:：]\s*(.+)/i);
+  if (!m) return null;
+  // The page has no line breaks, so the value ends where the next label starts.
+  const value = m[1].split(/Manufacturer\s*Country|Manufacturer\s*[:：]|制造商国别|制造商\s*[:：]/i)[0].trim();
+  if (!value || value === '/' || value === '-' || value.length > 120) return null;
+  return value;
+}

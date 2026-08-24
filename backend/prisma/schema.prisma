@@ -298,6 +298,9 @@ model BidProject {
   // ── Structured fields (DeepSeek extraction) ──
   purchaser        String? // 采购单位
   winner           String? // 中标方（中标公告）
+  // 制造商：中标人常是代理/贸易公司，设备厂家写在公告的 Manufacturer 字段里。
+  // 中标归属按它判定（见 chinabidding.js 的 extractManufacturer）。
+  manufacturer     String? // 制造商（设备厂家，可能与中标方不同）
   winningPrice     String? // 中标价
   equipmentType    String? // 设备类型标签（轧辊磨床/龙门铣/加工中心…）
   infoClass        String? // 公告类型：New Tenders / Tender Changes / Evaluation Results / Tender Awards

@@ -191,11 +191,16 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
         )}
 
         {/* Winner / budget */}
-        {(thread.winner || thread.budget) && (
+        {(thread.winner || thread.manufacturer || thread.budget) && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
             {thread.winner && (
               <span>🏆 Winner: <span className="font-semibold text-slate-800">{thread.winner}</span>
                 {thread.winningPrice ? `（${thread.winningPrice}）` : ''}</span>
+            )}
+            {/* The winner is often a trading company; the maker is who built the
+                machine, so show it whenever it is not the same company. */}
+            {thread.manufacturer && thread.manufacturer !== thread.winner && (
+              <span>🏭 Manufacturer: <span className="font-semibold text-slate-800">{thread.manufacturer}</span></span>
             )}
             {thread.budget && <span>Price of Bidding Documents: {thread.budget}</span>}
           </div>
