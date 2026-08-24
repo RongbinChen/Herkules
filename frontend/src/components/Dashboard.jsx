@@ -31,25 +31,35 @@ function WatchingRow({ t }) {
         // yields no bidding number it falls back to the URL slug, which matches
         // nothing anywhere ("263250845-BidResult").
         onClick={() => navigate(`/chinabidding/tracking?q=${encodeURIComponent(t.threadKey || t.projectName || '')}`)}
-        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-left transition hover:bg-brand-50/50"
+        className="flex w-full items-start gap-x-3 py-2.5 text-left transition hover:bg-brand-50/50"
       >
-        {/* Mobile: badges on line 1, full project name wraps on line 2; ≥sm: single truncated row */}
         {stage ? (
-          <span className={`order-1 min-w-[5.5rem] shrink-0 rounded px-1.5 py-0.5 text-center text-[11px] font-bold ${stage.cls}`}>
+          <span className={`min-w-[5.5rem] shrink-0 rounded px-1.5 py-0.5 text-center text-[11px] font-bold ${stage.cls}`}>
             {stage.en}{t.retendered ? ' ↻' : ''}
           </span>
         ) : (
-          <span className="order-1 min-w-[5.5rem] shrink-0" aria-hidden="true" />
+          <span className="min-w-[5.5rem] shrink-0" aria-hidden="true" />
         )}
-        <span className="order-3 w-full min-w-0 text-sm font-medium text-slate-700 sm:order-2 sm:w-auto sm:flex-1 sm:truncate" title={t.projectName}>
-          {t.projectName}
-          {t.purchaser && <span className="ml-2 hidden text-xs text-slate-400 sm:inline">{t.purchaser}</span>}
-        </span>
-        {deadline && (
-          <span className={`order-2 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold sm:order-3 ${overdue ? 'bg-slate-100 text-slate-400' : 'bg-amber-50 text-amber-600'}`}>
-            {dueLabel} {deadline.toISOString().slice(0, 10)}
+        {/* Two lines: the project on top, the customer under it. On one line the
+            customer sat after the project name and a long name pushed it out of
+            the row entirely — the one thing you need to recognise the project. */}
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-start gap-x-3 gap-y-1">
+            {/* Phone: the deadline takes the line above, so the project name gets
+                the full width instead of a squeezed column. ≥sm they share one. */}
+            <span className="basis-full text-sm font-medium text-slate-700 line-clamp-2 sm:min-w-0 sm:flex-1 sm:basis-0 sm:line-clamp-1" title={t.projectName}>
+              {t.projectName}
+            </span>
+            {deadline && (
+              <span className={`order-first shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold sm:order-none ${overdue ? 'bg-slate-100 text-slate-400' : 'bg-amber-50 text-amber-600'}`}>
+                {dueLabel} {deadline.toISOString().slice(0, 10)}
+              </span>
+            )}
           </span>
-        )}
+          {t.purchaser && (
+            <span className="mt-0.5 block truncate text-xs text-slate-400" title={t.purchaser}>{t.purchaser}</span>
+          )}
+        </span>
       </button>
     </li>
   )

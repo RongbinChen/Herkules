@@ -45,9 +45,18 @@ const TONES = {
 export function renderEmail({ title, intro, items = [], facts = [], action, note, tone = 'info' }) {
   const t = TONES[tone] || TONES.info;
 
-  const para = (b) => `
+  // A block written by a person — a status update, an enquiry — exists in one
+  // language only, and the caller passes that same string as both en and zh.
+  // Printing it twice reads like a rendering bug, so an identical (or missing)
+  // second language collapses to a single paragraph.
+  const monolingual = (b) => !b.zh || b.zh === b.en;
+
+  const para = (b) => (monolingual(b)
+    ? `
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${INK};">${esc(b.en)}</p>`
+    : `
       <p style="margin:0 0 4px;font-size:15px;line-height:1.6;color:${INK};">${esc(b.en)}</p>
-      <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:${MUTED};">${esc(b.zh)}</p>`;
+      <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:${MUTED};">${esc(b.zh)}</p>`);
 
   const itemBody = (it) => {
     const bi = it.title && typeof it.title === 'object';
@@ -55,7 +64,7 @@ export function renderEmail({ title, intro, items = [], facts = [], action, note
     const main = it.url
       ? `<a href="${esc(it.url)}" style="color:${BRAND};font-size:14px;font-weight:600;line-height:1.5;text-decoration:none;">${esc(head)}</a>`
       : `<span style="color:${INK};font-size:14px;font-weight:600;line-height:1.5;">${esc(head)}</span>`;
-    return bi
+    return bi && !monolingual(it.title)
       ? `${main}<br><span style="color:${MUTED};font-size:13px;line-height:1.6;">${esc(it.title.zh)}</span>`
       : main;
   };
@@ -126,7 +135,7 @@ export function renderEmail({ title, intro, items = [], facts = [], action, note
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
           <td style="border-top:1px solid ${LINE};padding-top:14px;font-family:${FONT};">
             <p style="margin:0 0 3px;font-size:12px;line-height:1.6;color:${MUTED};">${esc(note.en)}</p>
-            <p style="margin:0;font-size:12px;line-height:1.7;color:${MUTED};">${esc(note.zh)}</p>
+            ${monolingual(note) ? '' : `<p style="margin:0;font-size:12px;line-height:1.7;color:${MUTED};">${esc(note.zh)}</p>`}
           </td>
         </tr></table>
       </td></tr>` : ''}
@@ -146,14 +155,16 @@ export function renderEmail({ title, intro, items = [], facts = [], action, note
   const textParts = [
     `${title.en}\n${title.zh}`,
     '='.repeat(48),
-    intro ? `${intro.en}\n\n${intro.zh}` : null,
+    intro ? (monolingual(intro) ? intro.en : `${intro.en}\n\n${intro.zh}`) : null,
     items.length ? items.map((i) => {
-      const head = i.title && typeof i.title === 'object' ? `${i.title.en}\n  ${i.title.zh}` : i.title;
+      const head = i.title && typeof i.title === 'object'
+        ? (monolingual(i.title) ? i.title.en : `${i.title.en}\n  ${i.title.zh}`)
+        : i.title;
       return `- ${i.label ? `[${i.label}] ` : ''}${head}${i.url ? `\n  ${i.url}` : ''}`;
     }).join('\n\n') : null,
     facts.length ? facts.map((f) => `${f.k.en} / ${f.k.zh}: ${f.v}`).join('\n') : null,
     action ? `${action.label.en} / ${action.label.zh}:\n${action.url}` : null,
-    note ? `--\n${note.en}\n${note.zh}` : null,
+    note ? (monolingual(note) ? `--\n${note.en}` : `--\n${note.en}\n${note.zh}`) : null,
     'Automated message from Herkules CRM — please do not reply.\n由 Herkules CRM 自动发送，请勿直接回复。',
   ].filter(Boolean);
 
