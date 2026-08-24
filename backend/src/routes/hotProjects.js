@@ -46,13 +46,13 @@ const lastActivityAt = (project) => {
 const PRIORITY_LABELS = { 1: '1 · High', 2: '2 · Mid time', 3: '3 · Offer done' };
 
 // A new status update is what this list exists to record, so admins hear about
-// it by mail as well as on the page. Best-effort: a mail failure must not fail
-// the write that already succeeded, and the author is left out — they just
-// typed it.
+// it by mail as well as on the page. The author is included: the mail doubles
+// as their own record that it went out, and to whom. Best-effort — a mail
+// failure must not fail the write that already succeeded.
 async function emailAdminsAboutUpdate(project, update, author) {
   try {
     const admins = await prisma.user.findMany({
-      where: { isAdmin: true, id: { not: update.authorId ?? undefined } },
+      where: { isAdmin: true },
       select: { email: true },
     });
     const to = admins.map((a) => a.email).filter(Boolean).join(',');
