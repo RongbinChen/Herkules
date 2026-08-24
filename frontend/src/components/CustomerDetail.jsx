@@ -177,7 +177,10 @@ export default function CustomerDetail() {
           which is what happened when the Notes card was added. Left column
           is the record itself, right column is everything that happened. */}
       <div className="grid items-start gap-5 lg:grid-cols-[1fr,1.3fr]">
-        <div className="space-y-5">
+        {/* min-w-0: a grid column defaults to min-width:auto, so one unwrappable
+            line inside it (a `truncate` never wraps) sets the column's minimum
+            and pushes the whole page wider than the viewport. */}
+        <div className="min-w-0 space-y-5">
           {/* Info card */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
@@ -352,8 +355,8 @@ export default function CustomerDetail() {
               </div>
               <ul className="space-y-2">
                 {hotProjects.map((h) => (
-                  <li key={h.id} className="rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
-                    <button onClick={() => navigate('/hotprojects')} className="w-full text-left">
+                  <li key={h.id} className="min-w-0 rounded-xl border border-slate-200 p-3 transition hover:border-brand-300">
+                    <button onClick={() => navigate('/hotprojects')} className="w-full min-w-0 text-left">
                       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                         <span className={`rounded-full px-2 py-0.5 font-semibold ${h.category === 'OPEN' ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
                           {h.category === 'OPEN' ? 'Open' : 'Potential'}
