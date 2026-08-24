@@ -13,6 +13,9 @@ const CATEGORIES = [
   { key: 'POTENTIAL', label: 'Potential Projects' },
 ]
 const MACHINE_TYPES = ['ProfiMill', 'ProfiTurn', 'P/PR', 'K/KR', 'T']
+// machineType holds one machine or several, comma-separated. Splitting here is
+// what lets every read site treat both the same way.
+const splitMachines = (value) => String(value || '').split(',').map((m) => m.trim()).filter(Boolean)
 // Priority legend from the WAV sheet itself: "1 - high, 2 - mid time, 3 - offer done".
 const PRIORITY = {
   1: { label: '1 · High', hint: '高优先级，紧密跟进', cls: 'bg-red-50 text-red-600 ring-red-200' },
@@ -50,10 +53,20 @@ function ProjectModal({ project, category, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
-  // Machine Type: preset dropdown or free custom text.
-  const [machineCustom, setMachineCustom] = useState(
-    () => !!project?.machineType && !MACHINE_TYPES.includes(project.machineType)
+  // Machine Type: a project often covers more than one machine (an enquiry for
+  // six mills and two lathes is one project), so the presets are toggles rather
+  // than a single choice. Stored as one comma-separated string — the same column
+  // as before, so nothing else in the app has to know.
+  const machineList = splitMachines(form.machineType)
+  const machineExtra = machineList.filter((m) => !MACHINE_TYPES.includes(m)).join(', ')
+  const setMachines = (list) => setForm((f) => ({ ...f, machineType: list.join(', ') }))
+  const toggleMachine = (m) => setMachines(
+    machineList.includes(m) ? machineList.filter((x) => x !== m) : [...machineList, m]
   )
+  const setMachineExtra = (value) => setMachines([
+    ...machineList.filter((m) => MACHINE_TYPES.includes(m)),
+    ...splitMachines(value),
+  ])
 
   // Searchable link into the Customers module. Typing keeps the free text and
   // clears the link; picking a suggestion sets both name + customerId.
@@ -142,26 +155,29 @@ function ProjectModal({ project, category, onClose, onSaved }) {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-xs font-semibold text-slate-600">
-              Machine Type
-              <select
-                value={machineCustom ? '__custom' : (MACHINE_TYPES.includes(form.machineType) ? form.machineType : '')}
-                onChange={(e) => {
-                  const v = e.target.value
-                  if (v === '__custom') { setMachineCustom(true); setForm((f) => ({ ...f, machineType: '' })) }
-                  else { setMachineCustom(false); setForm((f) => ({ ...f, machineType: v })) }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-              >
-                <option value="">—</option>
-                {MACHINE_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
-                <option value="__custom">Custom…（自定义）</option>
-              </select>
-              {machineCustom && (
-                <Input value={form.machineType} onChange={set('machineType')}
-                  placeholder="Enter machine type" className="mt-1.5" autoFocus />
-              )}
-            </label>
+            <div className="text-xs font-semibold text-slate-600">
+              Machine Type（可多选）
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {MACHINE_TYPES.map((m) => {
+                  const on = machineList.includes(m)
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => toggleMachine(m)}
+                      aria-pressed={on}
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                        on ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  )
+                })}
+              </div>
+              <Input value={machineExtra} onChange={(e) => setMachineExtra(e.target.value)}
+                placeholder="Other machines, comma separated（其他机型，逗号分隔）" className="mt-1.5" />
+            </div>
             <label className="text-xs font-semibold text-slate-600">
               Processor（负责人）
               <Input value={form.processor} onChange={set('processor')} placeholder="e.g. Chen / Bao" className="mt-1" />
@@ -263,7 +279,9 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
             <span className="font-semibold text-slate-800">{p.customer}</span>
             {p.visibility === 'PRIVATE' && <span title="仅负责人+管理员可见">🔒</span>}
             {pr && <span title={pr.hint} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
-            {p.machineType && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{p.machineType}</span>}
+            {splitMachines(p.machineType).map((m) => (
+              <span key={m} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{m}</span>
+            ))}
             {(p.customerRef || p.customerId) && (
               <button
                 onClick={(e) => { e.stopPropagation(); navigate(`/customers/${p.customerRef?.id || p.customerId}?from=hotprojects`) }}
