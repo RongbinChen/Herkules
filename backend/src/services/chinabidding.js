@@ -1,11 +1,11 @@
 import { prisma } from '../index.js';
-import { parseListPage, parseDetailPage } from './chinabiddingParser.js';
+import { parseListPage, parseDetailPage, extractManufacturer } from './chinabiddingParser.js';
 import { analyzeProject, generateMarketReport } from './deepseek.js';
 import { COMPETITOR_SEED } from '../data/competitors.js';
 import { sendMail } from './mailer.js';
 import { renderEmail } from './emailTemplate.js';
 import { solveSession, SCRAPER_UA } from './browserSolver.js';
-import { normalizeCompany } from './companyName.js';
+import { normalizeCompany, matchCompanyProfile } from './companyName.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -113,23 +113,6 @@ export function extractThreadKey(projectName = '') {
   return m ? m[1] : null;
 }
 
-// ── Manufacturer ─────────────────────────────────────────────────────────────
-// Award notices carry the equipment maker in a labelled field of its own:
-//   "...Final-Winner:BESTBAY CO., LIMITEDManufacturer:WaldrichsiggenManufacturer Country:Germany"
-// The winner is frequently a trading company bidding on the maker's behalf, so
-// the maker — not the winner — decides whether a win belongs to us or to a
-// competitor. The field is machine-written by the site, so a regex reads it
-// exactly; there is nothing here worth spending a model call on.
-export function extractManufacturer(rawContent = '') {
-  const text = String(rawContent || '');
-  const m = text.match(/(?:Manufacturer|制造商|生产厂家)\s*[:：]\s*(.+)/i);
-  if (!m) return null;
-  // The page has no line breaks, so the value ends where the next label starts.
-  const value = m[1].split(/Manufacturer\s*Country|Manufacturer\s*[:：]|制造商国别|制造商\s*[:：]/i)[0].trim();
-  if (!value || value === '/' || value === '-' || value.length > 120) return null;
-  return value;
-}
-
 // Map chinabidding.com's announcement type (infoClass) to a lifecycle stage.
 // Tolerant of the two spellings seen in the wild ("Tenders Changes" / "Tender Changes").
 export function infoClassToStage(infoClass = '') {
@@ -171,40 +154,9 @@ export function invalidateCompetitorCache() {
 }
 
 // Match a winner string against competitor names + aliases.
-// Short aliases (≤4 chars, e.g. "SMS", "VAI") require word boundaries to avoid
-// false positives inside longer words.
 async function matchCompetitor(winnerText) {
   if (!winnerText) return null;
-  const competitors = await getCompetitors();
-  // chinabidding.com sometimes mangles the separators inside a company name
-  // ("WALDRICH？SIEGEN？GmbH？&？Co.KG"), so compare on a form where every
-  // non-alphanumeric run is a single space. Aliases go through the same
-  // flattening, which keeps the longest-alias rule below meaningful.
-  const flat = (t) => String(t).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ').trim();
-  const haystack = flat(winnerText);
-
-  // Find the most SPECIFIC match: among all alias hits, keep the longest alias.
-  // This prevents a short/broad alias on one company from shadowing a precise
-  // alias on another (e.g. "WALDRICH" must not match "Waldrich Coburg").
-  let best = null;
-  let bestLen = 0;
-  for (const c of competitors) {
-    for (const alias of [c.name, ...(c.aliases || [])]) {
-      if (!alias) continue;
-      let hit = false;
-      if (alias.length <= 4) {
-        const re = new RegExp(`(?:^|[^A-Za-z])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^A-Za-z]|$)`, 'i');
-        hit = re.test(winnerText);
-      } else {
-        hit = winnerText.toLowerCase().includes(alias.toLowerCase()) || haystack.includes(flat(alias));
-      }
-      if (hit && alias.length > bestLen) {
-        best = c;
-        bestLen = alias.length;
-      }
-    }
-  }
-  return best;
+  return matchCompanyProfile(winnerText, await getCompetitors());
 }
 
 // Map a watched company's type to its win-notification type + message prefix.
@@ -405,6 +357,7 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
     summary: analysis.summary,
     purchaser: analysis.purchaser,
     winner: analysis.winner,
+    manufacturer,
     winningPrice: analysis.winningPrice,
     equipmentType: analysis.equipmentType,
     competitorId: competitor?.id ?? null,
@@ -1282,7 +1235,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
     orderBy: { publishDate: 'asc' },
     select: {
       id: true, projectName: true, projectCode: true, region: true, equipmentType: true,
-      purchaser: true, winner: true, winningPrice: true, budget: true, deadline: true,
+      purchaser: true, winner: true, manufacturer: true, winningPrice: true, budget: true, deadline: true,
       infoClass: true, bidStage: true, status: true, sourceUrl: true, publishDate: true,
       threadKey: true, updatedAt: true,
     },
@@ -1382,6 +1335,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       currentStage,
       retendered: cycleStart > 0,
       winner: winnerAnn?.winner || null,
+      manufacturer: winnerAnn?.manufacturer || null,
       winningPrice: winnerAnn?.winningPrice || null,
       firstPublish: anns[0].publishDate,
       lastUpdate: anns.reduce((m, a) => (ms(a.updatedAt) > ms(m) ? a.updatedAt : m), anns[0].updatedAt),
@@ -1391,7 +1345,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       announcements: anns.map((a) => ({
         id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
         publishDate: a.publishDate, sourceUrl: a.sourceUrl, round: roundOf(a.projectName),
-        winner: a.winner, winningPrice: a.winningPrice,
+        winner: a.winner, manufacturer: a.manufacturer, winningPrice: a.winningPrice,
       })),
     };
   });
@@ -1526,7 +1480,7 @@ export async function getTrends({ months = 12 } = {}) {
     where: { publishDate: { gte: since } },
     select: {
       publishDate: true, equipmentType: true, region: true, industry: true,
-      purchaser: true, winner: true, winningPrice: true, infoClass: true,
+      purchaser: true, winner: true, manufacturer: true, winningPrice: true, infoClass: true,
       competitorId: true, projectName: true, status: true, deadline: true, id: true,
       sourceUrl: true, bidStage: true,
     },
@@ -1670,6 +1624,7 @@ export async function backfillStructured() {
         summary: p.summary || analysis.summary,
         purchaser: analysis.purchaser,
         winner: analysis.winner,
+        manufacturer: extractManufacturer(p.rawContent),
         winningPrice: analysis.winningPrice,
         equipmentType: analysis.equipmentType,
         threadKey: p.threadKey || extractThreadKey(p.projectName) || p.projectCode,
