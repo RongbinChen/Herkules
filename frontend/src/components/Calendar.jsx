@@ -246,7 +246,7 @@ function MiniMonth({ events, anchorDate, onJump, collapsed, onToggle }) {
   )
 }
 
-function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllUsers, holidayCalendars, selectedHolidayCalendarIds, onToggleHolidayCalendar, isAdmin }) {
+function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemberNextEvent, onSelectAllUsers, holidayCalendars, selectedHolidayCalendarIds, onToggleHolidayCalendar, isAdmin }) {
   if (!summary.length) return null
 
   const isAllSelected = selectedUserIds === null
@@ -279,6 +279,10 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllU
         {summary.map((member) => {
           const isSelected = isAllSelected || selectedUserIds.includes(member.id)
           const userColor = getUserCalendarColor(member.id, users)
+          const nextEventDate = member.nextEventStart ? parseISO(member.nextEventStart) : null
+          const nextEventLabel = nextEventDate
+            ? format(nextEventDate, nextEventDate.getFullYear() === new Date().getFullYear() ? 'MMM d' : 'MMM d, yyyy')
+            : null
 
           return (
           <label
@@ -302,11 +306,29 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onSelectAllU
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: userColor }} />
                     <p className="truncate font-semibold">{member.name}</p>
                   </div>
-                  <p className={classNames('truncate text-sm', isSelected ? 'text-slate-700' : 'text-slate-500')}>{member.focusLabel}</p>
+                  <p className={classNames('truncate text-sm', isSelected ? 'text-slate-700' : 'text-slate-500')}>
+                    {member.focusLabel}
+                    {nextEventLabel && <span className="text-slate-500"> · {nextEventLabel}</span>}
+                  </p>
                 </div>
               </div>
               <div className={classNames('mt-3 flex gap-2 text-xs', isSelected ? 'text-slate-700' : 'text-slate-500')}>
-                <span>{member.upcomingCount} upcoming activities</span>
+                {nextEventDate ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onJumpToMemberNextEvent?.(member)
+                    }}
+                    title={`Jump to ${nextEventLabel}`}
+                    className="rounded-full underline decoration-dotted underline-offset-2 transition hover:text-slate-900"
+                  >
+                    {member.upcomingCount} upcoming activities
+                  </button>
+                ) : (
+                  <span>{member.upcomingCount} upcoming activities</span>
+                )}
               </div>
             </div>
           </label>
@@ -730,6 +752,7 @@ export default function Calendar() {
         email: member.email,
         activeStatus: nextEvent?.status || (blockedCount > 0 ? 'BLOCKED' : plannedCount > 0 ? 'PLANNED' : 'DONE'),
         focusLabel: nextEvent?.title || 'No upcoming activity',
+        nextEventStart: nextEvent?.rawStart || nextEvent?.start || null,
         blockedCount,
         plannedCount,
         doneCount,
@@ -958,6 +981,16 @@ export default function Calendar() {
     api.changeView('timeGridDay')
   }
 
+  function jumpToMemberNextEvent(member) {
+    if (!member?.nextEventStart) return
+
+    setSelectedUserIds((prev) => {
+      if (prev === null || prev.includes(member.id)) return prev
+      return [...prev, member.id]
+    })
+    jumpToDate(parseISO(member.nextEventStart))
+  }
+
   async function handleCreateUser(payload) {
     await usersAPI.create(payload)
     await Promise.all([loadUsers(), loadSummary()])
@@ -1109,6 +1142,7 @@ export default function Calendar() {
         users={users}
         selectedUserIds={selectedUserIds}
         onToggleUser={handleToggleUser}
+        onJumpToMemberNextEvent={jumpToMemberNextEvent}
         onSelectAllUsers={handleSelectAllUsers}
         holidayCalendars={holidayCalendars}
         selectedHolidayCalendarIds={selectedHolidayCalendarIds}
