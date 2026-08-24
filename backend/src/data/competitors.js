@@ -21,8 +21,11 @@ export const COMPETITOR_SEED = [
   // ── 制造商竞品 (COMPETITOR) ─────────────────────────────────────
   { name: 'Waldrich Coburg', watchType: 'COMPETITOR', country: 'Germany', notes: '重型龙门机床竞品（与Waldrich Siegen为不同公司）',
     aliases: ['WaldrichCoburg', 'Waldrich Coburg', 'WALDRICH COBURG', 'Werkzeugmaschinenfabrik WALDRICH COBURG GmbH', 'Werkzeugmaschinenfabrik WALDRICH COBURG', '瓦德里希科堡'] },
+  // "GEORG" 单独出现时会撞上两家不相干的公司：GEORG SAHM（纤维绕线机）和
+  // George/Georg Fischer（GF 加工方案）。exclude 里列出来，命中就整条跳过。
   { name: 'GEORG', watchType: 'COMPETITOR', country: 'Germany', notes: '轧辊磨床竞品',
-    aliases: ['Heinrich Georg GmbH Maschinenfabrik', 'Heinrich Georg GmbH Machinenfabrik', 'Heinrich Georg', 'GEORG Maschinen', '乔治'] },
+    aliases: ['Heinrich Georg GmbH Maschinenfabrik', 'Heinrich Georg GmbH Machinenfabrik', 'Heinrich Georg', 'GEORG Maschinen', 'GEORG North America', '乔治'],
+    exclude: ['Georg Sahm', 'George Sahm', 'George Fischer', 'Georg Fischer'] },
   { name: 'Pomini Tenova', watchType: 'COMPETITOR', country: 'Italy', notes: '轧辊磨床竞品（Tenova集团）',
     aliases: ['Pomini', 'POMINI', '波米尼'] },
   { name: 'INNSE-Berardi', watchType: 'COMPETITOR', country: 'Italy', notes: '重型机床竞品',
@@ -126,3 +129,15 @@ export const COMPETITOR_SEED = [
   { name: 'Universal Industry Design', watchType: 'INTEREST', country: 'China', notes: '工程/代理公司',
     aliases: ['Universal Industry Design'] },
 ];
+
+// The Competitor table stores name/aliases/country/watchType, but not the
+// lookalike exclusions above — those stay in code, where the reason for each
+// one is written down. Attach them to rows read from the database so matching
+// behaves the same in the scraper and in the ops scripts.
+export function withProfileExclusions(rows = []) {
+  const byName = new Map(COMPETITOR_SEED.map((c) => [c.name, c.exclude || []]));
+  return rows.map((row) => {
+    const exclude = byName.get(row.name);
+    return exclude?.length ? { ...row, exclude } : row;
+  });
+}

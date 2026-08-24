@@ -26,6 +26,13 @@ export function matchCompanyProfile(text, profiles = []) {
   // flattening, which keeps the longest-alias rule below meaningful.
   const flat = (t) => String(t).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ').trim();
   const haystack = flat(text);
+  // Whole-word only, on the flattened form: "GEORG" must not be found inside
+  // "George Fischer", and "MAG" must not be found inside "Magnesium".
+  const hasWord = (needle) => {
+    const n = flat(needle);
+    if (!n) return false;
+    return new RegExp(`(?:^| )${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: |$)`).test(haystack);
+  };
 
   // Find the most SPECIFIC match: among all alias hits, keep the longest alias.
   // This prevents a short/broad alias on one company from shadowing a precise
@@ -33,16 +40,15 @@ export function matchCompanyProfile(text, profiles = []) {
   let best = null;
   let bestLen = 0;
   for (const profile of profiles) {
+    // Lookalike guard: some names are a substring of an unrelated company's
+    // ("GEORG" vs "GEORG SAHM", a winding-machine maker). Word boundaries alone
+    // cannot separate those, so a profile can name the neighbours it must not
+    // be confused with.
+    if ((profile.exclude || []).some(hasWord)) continue;
+
     for (const alias of [profile.name, ...(profile.aliases || [])]) {
       if (!alias) continue;
-      let hit = false;
-      if (alias.length <= 4) {
-        const re = new RegExp(`(?:^|[^A-Za-z])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^A-Za-z]|$)`, 'i');
-        hit = re.test(text);
-      } else {
-        hit = String(text).toLowerCase().includes(alias.toLowerCase()) || haystack.includes(flat(alias));
-      }
-      if (hit && alias.length > bestLen) {
+      if (hasWord(alias) && alias.length > bestLen) {
         best = profile;
         bestLen = alias.length;
       }

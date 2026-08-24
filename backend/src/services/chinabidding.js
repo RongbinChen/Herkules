@@ -1,7 +1,7 @@
 import { prisma } from '../index.js';
 import { parseListPage, parseDetailPage, extractManufacturer } from './chinabiddingParser.js';
 import { analyzeProject, generateMarketReport } from './deepseek.js';
-import { COMPETITOR_SEED } from '../data/competitors.js';
+import { COMPETITOR_SEED, withProfileExclusions } from '../data/competitors.js';
 import { sendMail } from './mailer.js';
 import { renderEmail } from './emailTemplate.js';
 import { solveSession, SCRAPER_UA } from './browserSolver.js';
@@ -144,7 +144,7 @@ async function getCompetitors() {
   if (competitorCache.list && Date.now() - competitorCache.loadedAt < 10 * 60 * 1000) {
     return competitorCache.list;
   }
-  const list = await prisma.competitor.findMany();
+  const list = withProfileExclusions(await prisma.competitor.findMany());
   competitorCache = { list, loadedAt: Date.now() };
   return list;
 }
