@@ -113,6 +113,23 @@ export function extractThreadKey(projectName = '') {
   return m ? m[1] : null;
 }
 
+// ── Manufacturer ─────────────────────────────────────────────────────────────
+// Award notices carry the equipment maker in a labelled field of its own:
+//   "...Final-Winner:BESTBAY CO., LIMITEDManufacturer:WaldrichsiggenManufacturer Country:Germany"
+// The winner is frequently a trading company bidding on the maker's behalf, so
+// the maker — not the winner — decides whether a win belongs to us or to a
+// competitor. The field is machine-written by the site, so a regex reads it
+// exactly; there is nothing here worth spending a model call on.
+export function extractManufacturer(rawContent = '') {
+  const text = String(rawContent || '');
+  const m = text.match(/(?:Manufacturer|制造商|生产厂家)\s*[:：]\s*(.+)/i);
+  if (!m) return null;
+  // The page has no line breaks, so the value ends where the next label starts.
+  const value = m[1].split(/Manufacturer\s*Country|Manufacturer\s*[:：]|制造商国别|制造商\s*[:：]/i)[0].trim();
+  if (!value || value === '/' || value === '-' || value.length > 120) return null;
+  return value;
+}
+
 // Map chinabidding.com's announcement type (infoClass) to a lifecycle stage.
 // Tolerant of the two spellings seen in the wild ("Tenders Changes" / "Tender Changes").
 export function infoClassToStage(infoClass = '') {
@@ -159,6 +176,12 @@ export function invalidateCompetitorCache() {
 async function matchCompetitor(winnerText) {
   if (!winnerText) return null;
   const competitors = await getCompetitors();
+  // chinabidding.com sometimes mangles the separators inside a company name
+  // ("WALDRICH？SIEGEN？GmbH？&？Co.KG"), so compare on a form where every
+  // non-alphanumeric run is a single space. Aliases go through the same
+  // flattening, which keeps the longest-alias rule below meaningful.
+  const flat = (t) => String(t).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ').trim();
+  const haystack = flat(winnerText);
 
   // Find the most SPECIFIC match: among all alias hits, keep the longest alias.
   // This prevents a short/broad alias on one company from shadowing a precise
@@ -173,7 +196,7 @@ async function matchCompetitor(winnerText) {
         const re = new RegExp(`(?:^|[^A-Za-z])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^A-Za-z]|$)`, 'i');
         hit = re.test(winnerText);
       } else {
-        hit = winnerText.toLowerCase().includes(alias.toLowerCase());
+        hit = winnerText.toLowerCase().includes(alias.toLowerCase()) || haystack.includes(flat(alias));
       }
       if (hit && alias.length > bestLen) {
         best = c;
@@ -208,6 +231,66 @@ async function notifyAllUsers(type, projectId, message) {
   await prisma.notification.createMany({
     data: users.map(u => ({ userId: u.id, type, projectId, message })),
   });
+}
+
+// Award announcements go out by mail as well as to the bell. Who gets them is
+// a standing operator decision, not a per-user subscription: the two people who
+// act on award news. Override with BID_AWARD_EMAIL_TO (comma-separated).
+const AWARD_EMAIL_TO = (process.env.BID_AWARD_EMAIL_TO
+  || 'rongbin.chen@waldrich-siegen.com,stefan.elze@waldrich-siegen.com')
+  .split(',').map((a) => a.trim()).filter(Boolean).join(',');
+
+// Best-effort: a mail failure must never break the scrape, so this swallows its
+// own errors the same way notifySearchOwner does.
+async function emailAwardNotice(project, analysis, competitor) {
+  if (!AWARD_EMAIL_TO) return;
+  try {
+    const winner = analysis.winner || '';
+    const name = project.projectName || '';
+    const facts = [
+      { k: { en: 'Project', zh: '项目' }, v: name },
+      { k: { en: 'Winner', zh: '中标人' }, v: winner || 'not published / 未公布' },
+    ];
+    if (project.manufacturer) facts.push({ k: { en: 'Manufacturer', zh: '制造商' }, v: project.manufacturer });
+    if (analysis.winningPrice) facts.push({ k: { en: 'Winning price', zh: '中标金额' }, v: analysis.winningPrice });
+    if (analysis.purchaser) facts.push({ k: { en: 'Purchaser', zh: '采购单位' }, v: analysis.purchaser });
+    if (project.publishDate) facts.push({ k: { en: 'Published', zh: '发布日期' }, v: new Date(project.publishDate).toISOString().slice(0, 10) });
+    if (competitor) {
+      const watch = { OWN: 'our group / 本集团', COMPETITOR: 'competitor / 竞争对手', INTEREST: 'watched company / 关注公司' };
+      facts.push({ k: { en: 'Tracked as', zh: '名单标记' }, v: watch[competitor.watchType] || competitor.watchType });
+    }
+
+    const mail = renderEmail({
+      tone: competitor?.watchType === 'COMPETITOR' ? 'alert' : 'info',
+      title: {
+        en: winner ? `Award announced — ${winner}` : 'Award announced',
+        zh: winner ? `中标结果 — ${winner}` : '中标结果公布',
+      },
+      intro: {
+        en: 'A tender you are tracking on chinabidding.com has reached the award stage.',
+        zh: '系统抓取到一条中标公告。',
+      },
+      items: project.sourceUrl ? [{ label: project.infoClass || 'Tender Awards', title: name, url: project.sourceUrl }] : [],
+      facts,
+      action: {
+        label: { en: 'Open in Herkules CRM', zh: '在系统中查看' },
+        url: 'https://www.herkulesgroup-china.com/chinabidding',
+      },
+      note: {
+        en: 'Sent automatically for every award announcement the scraper keeps.',
+        zh: '每条抓到的中标公告都会自动发送这封邮件。',
+      },
+    });
+
+    await sendMail({
+      to: AWARD_EMAIL_TO,
+      subject: `[Herkules Bid Watch] 中标结果 / Award${winner ? `: ${winner}` : ''} — ${name.slice(0, 70)}`,
+      text: mail.text,
+      html: mail.html,
+    });
+  } catch (err) {
+    console.error(`[chinabidding] award mail failed: ${err.message}`);
+  }
 }
 
 // ── List-page fetcher (supports POST with filters + pagination) ───────────────
@@ -308,8 +391,14 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
     return { isNew: false, isUpdated: false, skipped: true };
   }
 
-  // Match winner against competitor profiles
-  const competitor = await matchCompetitor(analysis.winner);
+  // Match winner against competitor profiles. When the winner is a trading
+  // company (very common on export tenders), fall back to the manufacturer
+  // named in the notice — the machine is still ours or a competitor's, and the
+  // award ranking is about who built it, not who invoiced it.
+  const manufacturer = extractManufacturer(project.rawContent);
+  let competitor = await matchCompetitor(analysis.winner);
+  const viaManufacturer = !competitor && Boolean(manufacturer);
+  if (viaManufacturer) competitor = await matchCompetitor(manufacturer);
 
   const createData = {
     ...project,
@@ -337,12 +426,31 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
     throw err;
   }
 
+  // chinabidding.com republishes award results days later under a fresh detail
+  // URL. Both rows are kept — they are two real announcements — but the outcome
+  // is only news once, so the second one stays quiet everywhere.
+  const duplicateAward = project.bidStage === 'AWARD' && project.threadKey
+    ? await prisma.bidProject.count({
+        where: { threadKey: project.threadKey, bidStage: 'AWARD', id: { not: created.id } },
+      }) > 0
+    : false;
+
   // A tracked company won a bid — alert everyone (own group / competitor / interest)
-  if (competitor && notify) {
+  if (competitor && notify && !duplicateAward) {
     const { type, prefix } = winNotification(competitor.watchType);
     const priceSuffix = analysis.winningPrice ? `（${analysis.winningPrice}）` : '';
+    // Say who actually bid when that is someone else — otherwise the notice
+    // claims a company won a tender it never appears in.
+    const bidderSuffix = viaManufacturer && analysis.winner ? `（投标人：${analysis.winner}）` : '';
     await notifyAllUsers(type, created.id,
-      `${prefix}：${competitor.name} — ${name.slice(0, 80)}${priceSuffix}`);
+      `${prefix}：${competitor.name} — ${name.slice(0, 80)}${priceSuffix}${bidderSuffix}`);
+  }
+
+  // Award news goes out by mail regardless of whether the winner is on the
+  // competitor list or anyone follows the thread — an award is the outcome, and
+  // the bell alone is easy to miss.
+  if (project.bidStage === 'AWARD' && notify && !duplicateAward) {
+    await emailAwardNotice({ ...project, projectName: name, id: created.id, manufacturer }, analysis, competitor);
   }
 
   // If announcements of the same thread exist, notify their followers about the new stage
@@ -351,9 +459,20 @@ async function upsertProject(item, detailHtml = null, { skipRelevanceCheck = fal
       where: { threadKey: project.threadKey, id: { not: created.id } },
       select: { id: true },
     });
-    for (const s of siblings) {
-      await notifyFollowers(s.id, 'STATUS_CHANGE',
-        `关注项目有新公告：${name.slice(0, 80)}${project.infoClass ? `（${project.infoClass}）` : ''}`);
+    // An award is the answer to the question a follower is actually waiting on,
+    // so it gets the winner in the message rather than the generic "new
+    // announcement" line. The tracked-company win notice above only fires when
+    // the winner is on the competitor list — most winners are not.
+    const isAward = project.bidStage === 'AWARD';
+    const followMessage = isAward
+      ? `关注项目中标结果：${analysis.winner || '中标人未公布'} — ${name.slice(0, 80)}${analysis.winningPrice ? `（${analysis.winningPrice}）` : ''}`
+      : `关注项目有新公告：${name.slice(0, 80)}${project.infoClass ? `（${project.infoClass}）` : ''}`;
+    // A republished award was already announced to followers when it first
+    // appeared; telling them twice reads as a second, different outcome.
+    if (!(isAward && duplicateAward)) {
+      for (const s of siblings) {
+        await notifyFollowers(s.id, 'STATUS_CHANGE', followMessage);
+      }
     }
   }
 
@@ -1420,7 +1539,7 @@ export async function getTrends({ months = 12 } = {}) {
     include: {
       projects: {
         where: { publishDate: { gte: since } },
-        select: { id: true, projectName: true, publishDate: true, winningPrice: true, sourceUrl: true },
+        select: { id: true, projectName: true, publishDate: true, winningPrice: true, sourceUrl: true, threadKey: true },
       },
     },
   });
@@ -1457,20 +1576,38 @@ export async function getTrends({ months = 12 } = {}) {
     equipmentTypes[t] = (equipmentTypes[t] || 0) + 1;
   }
 
-  // Competitor win stats
+  // Competitor win stats. One award routinely appears twice on chinabidding.com
+  // — the result is published, then published again days later under a new
+  // detail URL. Both are real announcements and both are kept as rows, but they
+  // are one win, so collapse them per project thread before counting. Keeping
+  // the earliest keeps the date the outcome was actually announced.
+  const dedupeWins = (wins) => {
+    const byThread = new Map();
+    for (const w of wins) {
+      const key = w.threadKey || w.projectName || `id:${w.id}`;
+      const prev = byThread.get(key);
+      if (!prev || (w.publishDate && prev.publishDate && w.publishDate < prev.publishDate)) {
+        byThread.set(key, w);
+      }
+    }
+    return [...byThread.values()];
+  };
+
   const competitorStats = competitors
-    .map(c => ({
-      id: c.id,
-      name: c.name,
-      country: c.country,
-      watchType: c.watchType,
-      winCount: c.projects.length,
-      // Return all wins (capped) so the UI's count matches the expandable list.
-      recentWins: c.projects
-        .slice()
-        .sort((a, b) => (b.publishDate ?? 0) - (a.publishDate ?? 0))
-        .slice(0, 50),
-    }))
+    .map(c => {
+      const wins = dedupeWins(c.projects);
+      return {
+        id: c.id,
+        name: c.name,
+        country: c.country,
+        watchType: c.watchType,
+        winCount: wins.length,
+        // Return all wins (capped) so the UI's count matches the expandable list.
+        recentWins: wins
+          .sort((a, b) => (b.publishDate ?? 0) - (a.publishDate ?? 0))
+          .slice(0, 50),
+      };
+    })
     .sort((a, b) => b.winCount - a.winCount);
 
   // Upcoming deadlines (open opportunities). EVALUATION rows now carry a
@@ -1525,7 +1662,8 @@ export async function backfillStructured() {
   let done = 0;
   for (const p of pending) {
     const analysis = await analyzeProject(p.projectName, p.rawContent);
-    const competitor = await matchCompetitor(analysis.winner);
+    const competitor = await matchCompetitor(analysis.winner)
+      || await matchCompetitor(extractManufacturer(p.rawContent));
     await prisma.bidProject.update({
       where: { id: p.id },
       data: {
