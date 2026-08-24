@@ -7,8 +7,7 @@ import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { callDeepSeek } from '../services/deepseek.js';
-import { sendMail } from '../services/mailer.js';
-import { renderEmail } from '../services/emailTemplate.js';
+import { newProjectMail, projectUpdateMail } from '../services/hotProjectMail.js';
 
 const router = express.Router();
 
@@ -43,59 +42,34 @@ const lastActivityAt = (project) => {
   return new Date(latest?.date || latest?.createdAt || project.updatedAt || project.createdAt).getTime() || 0;
 };
 
-const PRIORITY_LABELS = { 1: '1 · High', 2: '2 · Mid time', 3: '3 · Offer done' };
+// Everyone with admin rights hears about movement on this list, the author
+// included — the mail doubles as their own record that it went out, and to
+// whom. Wording lives in services/hotProjectMail.js so a one-off script can
+// send the identical mail.
+async function adminRecipients() {
+  const admins = await prisma.user.findMany({ where: { isAdmin: true }, select: { email: true } });
+  return admins.map((a) => a.email).filter(Boolean).join(',');
+}
 
-// A new status update is what this list exists to record, so admins hear about
-// it by mail as well as on the page. The author is included: the mail doubles
-// as their own record that it went out, and to whom. Best-effort — a mail
-// failure must not fail the write that already succeeded.
-async function emailAdminsAboutUpdate(project, update, author) {
-  try {
-    const admins = await prisma.user.findMany({
-      where: { isAdmin: true },
-      select: { email: true },
-    });
-    const to = admins.map((a) => a.email).filter(Boolean).join(',');
-    if (!to) return;
+async function notifyNewProject(project, createdById) {
+  // The JWT carries no display name, so the creator is looked up rather than
+  // read off req.user. This runs after the response, so the query is free.
+  const [to, creator] = await Promise.all([
+    adminRecipients(),
+    createdById
+      ? prisma.user.findUnique({ where: { id: createdById }, select: { name: true } }).catch(() => null)
+      : null,
+  ]);
+  return newProjectMail({ to, project, creatorName: creator?.name });
+}
 
-    const facts = [
-      { k: { en: 'Customer', zh: '客户' }, v: project.customer },
-      { k: { en: 'List', zh: '列表' }, v: project.category },
-    ];
-    if (project.machineType) facts.push({ k: { en: 'Machine', zh: '机型' }, v: project.machineType });
-    if (project.priority) facts.push({ k: { en: 'Priority', zh: '优先级' }, v: PRIORITY_LABELS[project.priority] || String(project.priority) });
-    if (project.owner?.name) facts.push({ k: { en: 'Owner', zh: '负责人' }, v: project.owner.name });
-    facts.push({ k: { en: 'Written by', zh: '填写人' }, v: author?.name || '—' });
-
-    const mail = renderEmail({
-      title: {
-        en: `Hot project updated — ${project.customer}`,
-        zh: `内部项目有更新 — ${project.customer}`,
-      },
-      intro: {
-        en: update.content,
-        zh: update.content,
-      },
-      facts,
-      action: {
-        label: { en: 'Open in Herkules CRM', zh: '在系统中查看' },
-        url: 'https://www.herkulesgroup-china.com/hotprojects',
-      },
-      note: {
-        en: 'Sent to administrators whenever a hot project gets a new status update.',
-        zh: '内部项目每次新增状态更新，都会发这封邮件给管理员。',
-      },
-    });
-
-    await sendMail({
-      to,
-      subject: `[Herkules Hot Projects] ${project.customer} — 项目更新 / new update`,
-      text: mail.text,
-      html: mail.html,
-    });
-  } catch (err) {
-    console.error(`[hotProjects] update mail failed: ${err.message}`);
-  }
+async function notifyProjectUpdate(project, update) {
+  return projectUpdateMail({
+    to: await adminRecipients(),
+    project,
+    content: update.content,
+    authorName: update.author?.name,
+  });
 }
 
 // ── List (visibility-filtered) ────────────────────────────────────────────────
@@ -177,8 +151,11 @@ router.post('/', async (req, res) => {
         visibility: b.visibility === 'PRIVATE' ? 'PRIVATE' : 'TEAM',
         createdById: req.user.userId,
       },
+      include: { owner: { select: { name: true } } },
     });
     res.status(201).json(project);
+    // After the response: adding a project should never wait on SMTP.
+    notifyNewProject(project, req.user.userId);
   } catch (error) {
     console.error('Error creating hot project:', error);
     res.status(500).json({ error: 'Failed to create hot project' });
@@ -237,7 +214,7 @@ router.post('/:id/updates', async (req, res) => {
     });
     res.status(201).json(update);
     // After the response: the person filing an update should never wait on SMTP.
-    emailAdminsAboutUpdate(project, update, update.author);
+    notifyProjectUpdate(project, update);
   } catch (error) {
     console.error('Error adding hot project update:', error);
     res.status(500).json({ error: 'Failed to add update' });
