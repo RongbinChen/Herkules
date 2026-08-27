@@ -319,11 +319,13 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                 dragging ? 'border-2 border-dashed border-brand-400 bg-brand-50' : 'border-slate-200 bg-slate-50'
               }`}
             >
-              <div className="mb-1 flex flex-wrap items-center gap-x-2 text-xs font-bold text-slate-500">
-                <span>{isImportCreate ? t.aiSectionTitleImport : t.aiSectionTitle}</span>
-                <span className={`font-medium ${dragging ? 'text-brand-600' : 'text-slate-400'}`}>
-                  {dragging ? t.dropActive : (acceptsPhotos && acceptsDoc ? t.dropHintDocPhoto : acceptsDoc ? t.dropHintDoc : t.dropHintPhoto)}
-                </span>
+              <div className="mb-1 text-xs font-bold text-slate-500">
+                {isImportCreate ? t.aiSectionTitleImport : t.aiSectionTitle}
+              </div>
+              {/* Own line under the title: as a trailing fragment of the heading
+                  it read like part of it, and it is an instruction of its own. */}
+              <div className={`mb-2 text-xs font-medium ${dragging ? 'text-brand-600' : 'text-slate-400'}`}>
+                {dragging ? t.dropActive : (acceptsPhotos && acceptsDoc ? t.dropHintDocPhoto : acceptsDoc ? t.dropHintDoc : t.dropHintPhoto)}
               </div>
               {!isImportCreate && (
                 <Textarea rows={4} value={form.rawNotes} onChange={(e) => set('rawNotes', e.target.value)}
