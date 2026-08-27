@@ -43,6 +43,35 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const custMatches = q ? custList.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 30) : []
   const exactMatch = q && custList.some((c) => c.name.toLowerCase() === q)
 
+  // Drag & drop onto the AI panel. Which kinds are accepted follows the same
+  // rules as the buttons: the import path takes a .docx only, the manual path
+  // takes photos, editing an existing report takes both.
+  const [dragging, setDragging] = useState(false)
+  const acceptsDoc = !isManualCreate
+  const acceptsPhotos = !isImportCreate
+
+  const takeFiles = (files) => {
+    const list = Array.from(files || [])
+    if (list.length === 0) return
+    const doc = acceptsDoc ? list.find((f) => f.name.toLowerCase().endsWith('.docx')) : null
+    const images = acceptsPhotos ? list.filter((f) => f.type.startsWith('image/')) : []
+    if (!doc && images.length === 0) { setErr(t.errUnsupportedDrop); return }
+    setErr('')
+    if (doc) setDocFile(doc)
+    if (images.length) setPhotos((prev) => [...prev, ...images])
+  }
+
+  const onDrop = (e) => {
+    e.preventDefault()
+    setDragging(false)
+    takeFiles(e.dataTransfer?.files)
+  }
+
+  // dragover must be cancelled on every event, otherwise the browser navigates
+  // to the dropped file instead of handing it over.
+  const onDragOver = (e) => { e.preventDefault(); if (!dragging) setDragging(true) }
+  const onDragLeave = (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setDragging(false) }
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const setContent = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, [k]: v } }))
   const setMeta = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, meta: { ...(f.content?.meta || {}), [k]: v } } }))
@@ -282,8 +311,20 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
 
           {/* Input + AI generate (create/edit only) */}
           {editing && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <div className="mb-1 text-xs font-bold text-slate-500">{isImportCreate ? t.aiSectionTitleImport : t.aiSectionTitle}</div>
+            <div
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              className={`rounded-xl border p-3 transition ${
+                dragging ? 'border-2 border-dashed border-brand-400 bg-brand-50' : 'border-slate-200 bg-slate-50'
+              }`}
+            >
+              <div className="mb-1 flex flex-wrap items-center gap-x-2 text-xs font-bold text-slate-500">
+                <span>{isImportCreate ? t.aiSectionTitleImport : t.aiSectionTitle}</span>
+                <span className={`font-medium ${dragging ? 'text-brand-600' : 'text-slate-400'}`}>
+                  {dragging ? t.dropActive : (acceptsPhotos && acceptsDoc ? t.dropHintDocPhoto : acceptsDoc ? t.dropHintDoc : t.dropHintPhoto)}
+                </span>
+              </div>
               {!isImportCreate && (
                 <Textarea rows={4} value={form.rawNotes} onChange={(e) => set('rawNotes', e.target.value)}
                   placeholder={t.notesPlaceholder} />
