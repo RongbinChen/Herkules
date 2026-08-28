@@ -51,6 +51,51 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ── Duplicate check ───────────────────────────────────────────────────────────
+// Same customer + same visit day is almost always a second copy of a report
+// that is already on file: a .docx imported twice, or two people writing up the
+// same meeting. Almost — two separate visits to one customer in one day do
+// happen — so this only reports what exists and lets the caller decide. A hard
+// unique constraint would also mean a schema change, which stops the deploy.
+//
+// Declared BEFORE `/:id`: Express matches in order, and `/duplicates` would
+// otherwise be read as a report id.
+router.get('/duplicates', async (req, res) => {
+  try {
+    const customerId = parseInt(req.query.customerId, 10);
+    const day = String(req.query.visitDate || '').slice(0, 10);
+    const excludeId = parseInt(req.query.excludeId, 10);
+    // No customer or no date is not an error — there is simply nothing to
+    // compare yet, and the caller polls this while the form is still being
+    // filled in.
+    if (!Number.isInteger(customerId) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.json([]);
+    // Visit dates are written as `new Date('YYYY-MM-DD')` (UTC midnight) and
+    // read back through toISOString(), so the UTC day is the day the user sees.
+    const start = new Date(`${day}T00:00:00.000Z`);
+    const end = new Date(start.getTime() + 24 * 3600e3);
+    const reports = await prisma.visitReport.findMany({
+      where: {
+        customerId,
+        visitDate: { gte: start, lt: end },
+        ...(Number.isInteger(excludeId) ? { NOT: { id: excludeId } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        visitDate: true,
+        createdAt: true,
+        author: { select: { id: true, name: true } },
+      },
+    });
+    res.json(reports);
+  } catch (error) {
+    console.error('Error checking visit report duplicates:', error);
+    res.status(500).json({ error: 'Failed to check duplicates' });
+  }
+});
+
 // ── Single ─────────────────────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {

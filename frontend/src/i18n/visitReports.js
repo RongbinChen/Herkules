@@ -68,6 +68,13 @@ export const STRINGS = {
     errSummarizeFailed: 'AI summarization failed',
     errTitleRequired: 'Title is required',
     errSaveFailed: 'Save failed',
+    // Same customer + same visit day — warned about, never blocked: two separate
+    // meetings at one customer in one day are rare but real.
+    dupWarnTitle: (n) => (n === 1
+      ? 'A visit report for this customer on this date already exists'
+      : `${n} visit reports for this customer on this date already exist`),
+    dupWarnHint: 'Check whether this is the same visit before saving another copy.',
+    dupConfirm: 'A report for this customer on this date is already on file. Save this one as well?',
     chooserTitle: 'New Visit Report',
     chooserSubtitle: 'How would you like to create this report?',
     manualEntry: 'Manual Entry',
@@ -148,6 +155,11 @@ export const STRINGS = {
     errSummarizeFailed: 'AI 总结失败',
     errTitleRequired: '标题必填',
     errSaveFailed: '保存失败',
+    dupWarnTitle: (n) => (n === 1
+      ? '该客户在这一天已有一份拜访报告'
+      : `该客户在这一天已有 ${n} 份拜访报告`),
+    dupWarnHint: '保存前先确认是不是同一次拜访，避免重复录入。',
+    dupConfirm: '该客户在这一天已经有拜访报告了，仍然要保存这一份吗？',
     chooserTitle: '新建拜访报告',
     chooserSubtitle: '选择创建方式',
     manualEntry: '手动输入',

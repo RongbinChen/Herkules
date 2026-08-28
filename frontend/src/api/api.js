@@ -74,6 +74,9 @@ export const visitReportsAPI = {
   list: (params = {}) => api.get('/visit-reports', { params }),
   get: (id) => api.get(`/visit-reports/${id}`),
   create: (data) => api.post('/visit-reports', data),
+  // Reports already on file for the same customer on the same visit day. Warns
+  // about a re-import or a second write-up of the same meeting; never blocks.
+  duplicates: (params) => api.get('/visit-reports/duplicates', { params }),
   update: (id, data) => api.put(`/visit-reports/${id}`, data),
   delete: (id) => api.delete(`/visit-reports/${id}`),
   // AI-structure raw notes (+ optional photos) into a draft — multipart, not saved.
