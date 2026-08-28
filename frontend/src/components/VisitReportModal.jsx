@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
@@ -42,6 +42,28 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const q = custQuery.trim().toLowerCase()
   const custMatches = q ? custList.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 30) : []
   const exactMatch = q && custList.some((c) => c.name.toLowerCase() === q)
+
+  // Typing a name without clicking a suggestion leaves customerId empty even
+  // though the field looks filled. save() already falls back to an exact name
+  // match; the duplicate check uses the same resolution so it does not go quiet
+  // exactly when the customer was typed rather than picked.
+  const matchByName = (name) => custList.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase())
+  const linkedCustomerId = form.customerId || (custQuery.trim() ? matchByName(custQuery)?.id || '' : '')
+
+  // Same customer + same visit day → say so before a second copy of the same
+  // visit is filed. A warning, not a block: two separate meetings at one
+  // customer in one day are rare but real, and the server stays permissive.
+  const [dupes, setDupes] = useState([])
+  useEffect(() => {
+    if (!editing || !linkedCustomerId || !form.visitDate) { setDupes([]); return }
+    let live = true
+    visitReportsAPI
+      .duplicates({ customerId: linkedCustomerId, visitDate: form.visitDate, ...(report?.id ? { excludeId: report.id } : {}) })
+      .then(({ data }) => { if (live) setDupes(Array.isArray(data) ? data : []) })
+      // A failed check must never stand between someone and their report.
+      .catch(() => { if (live) setDupes([]) })
+    return () => { live = false }
+  }, [editing, linkedCustomerId, form.visitDate, report?.id])
 
   // Drag & drop onto the AI panel. Which kinds are accepted follows the same
   // rules as the buttons: the import path takes a .docx only, the manual path
@@ -156,17 +178,12 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
 
   const save = async (status) => {
     if (!form.title.trim()) { setErr(t.errTitleRequired); return }
+    // The banner has been on screen the whole time; this is the last stop
+    // before a duplicate is actually written.
+    if (dupes.length > 0 && !window.confirm(t.dupConfirm)) return
     setErr(''); setSaving(true)
     try {
-      // Typing a name without clicking a suggestion leaves customerId empty even
-      // though the field looks filled — auto-link when the text exactly matches
-      // an existing customer so the report doesn't silently save unlinked.
-      let cid = form.customerId
-      if (!cid && custQuery.trim()) {
-        const hit = custList.find((c) => c.name.trim().toLowerCase() === custQuery.trim().toLowerCase())
-        if (hit) cid = hit.id
-      }
-      const payload = { ...form, status: status || form.status, customerId: cid || null }
+      const payload = { ...form, status: status || form.status, customerId: linkedCustomerId || null }
       if (isNew) {
         const { data } = await visitReportsAPI.create(payload)
         // Dated targets became calendar reminders server-side — tell the user.
@@ -308,6 +325,23 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
               </div>
             </div>
           </div>
+
+          {dupes.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+              <p className="font-bold">⚠ {t.dupWarnTitle(dupes.length)}</p>
+              <ul className="mt-1.5 space-y-1">
+                {dupes.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-semibold">{d.title}</span>
+                    <span className="text-amber-700">
+                      {d.author?.name || t.authorFallback} · {d.status === 'FINAL' ? t.statusFinal : t.statusDraft}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-amber-700">{t.dupWarnHint}</p>
+            </div>
+          )}
 
           {/* Input + AI generate (create/edit only) */}
           {editing && (
