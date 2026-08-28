@@ -757,7 +757,7 @@ router.post('/ocr/result/:id', requireOcrToken, async (req, res) => {
 });
 
 // The worker says when it has emptied the queue. The VPS decides whether that
-// is worth an email, because only the VPS has the mailer and the admin list —
+// is worth an email, because only the VPS has the mailer and the recipient —
 // and duplicating SMTP credentials onto the DGX to save one request would be a
 // second copy of a secret for no gain.
 const drainedSchema = z.object({
@@ -778,16 +778,19 @@ router.post('/ocr/drained', requireOcrToken, async (req, res) => {
     // A pass that did nothing is the normal idle case — the worker only reports
     // after real work, but check anyway rather than trusting the caller.
     if (processed === 0) return;
-    const [pending, stuck, admins] = await Promise.all([
+    const [pending, stuck] = await Promise.all([
       prisma.contractFile.count({ where: { ocrStatus: 'PENDING' } }),
       prisma.contractFile.count({ where: { ocrStatus: 'FAILED' } }),
-      prisma.user.findMany({ where: { isAdmin: true }, select: { email: true } }),
     ]);
     // Still work left means this was a pause, not a finish — no mail for that.
     if (pending > 0) return;
 
-    const to = admins.map((a) => a.email).filter(Boolean).join(',');
-    if (!to) return;
+    // One recipient, not every admin: this is queue plumbing — how many pages
+    // the DGX got through overnight — and the only person who acts on it is the
+    // one who can pause and re-queue the worker. The rest of the admins were
+    // getting a mail they could do nothing with. Same account as the pause
+    // control on purpose, overridable through CONTRACT_OCR_ADMIN_EMAIL.
+    const to = OCR_ADMIN_EMAIL;
 
     const hours = elapsedMs / 3600000;
     const spent = hours >= 1 ? `${hours.toFixed(1)} h` : `${Math.round(elapsedMs / 60000)} min`;
