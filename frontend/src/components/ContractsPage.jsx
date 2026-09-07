@@ -181,8 +181,8 @@ export default function ContractsPage() {
       key={f.id}
       className={boxed ? 'overflow-hidden rounded-xl border border-slate-200 bg-white' : ''}
     >
-      <div className="flex items-start justify-between gap-3 p-3">
-        <div className="min-w-0 flex-1">
+      <div className="p-3">
+        <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
             {/* Only shown while a file is unreadable — a green tick on every
@@ -212,32 +212,38 @@ export default function ContractsPage() {
             </button>
           )}
           {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
-          <p className="mt-0.5 text-[11px] text-slate-400">
-            {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          {/* Everyone with the PIN may read a summary; only the uploader or an
-              admin may spend the GPU regenerating one (enforced server-side).
-              Disabled until the file has been transcribed, since there is
-              nothing to read from before that. */}
-          <button
-            onClick={() => toggleSummary(f.id)}
-            disabled={f.ocrStatus !== 'DONE'}
-            title={f.ocrStatus === 'DONE'
-              ? (f.summaryAt ? 'Key terms — already generated' : 'Key terms — reads the contract, takes about a minute')
-              : 'Not readable yet'}
-            className="text-xs font-semibold text-slate-400 transition hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {openSummary.has(f.id) ? 'Hide' : 'Summary'}
-            {f.summaryAt && !openSummary.has(f.id) && <span className="ml-1 text-emerald-500">•</span>}
-          </button>
-          {canEdit(f) && (
-            <>
-              <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">Edit</button>
-              <button onClick={() => doDelete(f)} className="text-xs font-semibold text-slate-400 transition hover:text-rose-500">Delete</button>
-            </>
-          )}
+          {/* Facts and actions share one line under the filename. Stacked down
+              the right edge they cost three rows next to a three-row card and
+              left the middle of every row empty; here the row is only as tall
+              as the file's own details. The rule separates the two halves —
+              what the file is, and what you can do to it. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+            <span>
+              {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
+            </span>
+            <span className="h-2.5 w-px bg-slate-200" />
+            {/* Everyone with the PIN may read a summary; only the uploader or an
+                admin may spend the GPU regenerating one (enforced server-side).
+                Disabled until the file has been transcribed, since there is
+                nothing to read from before that. */}
+            <button
+              onClick={() => toggleSummary(f.id)}
+              disabled={f.ocrStatus !== 'DONE'}
+              title={f.ocrStatus === 'DONE'
+                ? (f.summaryAt ? 'Key terms — already generated' : 'Key terms — reads the contract, takes about a minute')
+                : 'Not readable yet'}
+              className="font-semibold text-slate-500 transition hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {openSummary.has(f.id) ? 'Hide' : 'Summary'}
+              {f.summaryAt && !openSummary.has(f.id) && <span className="ml-1 text-emerald-500">•</span>}
+            </button>
+            {canEdit(f) && (
+              <>
+                <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="font-semibold text-slate-500 transition hover:text-brand-600">Edit</button>
+                <button onClick={() => doDelete(f)} className="font-semibold text-slate-500 transition hover:text-rose-500">Delete</button>
+              </>
+            )}
+          </div>
         </div>
       </div>
       {openSummary.has(f.id) && (
