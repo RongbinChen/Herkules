@@ -41,3 +41,8 @@ proxy/*.bak.*
 
 # DGX runner reject cache — machine-local, regenerated on demand
 backend/scripts/.dgx-rejects.json
+
+# Holiday calendar state written by the two-monthly updater — runtime data,
+# not source. Kept out of git so a cron run never leaves the working tree dirty
+# (which aborts the next deploy). Seed lives in backend/src/data/.
+/backend/data/

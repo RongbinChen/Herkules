@@ -1,17 +1,16 @@
 #!/home/ubuntu/.nvm/versions/node/v24.14.1/bin/node
 
-import fs from 'fs/promises';
-import path from 'path';
 import { promisify } from 'util';
 import { execFile } from 'child_process';
-import { fileURLToPath } from 'url';
 import { createHolidayPublishedAdminNotice } from '../src/services/adminNotices.js';
+// Same store the running server reads, so the cron and the app can never
+// disagree about which file holds the current state.
+import {
+  readHolidayCalendars as readCalendars,
+  writeHolidayCalendars as writeCalendars,
+} from '../src/services/holidayCalendarStore.js';
 
 const execFileAsync = promisify(execFile);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, '..', 'src', 'data', 'holiday-calendars.json');
-const TEMP_DATA_FILE = `${DATA_FILE}.tmp`;
 const SEARCH_API = 'https://sousuo.www.gov.cn/search-gov/data';
 
 const HOLIDAY_NAME_MAP = {
@@ -89,15 +88,6 @@ function parseHolidayEventsFromNotice(text, year) {
 async function curlGet(url) {
   const { stdout } = await execFileAsync('curl', ['-ks', url], { maxBuffer: 4 * 1024 * 1024 });
   return stdout;
-}
-
-async function readCalendars() {
-  return JSON.parse(await fs.readFile(DATA_FILE, 'utf8'));
-}
-
-async function writeCalendars(calendars) {
-  await fs.writeFile(TEMP_DATA_FILE, `${JSON.stringify(calendars, null, 2)}\n`, 'utf8');
-  await fs.rename(TEMP_DATA_FILE, DATA_FILE);
 }
 
 function sortCalendars(calendars) {
