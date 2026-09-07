@@ -214,18 +214,21 @@ export default function ContractsPage() {
           {showCustomer && (
             <button
               onClick={() => navigate(`/customers/${f.customer.id}`)}
-              className="mt-0.5 block max-w-full truncate text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
+              className="mt-0.5 block max-w-full truncate pl-3 text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
             >
               {f.customer?.name}
             </button>
           )}
-          {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
+          {/* The lines under the title are indented a notch. Flush against the
+              badge they read as a second column starting over; stepped in, they
+              read as belonging to the filename above them. */}
+          {f.note && <p className="mt-0.5 truncate pl-3 text-[11px] text-slate-500">{f.note}</p>}
           {/* Facts and actions share one line under the filename. Stacked down
               the right edge they cost three rows next to a three-row card and
               left the middle of every row empty; here the row is only as tall
               as the file's own details. The rule separates the two halves —
               what the file is, and what you can do to it. */}
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-3 text-[11px] text-slate-400">
             <span>
               {fmtSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
             </span>
