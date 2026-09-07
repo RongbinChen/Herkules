@@ -7,7 +7,7 @@ import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { callDeepSeek } from '../services/deepseek.js';
-import { newProjectMail, projectUpdateMail } from '../services/hotProjectMail.js';
+import { newProjectMail, projectUpdateMail, projectClosedMail } from '../services/hotProjectMail.js';
 
 const router = express.Router();
 
@@ -16,6 +16,9 @@ const router = express.Router();
 // source of truth for which list a project sits in.
 const CATEGORIES = new Set(['OPEN', 'POTENTIAL', 'REVAMP']);
 const toCategory = (v) => (CATEGORIES.has(v) ? v : 'OPEN');
+// A finished project keeps its category and leaves the working lists instead —
+// see the schema note on HotProjectOutcome.
+const OUTCOMES = new Set(['WON', 'LOST']);
 router.use(authenticateToken);
 
 // Visibility clause for one user.
@@ -72,11 +75,23 @@ async function notifyProjectUpdate(project, update) {
   });
 }
 
+async function notifyProjectClosed(project, update) {
+  return projectClosedMail({
+    to: await adminRecipients(),
+    project,
+    content: update.content,
+    authorName: update.author?.name,
+  });
+}
+
 // ── List (visibility-filtered) ────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const { category, q, priority } = req.query;
+    const { category, q, priority, closed } = req.query;
     const where = { AND: [visibleWhere(req.user)] };
+    // Closed projects are archived, not deleted: they are off every list until
+    // explicitly asked for, and then they are the only thing returned.
+    where.AND.push(closed === '1' ? { closedAt: { not: null } } : { closedAt: null });
     if (CATEGORIES.has(category)) where.AND.push({ category });
     if (priority) where.AND.push({ priority: parseInt(priority) });
     if (q) {
@@ -214,7 +229,9 @@ router.post('/:id/updates', async (req, res) => {
     });
     res.status(201).json(update);
     // After the response: the person filing an update should never wait on SMTP.
-    notifyProjectUpdate(project, update);
+    // Closed projects stay writable — a late postscript is worth keeping — but
+    // they no longer mail the admins, who are done with them.
+    if (!project.closedAt) notifyProjectUpdate(project, update);
   } catch (error) {
     console.error('Error adding hot project update:', error);
     res.status(500).json({ error: 'Failed to add update' });
@@ -278,6 +295,71 @@ router.post('/:id/summarize', async (req, res) => {
   } catch (error) {
     console.error('Error summarizing hot project:', error);
     res.status(500).json({ error: 'AI summary failed, please retry' });
+  }
+});
+
+// ── Close / reopen (owner or admin) ───────────────────────────────────────────
+// Closing writes the reason into the timeline as a normal update, so the record
+// reads the same as it always did: the last entry says how it ended and who
+// said so. The mail goes out once, from here, rather than through the update
+// route — which by then already refuses to mail a closed project.
+router.post('/:id/close', async (req, res) => {
+  try {
+    const existing = await prisma.hotProject.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    if (!canManage(existing, req.user)) return res.status(403).json({ error: '只有负责人或管理员可结项' });
+    const outcome = String(req.body?.outcome || '').toUpperCase();
+    if (!OUTCOMES.has(outcome)) return res.status(400).json({ error: 'outcome must be WON or LOST' });
+    const note = String(req.body?.note || '').trim();
+
+    const project = await prisma.hotProject.update({
+      where: { id: existing.id },
+      data: { closedAt: new Date(), outcome },
+      include: { owner: { select: { name: true } } },
+    });
+    const update = await prisma.hotProjectUpdate.create({
+      data: {
+        projectId: project.id,
+        content: note
+          ? `Project closed — ${outcome}. ${note}`
+          : `Project closed — ${outcome}.`,
+        date: new Date(),
+        authorId: req.user.userId,
+      },
+      include: { author: { select: { id: true, name: true } } },
+    });
+    res.json({ ...project, closingUpdate: update });
+    // After the response, same as the other two: never wait on SMTP.
+    notifyProjectClosed(project, update);
+  } catch (error) {
+    console.error('Error closing hot project:', error);
+    res.status(500).json({ error: 'Failed to close project' });
+  }
+});
+
+router.post('/:id/reopen', async (req, res) => {
+  try {
+    const existing = await prisma.hotProject.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    if (!canManage(existing, req.user)) return res.status(403).json({ error: '只有负责人或管理员可重开' });
+    const project = await prisma.hotProject.update({
+      where: { id: existing.id },
+      data: { closedAt: null, outcome: null },
+    });
+    // No mail: reopening is not news until someone files the update explaining
+    // it, and that update mails on its own now that the project is open again.
+    await prisma.hotProjectUpdate.create({
+      data: {
+        projectId: project.id,
+        content: 'Project reopened.',
+        date: new Date(),
+        authorId: req.user.userId,
+      },
+    });
+    res.json(project);
+  } catch (error) {
+    console.error('Error reopening hot project:', error);
+    res.status(500).json({ error: 'Failed to reopen project' });
   }
 });
 

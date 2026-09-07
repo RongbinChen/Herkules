@@ -12,6 +12,14 @@ const CATEGORIES = [
   { key: 'REVAMP', label: 'Revamp' },
   { key: 'POTENTIAL', label: 'Potential Projects' },
 ]
+// A fourth tab that is not a category: closed projects keep the list they were
+// on and are filtered out of it, so this one asks the backend for the archive
+// across all three. Only the tab strip and the query treat it specially.
+const CLOSED_TAB = { key: 'CLOSED', label: 'Closed' }
+const OUTCOME = {
+  WON: { label: '✓ Won', hint: '已结项 · 赢单', cls: 'bg-emerald-50 text-emerald-600 ring-emerald-200' },
+  LOST: { label: '✕ Lost', hint: '已结项 · 丢单', cls: 'bg-slate-100 text-slate-500 ring-slate-200' },
+}
 const MACHINE_TYPES = ['ProfiMill', 'ProfiTurn', 'P/PR', 'K/KR', 'T']
 // machineType holds one machine or several, comma-separated. Splitting here is
 // what lets every read site treat both the same way.
@@ -38,7 +46,9 @@ const stripUpdatedOn = (s) =>
 function ProjectModal({ project, category, onClose, onSaved }) {
   const isNew = !project
   const [form, setForm] = useState(() => ({
-    category: project?.category || category || 'OPEN',
+    // `category` is the tab in view, which can be the Closed archive — not a
+    // category a new project can be filed under.
+    category: project?.category || (CATEGORIES.some((c) => c.key === category) ? category : 'OPEN'),
     customer: project?.customer || '',
     customerId: project?.customerId || project?.customerRef?.id || '',
     dateOfReceipt: fmtDate(project?.dateOfReceipt),
@@ -217,6 +227,64 @@ function ProjectModal({ project, category, onClose, onSaved }) {
   )
 }
 
+// ── Close dialog ─────────────────────────────────────────────────────────────
+// Won or lost is the whole decision, so it is two buttons rather than a select.
+// The note is optional and goes into the timeline with the closing entry.
+function CloseModal({ project, onClose, onClosed }) {
+  const [outcome, setOutcome] = useState('WON')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    setErr(''); setSaving(true)
+    try {
+      await hotProjectsAPI.close(project.id, { outcome, note: note.trim() || undefined })
+      onClosed()
+    } catch (e) {
+      setErr(e.response?.data?.error || '结项失败')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-3 sm:p-6" onClick={onClose}>
+      <div className="my-16 w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="text-base font-bold text-slate-800">Close project</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          <p className="text-xs text-slate-500">
+            结项后 <span className="font-semibold text-slate-700">{project.customer}</span> 会从当前列表移到
+            Closed，管理员不再收到它的更新邮件。记录和跟进历史都保留，随时可以重开。
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ k: 'WON', l: '✓ Won 赢单', on: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
+              { k: 'LOST', l: '✕ Lost 丢单', on: 'border-slate-400 bg-slate-100 text-slate-700' }].map((o) => (
+              <button key={o.k} type="button" onClick={() => setOutcome(o.k)} aria-pressed={outcome === o.k}
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition ${
+                  outcome === o.k ? o.on : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>
+                {o.l}
+              </button>
+            ))}
+          </div>
+          <label className="block text-xs font-semibold text-slate-600">
+            Closing note（可选，写进跟进记录）
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} className="mt-1"
+              placeholder="e.g. Contract signed for 4 milling machines." />
+          </label>
+          {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? 'Closing…' : 'Close project'}</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── One project row (expandable) ─────────────────────────────────────────────
 function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
   const navigate = useNavigate()
@@ -225,9 +293,11 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
   const [note, setNote] = useState('')
   const [posting, setPosting] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [closeOpen, setCloseOpen] = useState(false)
   const [summary, setSummary] = useState('')
   const [summarizing, setSummarizing] = useState(false)
   const pr = PRIORITY[p.priority]
+  const oc = p.closedAt ? OUTCOME[p.outcome] : null
   const canManage = isAdmin || p.ownerId === currentUserId
 
   const loadDetail = async () => {
@@ -262,6 +332,11 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
     } finally { setPosting(false) }
   }
 
+  const reopenProject = async () => {
+    if (!window.confirm(`Reopen "${p.customer}"? 它会回到原来的列表，更新邮件也恢复。`)) return
+    try { await hotProjectsAPI.reopen(p.id); await loadDetail(); onChanged() } catch { window.alert('Reopen failed (owner/admin only)') }
+  }
+
   const removeProject = async () => {
     if (!window.confirm(`Delete project "${p.customer}"? All updates will be removed.`)) return
     try { await hotProjectsAPI.delete(p.id); onChanged() } catch { window.alert('Delete failed (owner/admin only)') }
@@ -278,6 +353,7 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
             {p.sortNo != null && <span className="text-xs font-bold text-slate-300">#{p.sortNo}</span>}
             <span className="font-semibold text-slate-800">{p.customer}</span>
             {p.visibility === 'PRIVATE' && <span title="仅负责人+管理员可见">🔒</span>}
+            {oc && <span title={oc.hint} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${oc.cls}`}>{oc.label}</span>}
             {pr && <span title={pr.hint} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${pr.cls}`}>{pr.label}</span>}
             {splitMachines(p.machineType).map((m) => (
               <span key={m} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{m}</span>
@@ -307,7 +383,9 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
                 so is more useful than leaving the reader to wonder why the
                 record never shows up under a team tab. */}
             {!p.owner && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">owner t.b.d.</span>}
-            {p.deadline && <span className="font-semibold text-red-500">Due {fmtDate(p.deadline)}</span>}
+            {oc && <span>Closed {fmtDate(p.closedAt)}</span>}
+            {/* A deadline on a finished project is history, not a warning. */}
+            {p.deadline && !oc && <span className="font-semibold text-red-500">Due {fmtDate(p.deadline)}</span>}
             {p.dateOfReceipt && <span>Received {fmtDate(p.dateOfReceipt)}</span>}
             <span>{p._count?.updates ?? 0} updates</span>
           </div>
@@ -377,6 +455,11 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
                 {canManage && (
                   <>
                     <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>Edit</Button>
+                    {oc ? (
+                      <Button size="sm" variant="secondary" onClick={reopenProject}>↺ Reopen</Button>
+                    ) : (
+                      <Button size="sm" variant="secondary" onClick={() => setCloseOpen(true)}>✓ Close…</Button>
+                    )}
                     <button onClick={removeProject} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50">Delete</button>
                   </>
                 )}
@@ -392,6 +475,11 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
       {editOpen && (
         <ProjectModal project={detail || p} onClose={() => setEditOpen(false)}
           onSaved={() => { setEditOpen(false); loadDetail(); onChanged() }} />
+      )}
+
+      {closeOpen && (
+        <CloseModal project={p} onClose={() => setCloseOpen(false)}
+          onClosed={() => { setCloseOpen(false); loadDetail(); onChanged() }} />
       )}
     </div>
   )
@@ -440,7 +528,12 @@ export default function HotProjects() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await hotProjectsAPI.list({ category, q: qDebounced || undefined, priority: priority || undefined })
+      // The Closed tab spans every category, so it sends closed=1 instead of one.
+      const { data } = await hotProjectsAPI.list({
+        ...(category === CLOSED_TAB.key ? { closed: 1 } : { category }),
+        q: qDebounced || undefined,
+        priority: priority || undefined,
+      })
       setProjects(data)
     } catch (e) {
       console.error('Failed to load hot projects', e)
@@ -472,9 +565,12 @@ export default function HotProjects() {
         {/* Category tabs + filters */}
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-1.5">
-            {CATEGORIES.map((c) => (
+            {[...CATEGORIES, CLOSED_TAB].map((c) => (
               <button key={c.key} onClick={() => setCategory(c.key)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${category === c.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
+                  category === c.key
+                    ? c.key === CLOSED_TAB.key ? 'bg-slate-700 text-white' : 'bg-brand-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                 {c.label}
               </button>
             ))}
@@ -525,7 +621,9 @@ export default function HotProjects() {
           <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
         ) : visibleProjects.length === 0 ? (
           <div className="py-16 text-center text-sm text-slate-400">
-            {team === 'ALL' ? 'No projects.' : `No projects owned by ${personId ? teamMembers.find((u) => u.id === personId)?.name : team}.`}
+            {category === CLOSED_TAB.key && team === 'ALL'
+              ? 'No closed projects yet — 结项后的项目会归档到这里。'
+              : team === 'ALL' ? 'No projects.' : `No projects owned by ${personId ? teamMembers.find((u) => u.id === personId)?.name : team}.`}
           </div>
         ) : (
           <div className="space-y-3">

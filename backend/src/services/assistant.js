@@ -107,12 +107,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_hot_projects',
-      description: '搜索内部热点项目跟踪列表（销售 Open/Potential Projects：客户、负责人、需求机型、优先级、带日期的状态更新日志）。这是内部敏感数据，结果已按提问者权限过滤。',
+      description: '搜索内部热点项目跟踪列表（销售 Open/Potential Projects：客户、负责人、需求机型、优先级、带日期的状态更新日志）。这是内部敏感数据，结果已按提问者权限过滤。默认只返回在跑的项目，已结项（赢单/丢单）的要用 includeClosed。',
       parameters: {
         type: 'object',
         properties: {
           q: { type: 'string', description: '客户/需求/负责人/更新内容关键字（可选，留空列出全部可见项目）' },
           category: { type: 'string', enum: ['OPEN', 'POTENTIAL'], description: 'OPEN=询价进行中，POTENTIAL=潜在项目（可选）' },
+          includeClosed: { type: 'boolean', description: '把已结项的项目也算进来（问"赢了哪些单""历史项目"时用，默认 false）' },
         },
       },
     },
@@ -248,6 +249,7 @@ const impl = {
         include: { updates: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { content: true } } },
       })).map((h) => ({
         id: h.id, category: h.category, priority: h.priority, processor: h.processor,
+        closedAt: h.closedAt, outcome: h.outcome,
         requirements: (h.requirements || '').slice(0, 150),
         latestUpdate: h.updates[0]?.content?.slice(0, 250) || null,
       })),
@@ -314,10 +316,13 @@ const impl = {
     };
   },
 
-  async search_hot_projects({ q, category }, ctx) {
+  async search_hot_projects({ q, category, includeClosed }, ctx) {
     // Same visibility rule as the module's own routes — PRIVATE records are
     // only returned to their owner or an admin. The model never sees the rest.
     const where = { AND: [visibleWhere({ userId: ctx.userId, isAdmin: ctx.isAdmin })] };
+    // Closed projects are archive material: they would otherwise be reported as
+    // live pipeline, which is exactly the confusion closing them is meant to end.
+    if (!includeClosed) where.AND.push({ closedAt: null });
     if (category === 'OPEN' || category === 'POTENTIAL') where.AND.push({ category });
     if (q) {
       where.AND.push({
@@ -340,6 +345,7 @@ const impl = {
     return rows.map((p) => ({
       id: p.id, category: p.category, customer: p.customer, processor: p.processor,
       machineType: p.machineType, priority: p.priority, deadline: p.deadline,
+      closedAt: p.closedAt, outcome: p.outcome,
       requirements: (p.requirements || '').slice(0, 200),
       latestUpdates: p.updates.map((u) => ({ date: u.date, by: u.author?.name, content: u.content.slice(0, 300) })),
     }));
