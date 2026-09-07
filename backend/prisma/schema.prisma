@@ -51,6 +51,14 @@ enum HotProjectVisibility {
   PRIVATE
 }
 
+// How a project ended. Closing is a separate axis from the category: a closed
+// project keeps the list it lived on (an Open Project that was won is still an
+// Open Project historically), it just stops showing up in the working lists.
+enum HotProjectOutcome {
+  WON // contract signed
+  LOST // customer went elsewhere / dropped the plan
+}
+
 model HotProject {
   id            Int                  @id @default(autoincrement())
   category      HotProjectCategory   @default(OPEN)
@@ -67,6 +75,10 @@ model HotProject {
   deadline      DateTime? // Deadline for Submission
   priority      Int? // 1 high, 2 mid-time, 3 offer done
   visibility    HotProjectVisibility @default(TEAM)
+  // Closing is reversible — clearing both fields puts the project back on its
+  // list, for the customer who changes their mind after all.
+  closedAt      DateTime? // null = still running; set = archived
+  outcome       HotProjectOutcome? // set together with closedAt
   sortNo        Int? // original row number from the sheet
   createdById   Int?
   createdAt     DateTime             @default(now())
@@ -75,6 +87,7 @@ model HotProject {
 
   @@index([category])
   @@index([ownerId])
+  @@index([closedAt])
 }
 
 // Append-only status log ("Updated on …" entries) — tracks who wrote what when.
