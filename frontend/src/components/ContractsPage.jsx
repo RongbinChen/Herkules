@@ -155,6 +155,14 @@ export default function ContractsPage() {
       g.files.push(f)
       g.newest = Math.max(g.newest, new Date(f.createdAt).getTime() || 0)
     }
+    // Inside a group, "Other" sinks to the bottom: it is the catch-all, and a
+    // loose scan or a cover letter sitting above the signed contract makes the
+    // group read as though that were the newest thing that mattered. Everything
+    // else keeps the server's newest-first order — sort is stable, so this only
+    // moves the Other rows down, it does not regroup the rest by type.
+    for (const g of byCustomer.values()) {
+      g.files.sort((a, b) => (a.docType === 'OTHER' ? 1 : 0) - (b.docType === 'OTHER' ? 1 : 0))
+    }
     return [...byCustomer.values()].sort((a, b) => b.newest - a.newest)
   }, [items])
 
