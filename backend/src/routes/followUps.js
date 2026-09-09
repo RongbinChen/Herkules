@@ -8,6 +8,7 @@
 import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { requireUnlock } from './contracts.js';
 import {
   MILESTONES, MILESTONE_BY_KIND, MILESTONE_KINDS, chinaDay, reminderDue,
   reminderRecipients,
@@ -29,6 +30,11 @@ const FULL_INCLUDE = {
     include: { owner: { select: { id: true, name: true } } },
   },
   contacts: { orderBy: { id: 'asc' } },
+  // Count only. The filenames live behind the contracts module's team PIN and
+  // are served by the unlock-gated endpoint below — putting them in this
+  // payload would hand every logged-in user the one thing the PIN exists to
+  // withhold.
+  _count: { select: { contractFiles: true } },
   updates: {
     orderBy: { createdAt: 'desc' },
     include: { author: { select: { id: true, name: true } } },
@@ -292,6 +298,93 @@ router.post('/:id/milestones/:kind/notify', async (req, res) => {
   } catch (error) {
     console.error('Error sending milestone notification:', error);
     res.status(500).json({ error: 'Failed to send' });
+  }
+});
+
+// ── Linked contracts (behind the contracts module's team PIN) ────────────────
+// The link itself is ordinary data; the files are not. Both endpoints below run
+// through requireUnlock, so what comes back is scoped to the team whose PIN was
+// entered — a WRC unlock never lists an HRC file, here or anywhere else.
+
+router.get('/:id/contracts', requireUnlock, async (req, res) => {
+  try {
+    const f = await prisma.projectFollowUp.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: {
+        contractFiles: {
+          where: { team: req.contractTeam },
+          select: {
+            id: true, filename: true, docType: true, size: true, note: true,
+            createdAt: true, customerId: true,
+            uploadedBy: { select: { name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    res.json(f.contractFiles);
+  } catch (error) {
+    console.error('Error listing linked contracts:', error);
+    res.status(500).json({ error: 'Failed to list contracts' });
+  }
+});
+
+// Candidates to link: the customer's files, in the unlocked team. Same query
+// the Contracts page would run for that customer, so nothing new is exposed.
+router.get('/:id/contracts/available', requireUnlock, async (req, res) => {
+  try {
+    const f = await prisma.projectFollowUp.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: { customerId: true },
+    });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    if (!f.customerId) return res.json([]);
+    const rows = await prisma.contractFile.findMany({
+      where: { customerId: f.customerId, team: req.contractTeam },
+      select: { id: true, filename: true, docType: true, size: true, note: true, createdAt: true },
+      orderBy: [{ docType: 'asc' }, { createdAt: 'desc' }],
+    });
+    res.json(rows);
+  } catch (error) {
+    console.error('Error listing available contracts:', error);
+    res.status(500).json({ error: 'Failed to list contracts' });
+  }
+});
+
+// Replace the set of linked files. Only files that belong to this follow-up's
+// customer AND sit in the unlocked team can be linked — a crafted id list can
+// neither reach another customer's paperwork nor another team's.
+router.put('/:id/contracts', requireUnlock, async (req, res) => {
+  try {
+    const f = await prisma.projectFollowUp.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+
+    const wanted = Array.isArray(req.body?.fileIds) ? req.body.fileIds.map(Number).filter(Boolean) : [];
+    const allowed = f.customerId
+      ? await prisma.contractFile.findMany({
+        where: { id: { in: wanted }, customerId: f.customerId, team: req.contractTeam },
+        select: { id: true },
+      })
+      : [];
+
+    // `set` only touches links this team can see. Files linked under the other
+    // team's PIN stay put — this request has no business dropping them, and
+    // silently unlinking what the caller cannot see is how data disappears.
+    const keepOtherTeams = await prisma.contractFile.findMany({
+      where: { followUps: { some: { id: f.id } }, team: { not: req.contractTeam } },
+      select: { id: true },
+    });
+
+    await prisma.projectFollowUp.update({
+      where: { id: f.id },
+      data: { contractFiles: { set: [...allowed, ...keepOtherTeams].map(({ id }) => ({ id })) } },
+    });
+    res.json({ linked: allowed.length });
+  } catch (error) {
+    console.error('Error linking contracts:', error);
+    res.status(500).json({ error: 'Failed to link contracts' });
   }
 });
 

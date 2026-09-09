@@ -126,7 +126,10 @@ router.post('/unlock', authenticateToken, async (req, res) => {
 });
 
 // Requires a valid unlock token and pins req.contractTeam to the team it covers.
-function requireUnlock(req, res, next) {
+// Exported so other modules that surface contract files (project follow-up)
+// gate them on exactly this check rather than reimplementing it — a second
+// copy of a security rule is a second place for it to drift.
+export function requireUnlock(req, res, next) {
   const raw = req.headers['x-contract-token'];
   if (!raw) return res.status(401).json({ error: 'locked' });
   try {

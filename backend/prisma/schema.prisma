@@ -173,6 +173,12 @@ model ProjectFollowUp {
   milestones    FollowUpMilestone[]
   contacts      FollowUpContact[]
   updates       FollowUpUpdate[]
+  // The commercial contract and technical agreement this order runs on — every
+  // date on the timeline is agreed in one of them, so the person filling the
+  // timeline in needs them one click away. The files stay behind the contracts
+  // module's team PIN: this is a link, not a second door. Reading the list
+  // requires the same unlock the Contracts page requires.
+  contractFiles ContractFile[]      @relation("FollowUpContracts")
 
   @@index([status])
   @@index([ownerId])
@@ -707,6 +713,7 @@ model ContractFile {
   note         String?
   uploadedById Int?
   uploadedBy   User?           @relation("ContractUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  followUps    ProjectFollowUp[] @relation("FollowUpContracts")
   createdAt    DateTime        @default(now())
 
   // ── OCR (every contract on file is a scan; see ContractPage) ──────────────
