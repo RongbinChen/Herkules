@@ -12,7 +12,7 @@
  * (/followups/:id) rather than a modal so a reminder mail can link straight at
  * it.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { followUpsAPI, usersAPI, customersAPI, contractsAPI } from '../api/api'
@@ -279,10 +279,28 @@ function ContactCard({ f, c, canManage, onChanged }) {
 // the model read the contract, the person signed it.
 function useContractPrefill({ fileIds, token, team, values, onFill }) {
   const [state, setState] = useState({ busy: false, suggestions: {}, sources: [], ran: false })
+  // What this hook last wrote into each field. A field still holding that exact
+  // value is ours to replace; anything else the person typed, and a document
+  // does not get to overturn it. Without this, switching to another customer
+  // left the first customer's machine model in place — the rule "never
+  // overwrite a filled field" cannot tell a typed value from one we filled a
+  // moment ago.
+  const mine = useRef({})
   const key = fileIds.slice().sort().join(',')
 
   useEffect(() => {
-    if (!token || !fileIds.length) { setState({ busy: false, suggestions: {}, sources: [], ran: false }); return }
+    if (!token || !fileIds.length) {
+      // Clearing the selection clears what the selection put there, and only
+      // that — a value someone typed over the top of it survives.
+      const clear = {}
+      for (const [field, v] of Object.entries(mine.current)) {
+        if (String(values[field] ?? '').trim() === v) clear[field] = ''
+      }
+      mine.current = {}
+      if (Object.keys(clear).length) onFill(clear)
+      setState({ busy: false, suggestions: {}, sources: [], ran: false })
+      return
+    }
     let ignore = false
     setState((s) => ({ ...s, busy: true }))
     followUpsAPI.prefill(fileIds, team, token)
@@ -291,7 +309,11 @@ function useContractPrefill({ fileIds, token, team, values, onFill }) {
         setState({ busy: false, suggestions: data.suggestions || {}, sources: data.sources || [], ran: true })
         const fill = {}
         for (const [field, s] of Object.entries(data.suggestions || {})) {
-          if (!String(values[field] ?? '').trim()) fill[field] = s.value
+          const current = String(values[field] ?? '').trim()
+          if (!current || current === mine.current[field]) {
+            fill[field] = s.value
+            mine.current[field] = s.value
+          }
         }
         if (Object.keys(fill).length) onFill(fill)
       })
@@ -437,8 +459,16 @@ function ContractPicker({ customerId, selected, onChange, note }) {
                     className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600"
                   />
                   <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
-                  <span className="min-w-0 flex-1 truncate text-xs text-slate-700" title={f.filename}>
-                    {displayFilename(f.filename)}
+                  {/* Filename then note, stacked: one customer with two orders
+                      running has near-identical filenames, and the note is the
+                      line that tells them apart. */}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-slate-700" title={f.filename}>
+                      {displayFilename(f.filename)}
+                    </span>
+                    {f.note && (
+                      <span className="block truncate text-[10px] text-slate-500" title={f.note}>{f.note}</span>
+                    )}
                   </span>
                   <span className="shrink-0 text-[10px] text-slate-400">{fmtKB(f.size)}</span>
                 </label>
@@ -590,8 +620,9 @@ function LinkedContracts({ f, onChanged, onPatch }) {
             <li key={x.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
               <Badge tone={docTypeMeta(x.docType).tone}>{docTypeMeta(x.docType).short}</Badge>
               <button onClick={() => download(x)} title={x.filename}
-                className="min-w-0 flex-1 truncate text-left text-xs font-medium text-slate-700 transition hover:text-brand-600">
-                {displayFilename(x.filename)}
+                className="min-w-0 flex-1 text-left transition hover:text-brand-600">
+                <span className="block truncate text-xs font-medium text-slate-700">{displayFilename(x.filename)}</span>
+                {x.note && <span className="block truncate text-[10px] text-slate-500" title={x.note}>{x.note}</span>}
               </button>
               <span className="shrink-0 text-[10px] text-slate-400">{fmtKB(x.size)}</span>
             </li>
@@ -886,14 +917,17 @@ function NewModal({ users, onClose, onCreated }) {
               <Input
                 value={form.customerName}
                 placeholder="Type to search and link a customer record"
-                onChange={(e) => setForm((s) => ({ ...s, customerName: e.target.value, customerId: '' }))}
+                // Typing again unlinks the customer, so the files picked for the
+                // old one go with it — they belong to a different customer and
+                // the server would refuse them anyway.
+                onChange={(e) => { setContractIds([]); setForm((s) => ({ ...s, customerName: e.target.value, customerId: '' })) }}
               />
               {matches.length > 0 && (
                 <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
                   {matches.map((c) => (
                     <li key={c.id}>
                       <button type="button" onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => setForm((s) => ({ ...s, customerId: c.id, customerName: c.name }))}
+                        onClick={() => { setContractIds([]); setForm((s) => ({ ...s, customerId: c.id, customerName: c.name })) }}
                         className="block w-full truncate px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50">{c.name}</button>
                     </li>
                   ))}
