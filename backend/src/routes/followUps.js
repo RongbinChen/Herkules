@@ -162,7 +162,7 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await prisma.projectFollowUp.findUnique({ where: { id: parseInt(req.params.id) } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(existing, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(existing, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
     const b = req.body || {};
     const f = await prisma.projectFollowUp.update({
       where: { id: existing.id },
@@ -189,7 +189,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const existing = await prisma.projectFollowUp.findUnique({ where: { id: parseInt(req.params.id) } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(existing, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可删除' });
+    if (!canManage(existing, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can delete this' });
     await prisma.projectFollowUp.delete({ where: { id: existing.id } });
     res.status(204).end();
   } catch (error) {
@@ -208,7 +208,7 @@ router.put('/:id/milestones/:kind', async (req, res) => {
     if (!MILESTONE_KINDS.has(kind)) return res.status(400).json({ error: 'unknown milestone kind' });
     const f = await prisma.projectFollowUp.findUnique({ where: { id: followUpId } });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
 
     const b = req.body || {};
     const data = {
@@ -250,7 +250,7 @@ router.delete('/:id/milestones/:kind', async (req, res) => {
     const followUpId = parseInt(req.params.id);
     const f = await prisma.projectFollowUp.findUnique({ where: { id: followUpId } });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
     const existing = await prisma.followUpMilestone.findFirst({ where: { followUpId, kind: req.params.kind } });
     if (existing) await prisma.followUpMilestone.delete({ where: { id: existing.id } });
     res.status(204).end();
@@ -279,11 +279,11 @@ router.post('/:id/milestones/:kind/notify', async (req, res) => {
       },
     });
     if (!m) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(m.followUp, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可发送' });
-    if (!m.dueDate) return res.status(400).json({ error: '该节点还没有日期' });
+    if (!canManage(m.followUp, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can send this' });
+    if (!m.dueDate) return res.status(400).json({ error: 'This milestone has no date yet' });
 
     const person = m.owner || m.followUp.owner;
-    if (!person?.email) return res.status(400).json({ error: '该节点没有指派到有邮箱的人' });
+    if (!person?.email) return res.status(400).json({ error: 'Nobody with an email address is assigned to this milestone' });
 
     const { cc, bcc } = await reminderRecipients(person.email);
     // A manual send reports the real standing of the date, not a fixed
@@ -360,7 +360,7 @@ router.put('/:id/contracts', requireUnlock, async (req, res) => {
   try {
     const f = await prisma.projectFollowUp.findUnique({ where: { id: parseInt(req.params.id) } });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
 
     const wanted = Array.isArray(req.body?.fileIds) ? req.body.fileIds.map(Number).filter(Boolean) : [];
     const allowed = f.customerId
@@ -467,7 +467,7 @@ router.post('/:id/contacts', async (req, res) => {
     const followUpId = parseInt(req.params.id);
     const f = await prisma.projectFollowUp.findUnique({ where: { id: followUpId } });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
     const b = req.body || {};
     if (!String(b.name || '').trim()) return res.status(400).json({ error: 'name is required' });
     const row = await prisma.followUpContact.create({
@@ -494,7 +494,7 @@ router.put('/:id/contacts/:contactId', async (req, res) => {
   try {
     const f = await prisma.projectFollowUp.findUnique({ where: { id: parseInt(req.params.id) } });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
     const b = req.body || {};
     const row = await prisma.followUpContact.update({
       where: { id: parseInt(req.params.contactId) },
@@ -520,7 +520,7 @@ router.delete('/:id/contacts/:contactId', async (req, res) => {
   try {
     const f = await prisma.projectFollowUp.findUnique({ where: { id: parseInt(req.params.id) } });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    if (!canManage(f, req.user)) return res.status(403).json({ error: '只有负责人、创建人或管理员可编辑' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
     await prisma.followUpContact.delete({ where: { id: parseInt(req.params.contactId) } });
     res.status(204).end();
   } catch (error) {
@@ -553,7 +553,7 @@ router.delete('/:id/updates/:updateId', async (req, res) => {
     const row = await prisma.followUpUpdate.findUnique({ where: { id: parseInt(req.params.updateId) } });
     if (!row || row.followUpId !== parseInt(req.params.id)) return res.status(404).json({ error: 'Not found' });
     if (!req.user.isAdmin && row.authorId !== req.user.userId) {
-      return res.status(403).json({ error: '只有编辑人本人或管理员可删除' });
+      return res.status(403).json({ error: 'Only the author or an admin can delete this' });
     }
     await prisma.followUpUpdate.delete({ where: { id: row.id } });
     res.status(204).end();

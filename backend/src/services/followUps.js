@@ -11,6 +11,10 @@ import { milestoneReminderMail } from './followUpMail.js';
 
 // Ordered as the order actually runs. `lead` is the default reminder lead time
 // in days; a record can override it per milestone.
+//
+// The UI reads `en`. `zh` is kept because the reminder mail is bilingual, like
+// every other mail this system sends — the people chasing a letter of credit
+// are on both sides of that language.
 export const MILESTONES = [
   { kind: 'CONTRACT_SIGNED',    en: 'Contract signed',            zh: '合同签署',        group: 'contract', lead: [7, 1] },
   { kind: 'CONTRACT_EFFECTIVE', en: 'Contract effective',         zh: '合同生效（定金到账）', group: 'contract', lead: [14, 7, 1] },
@@ -140,8 +144,8 @@ export async function checkFollowUpMilestones() {
           userId: person.id,
           type: 'STATUS_CHANGE',
           projectId: null,
-          message: `📌 ${m.followUp.title} — ${m.label || meta?.zh || m.kind}：${
-            due.urgency === 'overdue' ? `已逾期 ${-due.delta} 天` : due.urgency === 'today' ? '今天到期' : `还有 ${due.delta} 天`
+          message: `📌 ${m.followUp.title} — ${m.label || meta?.en || m.kind}: ${
+            due.urgency === 'overdue' ? `${-due.delta} day(s) overdue` : due.urgency === 'today' ? 'due today' : `due in ${due.delta} day(s)`
           }`,
         },
       }).catch((e) => console.error('[followups] notification failed:', e.message));
