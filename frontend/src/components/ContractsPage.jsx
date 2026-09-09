@@ -275,7 +275,7 @@ export default function ContractsPage() {
         <div className="mx-auto max-w-lg">
           <div className="mb-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-900">Contracts</h1>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Modules</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
           </div>
           <Card className="p-6">
             <p className="mb-4 text-sm text-slate-500">
@@ -333,7 +333,7 @@ export default function ContractsPage() {
           <div className="flex items-center gap-2">
             {isOcrOwner && <TranscriptionToggle />}
             <Button size="sm" onClick={() => setUploadOpen(true)}>＋ Upload</Button>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Modules</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
           </div>
         </div>
 

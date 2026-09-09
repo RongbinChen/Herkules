@@ -139,7 +139,7 @@ export default function CommandSearch() {
         <div className="mb-3 flex items-center justify-between">
           <button onClick={() => navigate('/')}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-            ← Modules
+            ← Dashboard
           </button>
           <div className="flex items-center gap-2">
             {/* Reply-language toggle */}

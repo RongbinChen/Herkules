@@ -38,7 +38,7 @@ export default function TripList() {
             onClick={() => navigate('/')}
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
           >
-            ← Modules
+            ← Dashboard
           </button>
           <h1 className="text-2xl font-bold text-slate-800">Trips</h1>
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-sm font-semibold text-slate-500">{trips.length}</span>
