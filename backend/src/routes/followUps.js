@@ -14,6 +14,7 @@ import {
   reminderRecipients,
 } from '../services/followUps.js';
 import { milestoneReminderMail } from '../services/followUpMail.js';
+import { summariseContractFile, DgxOfflineError } from '../services/contractSummary.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -385,6 +386,78 @@ router.put('/:id/contracts', requireUnlock, async (req, res) => {
   } catch (error) {
     console.error('Error linking contracts:', error);
     res.status(500).json({ error: 'Failed to link contracts' });
+  }
+});
+
+// ── Prefill from the selected contracts ──────────────────────────────────────
+// The machine model and the contract value are written in the documents this
+// order runs on, and the contracts module already reads them: its key-terms
+// summary asks a commercial contract for `amount` and `contractNo`, and a
+// technical agreement for `machine`. So this is not a new extraction — it is
+// the existing one, read from the angle of a form that needs three of its
+// answers.
+//
+// Two consequences worth knowing. A cached summary comes back instantly; an
+// unread one spends about a minute of GPU per file, which is why the client
+// asks for this explicitly rather than on every keystroke. And what comes back
+// is a *suggestion*: the caller decides whether it lands in the field, because
+// the person filing the order has seen the paperwork and the model has only
+// read it.
+const SUGGEST_FROM = {
+  // form field ← summary field key, by document type, in order of preference
+  contractValue: [['COMMERCIAL', 'amount']],
+  machineType: [['TECHNICAL', 'machine']],
+  orderNo: [['COMMERCIAL', 'contractNo'], ['TECHNICAL', 'contractNo']],
+};
+
+router.post('/prefill', requireUnlock, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.fileIds) ? req.body.fileIds.map(Number).filter(Boolean) : [];
+    if (!ids.length) return res.json({ suggestions: {}, sources: [] });
+    // Team scope first: an id the caller's unlock does not cover is not read.
+    const files = await prisma.contractFile.findMany({
+      where: { id: { in: ids }, team: req.contractTeam },
+      select: { id: true, filename: true, docType: true },
+    });
+
+    const byDocType = new Map();
+    const sources = [];
+    for (const f of files) {
+      try {
+        const summary = await summariseContractFile({ fileId: f.id, team: req.contractTeam });
+        sources.push({
+          fileId: f.id, filename: f.filename, docType: f.docType,
+          ok: !summary?.reason, reason: summary?.reason || null, cached: summary?.cached === true,
+        });
+        if (summary?.fields?.length && !byDocType.has(f.docType)) byDocType.set(f.docType, summary.fields);
+      } catch (err) {
+        // One unreadable file must not cost the answers the others hold. The
+        // DGX being offline is the common case and is reported, not thrown.
+        const offline = err instanceof DgxOfflineError;
+        sources.push({
+          fileId: f.id, filename: f.filename, docType: f.docType,
+          ok: false, reason: offline ? 'dgx-offline' : 'failed', cached: false,
+        });
+      }
+    }
+
+    const suggestions = {};
+    for (const [formField, prefs] of Object.entries(SUGGEST_FROM)) {
+      for (const [docType, key] of prefs) {
+        const field = byDocType.get(docType)?.find((x) => x.key === key);
+        // '—' is how the summariser says "asked, not found" — a real answer,
+        // but not one worth putting in a form field.
+        const value = String(field?.value ?? '').trim();
+        if (value && value !== '—') {
+          suggestions[formField] = { value, from: docType, label: field.label };
+          break;
+        }
+      }
+    }
+    res.json({ suggestions, sources });
+  } catch (error) {
+    console.error('Error prefilling from contracts:', error);
+    res.status(500).json({ error: 'Failed to read the contracts' });
   }
 });
 
