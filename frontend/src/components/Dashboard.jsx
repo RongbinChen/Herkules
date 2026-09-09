@@ -81,6 +81,15 @@ const MODULES = [
     badge: 'bg-orange-50 text-orange-600 ring-orange-100',
   },
   {
+    // Sits right after Hot Projects on purpose: that module ends when a deal is
+    // won, and this one starts there.
+    path: '/followups',
+    icon: '📌',
+    title: 'Project Follow-up',
+    desc: 'Order execution: L/C dates, payments, acceptance & contacts — with email reminders',
+    badge: 'bg-amber-50 text-amber-600 ring-amber-100',
+  },
+  {
     path: '/visit-reports',
     icon: '📝',
     title: 'Visit Reports',

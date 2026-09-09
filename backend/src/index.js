@@ -16,6 +16,7 @@ import visitReportsRoutes from './routes/visitReports.js';
 import searchRoutes from './routes/search.js';
 import assistantRoutes from './routes/assistant.js';
 import hotProjectsRoutes from './routes/hotProjects.js';
+import followUpsRoutes from './routes/followUps.js';
 import shareMetaRoutes from './routes/shareMeta.js';
 
 dotenv.config();
@@ -70,6 +71,7 @@ app.use('/api/visit-reports', visitReportsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/hotprojects', hotProjectsRoutes);
+app.use('/api/followups', followUpsRoutes);
 // Public share pages (SPA shell + per-record OG meta for WeChat link cards)
 app.use(shareMetaRoutes);
 
@@ -122,8 +124,13 @@ cron.schedule('0 8 * * *', async () => {
   try {
     const { checkDeadlines } = await import('./services/chinabidding.js');
     const { checkTripsTomorrow } = await import('./services/reminders.js');
+    const { checkFollowUpMilestones } = await import('./services/followUps.js');
     await checkDeadlines().catch((e) => console.error('[reminders] deadlines failed:', e.message));
     await checkTripsTomorrow().catch((e) => console.error('[reminders] trips failed:', e.message));
+    // Order execution dates: letters of credit, payments, acceptances. Runs
+    // last because it is the one that sends mail, and a failure here must not
+    // cost the two in-app checks above.
+    await checkFollowUpMilestones().catch((e) => console.error('[reminders] follow-ups failed:', e.message));
   } catch (err) {
     console.error('[reminders] daily run failed:', err.message);
   }

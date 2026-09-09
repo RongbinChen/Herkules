@@ -32,7 +32,12 @@ function getTransporter() {
 
 // Best-effort send — never throws (a mail failure must not break scraping).
 // Returns true when actually sent.
-export async function sendMail({ to, subject, text, html }) {
+//
+// cc/bcc are optional and accept the same shapes as `to` (a string, a
+// comma-separated list, or an array). Empty values are dropped rather than
+// passed through: nodemailer treats an empty string as an address list it has
+// to parse, and some servers reject the resulting header.
+export async function sendMail({ to, subject, text, html, cc, bcc }) {
   const t = getTransporter();
   if (!t) {
     console.log(`[mailer] SMTP not configured — skipped mail to ${to}: ${subject}`);
@@ -42,6 +47,8 @@ export async function sendMail({ to, subject, text, html }) {
     await t.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
       to,
+      ...(cc && cc.length ? { cc } : {}),
+      ...(bcc && bcc.length ? { bcc } : {}),
       subject,
       text,
       html,

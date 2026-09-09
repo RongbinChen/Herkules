@@ -21,6 +21,7 @@ import TripShare from './components/TripShare'
 import CustomerShare from './components/CustomerShare'
 import CommandSearch from './components/CommandSearch'
 import HotProjects from './components/HotProjects'
+import ProjectFollowUps from './components/ProjectFollowUps'
 
 function App() {
   const { token } = useAuth()
@@ -32,6 +33,8 @@ function App() {
       <Route path="/" element={token ? <Dashboard /> : <Navigate to="/login" />} />
       <Route path="/search" element={token ? <CommandSearch /> : <Navigate to="/login" />} />
       <Route path="/hotprojects" element={token ? <HotProjects /> : <Navigate to="/login" />} />
+      <Route path="/followups" element={token ? <ProjectFollowUps /> : <Navigate to="/login" />} />
+      <Route path="/followups/:id" element={token ? <ProjectFollowUps /> : <Navigate to="/login" />} />
       <Route path="/calendar" element={token ? <Calendar /> : <Navigate to="/login" />} />
       <Route path="/chinabidding" element={token ? <BidProjectList /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/stats" element={token ? <BidStatistics /> : <Navigate to="/login" />} />
