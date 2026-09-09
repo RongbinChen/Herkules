@@ -112,6 +112,25 @@ export const hotProjectsAPI = {
   deleteUpdate: (id, updateId) => api.delete(`/hotprojects/${id}/updates/${updateId}`),
 }
 
+export const followUpsAPI = {
+  catalogue: () => api.get('/followups/catalogue'),
+  list: (params = {}) => api.get('/followups', { params }),
+  get: (id) => api.get(`/followups/${id}`),
+  create: (data) => api.post('/followups', data),
+  update: (id, data) => api.put(`/followups/${id}`, data),
+  delete: (id) => api.delete(`/followups/${id}`),
+  // Milestones are addressed by kind, not by row id — a record has at most one
+  // of each, so the client never has to track which ones exist yet.
+  saveMilestone: (id, kind, data) => api.put(`/followups/${id}/milestones/${kind}`, data),
+  clearMilestone: (id, kind) => api.delete(`/followups/${id}/milestones/${kind}`),
+  notifyMilestone: (id, kind) => api.post(`/followups/${id}/milestones/${kind}/notify`),
+  addContact: (id, data) => api.post(`/followups/${id}/contacts`, data),
+  updateContact: (id, contactId, data) => api.put(`/followups/${id}/contacts/${contactId}`, data),
+  deleteContact: (id, contactId) => api.delete(`/followups/${id}/contacts/${contactId}`),
+  addUpdate: (id, data) => api.post(`/followups/${id}/updates`, data),
+  deleteUpdate: (id, updateId) => api.delete(`/followups/${id}/updates/${updateId}`),
+}
+
 export const agentsAPI = {
   getAll: () => api.get('/agents'),
   get: (id) => api.get(`/agents/${id}`),
