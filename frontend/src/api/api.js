@@ -134,6 +134,11 @@ export const followUpsAPI = {
   contracts: (id, token) => api.get(`/followups/${id}/contracts`, withUnlock(token)),
   availableContracts: (id, token) => api.get(`/followups/${id}/contracts/available`, withUnlock(token)),
   linkContracts: (id, fileIds, token) => api.put(`/followups/${id}/contracts`, { fileIds }, withUnlock(token)),
+  // Reads the machine model / contract value / contract number out of the
+  // selected files. Cached summaries return at once; an unread file spends
+  // about a minute of GPU, hence the long timeout — bounded, so a wedged DGX
+  // does not hold the dialog open forever.
+  prefill: (fileIds, token) => api.post('/followups/prefill', { fileIds }, withUnlock(token, { timeout: 180000 })),
 }
 
 export const agentsAPI = {

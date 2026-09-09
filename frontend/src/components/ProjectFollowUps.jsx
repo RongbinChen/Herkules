@@ -269,6 +269,73 @@ function ContactCard({ f, c, canManage, onChanged }) {
   )
 }
 
+// Reads the machine model, contract value and contract number out of the
+// selected files, and applies them to fields the person has not filled in.
+//
+// Two rules make this safe to run automatically. It only ever writes into an
+// EMPTY field — a value someone typed is a decision, and a document is not
+// allowed to overturn it silently; where the field is already filled the
+// suggestion is offered as a chip instead. And it is a suggestion either way:
+// the model read the contract, the person signed it.
+function useContractPrefill({ fileIds, token, values, onFill }) {
+  const [state, setState] = useState({ busy: false, suggestions: {}, sources: [], ran: false })
+  const key = fileIds.slice().sort().join(',')
+
+  useEffect(() => {
+    if (!token || !fileIds.length) { setState({ busy: false, suggestions: {}, sources: [], ran: false }); return }
+    let ignore = false
+    setState((s) => ({ ...s, busy: true }))
+    followUpsAPI.prefill(fileIds, token)
+      .then(({ data }) => {
+        if (ignore) return
+        setState({ busy: false, suggestions: data.suggestions || {}, sources: data.sources || [], ran: true })
+        const fill = {}
+        for (const [field, s] of Object.entries(data.suggestions || {})) {
+          if (!String(values[field] ?? '').trim()) fill[field] = s.value
+        }
+        if (Object.keys(fill).length) onFill(fill)
+      })
+      .catch(() => { if (!ignore) setState({ busy: false, suggestions: {}, sources: [], ran: true }) })
+    return () => { ignore = true }
+    // Keyed on the selection alone: re-running because someone typed in the
+    // machine field would spend GPU to answer a question already answered.
+  }, [key, token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return state
+}
+
+// One line under the form telling the reader where the values came from, and
+// offering the ones that could not be applied because the field was taken.
+function PrefillNote({ state, values, onUse }) {
+  if (state.busy) return <p className="text-[11px] text-brand-600">正在从合同读取机型和金额…（未读过的文件要花约 1 分钟）</p>
+  if (!state.ran) return null
+  const offline = state.sources.some((s) => s.reason === 'dgx-offline')
+  const unread = state.sources.filter((s) => s.reason === 'not-read')
+  const conflicts = Object.entries(state.suggestions)
+    .filter(([f, s]) => String(values[f] ?? '').trim() && values[f] !== s.value)
+  const applied = Object.keys(state.suggestions).length - conflicts.length
+
+  return (
+    <div className="space-y-1 text-[11px]">
+      {applied > 0 && <p className="text-emerald-600">✓ 已从合同填入 {applied} 项，可以随手改。</p>}
+      {conflicts.map(([field, s]) => (
+        <p key={field} className="text-slate-500">
+          合同里的{field === 'machineType' ? '机型' : field === 'contractValue' ? '金额' : '合同号'}是
+          <span className="mx-1 font-semibold text-slate-700">{s.value}</span>
+          <button type="button" onClick={() => onUse(field, s.value)} className="font-semibold text-brand-600 hover:underline">用这个</button>
+        </p>
+      ))}
+      {offline && <p className="text-amber-600">DGX 离线，读不了没缓存过的合同——手填即可，不影响创建。</p>}
+      {!offline && unread.length > 0 && (
+        <p className="text-slate-400">{unread.length} 份文件还没转写完，读不出内容。</p>
+      )}
+      {state.ran && !applied && !conflicts.length && !offline && !unread.length && (
+        <p className="text-slate-400">合同里没读出机型或金额，手填即可。</p>
+      )}
+    </div>
+  )
+}
+
 // ── Contract picker ──────────────────────────────────────────────────────────
 // Contract files live behind the contracts module's team PIN. This is a link
 // into that module, not a second way in: the same unlock, the same team scope,
@@ -376,7 +443,7 @@ function ContractPicker({ customerId, selected, onChange, note }) {
 // ── Linked contracts on the detail page ──────────────────────────────────────
 // Locked, this says how many are attached and nothing else: the count is
 // ordinary project data, the filenames are not.
-function LinkedContracts({ f, onChanged }) {
+function LinkedContracts({ f, onChanged, onPatch }) {
   const { user } = useAuth()
   const { unlock, team, setTeam, doUnlock, busy, error, configured } = useContractUnlock(
     user?.team === 'WRC' ? 'WRC' : 'HRC',
@@ -385,7 +452,29 @@ function LinkedContracts({ f, onChanged }) {
   const [files, setFiles] = useState(null)
   const [editing, setEditing] = useState(false)
   const [picked, setPicked] = useState([])
+  const [filling, setFilling] = useState(false)
   const count = f._count?.contractFiles ?? 0
+  // Only offered while something is still missing — a button that overwrites
+  // what a colleague typed is not a convenience.
+  const missing = ['machineType', 'contractValue', 'orderNo'].filter((k) => !String(f[k] ?? '').trim())
+
+  // The same read the create dialog does, run after the fact: contracts are
+  // often attached once the order is already on file.
+  const fillFromContracts = async () => {
+    setFilling(true)
+    try {
+      const { data } = await followUpsAPI.prefill((files || []).map((x) => x.id), unlock.token)
+      const patch = {}
+      for (const k of missing) if (data.suggestions?.[k]?.value) patch[k] = data.suggestions[k].value
+      if (!Object.keys(patch).length) {
+        const offline = (data.sources || []).some((x) => x.reason === 'dgx-offline')
+        window.alert(offline ? 'DGX 离线，读不了没缓存过的合同。' : '合同里没读出机型 / 金额 / 合同号。')
+      } else {
+        await onPatch(patch)
+      }
+    } catch { window.alert('读取失败') }
+    finally { setFilling(false) }
+  }
 
   const load = useCallback(async () => {
     if (!unlock) return
@@ -414,9 +503,16 @@ function LinkedContracts({ f, onChanged }) {
           合同依据 <span className="text-slate-300">{count}</span>
         </h3>
         {unlock && f.canManage && (
-          <Button size="sm" variant="secondary" onClick={() => setEditing((v) => !v)}>
-            {editing ? '完成' : '挑选合同'}
-          </Button>
+          <div className="flex gap-2">
+            {!editing && missing.length > 0 && (files?.length ?? 0) > 0 && (
+              <Button size="sm" variant="secondary" disabled={filling} onClick={fillFromContracts}>
+                {filling ? '读取中…' : '从合同填机型/金额'}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={() => setEditing((v) => !v)}>
+              {editing ? '完成' : '挑选合同'}
+            </Button>
+          </div>
         )}
       </div>
       <p className="mt-0.5 text-[11px] text-slate-400">时间节点上的日期都是这两份文件里约定的，对不上时以合同为准。</p>
@@ -585,7 +681,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 
       {/* Contracts — placed above the timeline because it is where the
           timeline's dates come from, not an appendix to them. */}
-      <LinkedContracts f={f} onChanged={refresh} />
+      <LinkedContracts f={f} onChanged={refresh} onPatch={patch} />
 
       {/* Milestones */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -690,6 +786,18 @@ function NewModal({ users, onClose, onCreated }) {
   const [contractIds, setContractIds] = useState([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  // Re-read on every render rather than held in state: the picker writes the
+  // unlock into sessionStorage, and this is the only thing that needs it here.
+  const unlockToken = (() => {
+    try { return JSON.parse(sessionStorage.getItem('contractUnlock') || 'null')?.token || null }
+    catch { return null }
+  })()
+  const prefill = useContractPrefill({
+    fileIds: contractIds,
+    token: unlockToken,
+    values: form,
+    onFill: (fields) => setForm((s) => ({ ...s, ...fields })),
+  })
   useEffect(() => { customersAPI.getAll().then((r) => setCustomers(r.data || [])).catch(() => {}) }, [])
   const set = (k) => (e) => setForm((s) => ({ ...s, [k]: e.target.value }))
   const q = form.customerName.trim().toLowerCase()
@@ -742,20 +850,6 @@ function NewModal({ users, onClose, onCreated }) {
             </div>
             {form.customerId && <span className="mt-1 block text-[10px] font-bold text-emerald-600">✓ 已关联客户档案</span>}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold text-slate-600">
-              机型
-              <Input value={form.machineType} onChange={set('machineType')} className="mt-1" />
-            </label>
-            <label className="block text-xs font-semibold text-slate-600">
-              合同金额
-              <Input value={form.contractValue} onChange={set('contractValue')} placeholder="e.g. EUR 4.2m" className="mt-1" />
-            </label>
-          </div>
-          <label className="block text-xs font-semibold text-slate-600">
-            备注
-            <Textarea rows={2} value={form.notes} onChange={set('notes')} className="mt-1" />
-          </label>
           {/* The timeline's dates are all agreed in these two documents, so the
               files get attached at creation — by the time someone is filling in
               a letter-of-credit date, the contract that states it should
@@ -770,6 +864,25 @@ function NewModal({ users, onClose, onCreated }) {
               />
             </div>
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-semibold text-slate-600">
+              机型
+              <Input value={form.machineType} onChange={set('machineType')} className="mt-1" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              合同金额
+              <Input value={form.contractValue} onChange={set('contractValue')} placeholder="e.g. EUR 4.2m" className="mt-1" />
+            </label>
+          </div>
+          <label className="block text-xs font-semibold text-slate-600">
+            备注
+            <Textarea rows={2} value={form.notes} onChange={set('notes')} className="mt-1" />
+          </label>
+          <PrefillNote
+            state={prefill}
+            values={form}
+            onUse={(field, value) => setForm((s) => ({ ...s, [field]: value }))}
+          />
           <p className="text-[11px] text-slate-400">建好之后在详情页填时间节点——节点日期照着合同里约定的填，填了日期才会开始提醒。</p>
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>
