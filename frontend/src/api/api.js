@@ -138,7 +138,7 @@ export const followUpsAPI = {
   // selected files. Cached summaries return at once; an unread file spends
   // about a minute of GPU, hence the long timeout — bounded, so a wedged DGX
   // does not hold the dialog open forever.
-  prefill: (fileIds, token) => api.post('/followups/prefill', { fileIds }, withUnlock(token, { timeout: 180000 })),
+  prefill: (fileIds, team, token) => api.post('/followups/prefill', { fileIds, team }, withUnlock(token, { timeout: 180000 })),
 }
 
 export const agentsAPI = {

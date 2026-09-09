@@ -164,7 +164,12 @@ model ProjectFollowUp {
   ownerId       Int?
   owner         User?               @relation("FollowUpOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   status        FollowUpStatus      @default(ACTIVE)
+  // Which team's order this is. Not derived from whoever happens to own the
+  // record: the owner changes, and this decides who may see the contract value.
+  team          UserTeam            @default(HRC)
   machineType   String?
+  // Commercial in confidence: readable only by that team and by admins, and
+  // stripped from the payload for everyone else rather than hidden in the UI.
   contractValue String? // free text — the currency varies by contract
   notes         String?
   createdById   Int?
@@ -183,6 +188,7 @@ model ProjectFollowUp {
   @@index([status])
   @@index([ownerId])
   @@index([customerId])
+  @@index([team])
 }
 
 model FollowUpMilestone {
