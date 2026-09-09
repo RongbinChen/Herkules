@@ -22,6 +22,34 @@ router.use(authenticateToken);
 const canManage = (f, user) =>
   user.isAdmin || f.ownerId === user.userId || f.createdById === user.userId;
 
+// The contract value is commercial in confidence: the team running the order,
+// and admins. Everyone else gets a record with that one field removed — not
+// hidden by the client, absent from the payload, because a field the browser
+// was told to hide is a field anyone can read.
+//
+// Team membership, not a list of names: people move between teams and join the
+// company, and a name list would be wrong the first time either happens.
+// req.user carries no team (the JWT predates the field), so it is read once per
+// request from the user row.
+const TEAMS_MATCH = (userTeam, projectTeam) => userTeam === projectTeam;
+
+async function valueViewer(user) {
+  if (user.isAdmin) return { isAdmin: true, team: null };
+  const row = await prisma.user.findUnique({ where: { id: user.userId }, select: { team: true } });
+  return { isAdmin: false, team: row?.team ?? null };
+}
+
+const canSeeValue = (viewer, projectTeam) => viewer.isAdmin || TEAMS_MATCH(viewer.team, projectTeam);
+
+// Returns the record as this viewer may see it. `contractValueHidden` is set
+// rather than left silent so the UI can say "restricted" instead of "empty" —
+// the two mean very different things to someone chasing a number.
+function redactValue(row, viewer) {
+  if (canSeeValue(viewer, row.team)) return row;
+  const { contractValue, ...rest } = row;
+  return { ...rest, contractValue: null, contractValueHidden: true };
+}
+
 const FULL_INCLUDE = {
   owner: { select: { id: true, name: true, email: true } },
   customer: { select: { id: true, name: true, contacts: true, contactName: true, contactPhone: true, email: true } },
@@ -84,12 +112,13 @@ router.get('/', async (req, res) => {
         _count: { select: { contacts: true, updates: true } },
       },
     });
+    const viewer = await valueViewer(req.user);
     const today = chinaDay();
     const decorated = rows.map((f) => {
       const next = nextMilestone(f);
       const open = f.milestones.filter((m) => !m.doneAt && m.dueDate);
       return {
-        ...f,
+        ...redactValue(f, viewer),
         next: next && { ...next, meta: MILESTONE_BY_KIND.get(next.kind) || null },
         // Anything already past its date and not ticked off. This is the number
         // the list sorts on — an order with a slipped date outranks one that is
@@ -121,8 +150,9 @@ router.get('/:id', async (req, res) => {
       include: FULL_INCLUDE,
     });
     if (!f) return res.status(404).json({ error: 'Not found' });
+    const viewer = await valueViewer(req.user);
     res.json({
-      ...f,
+      ...redactValue(f, viewer),
       milestones: f.milestones.map((m) => ({ ...m, meta: MILESTONE_BY_KIND.get(m.kind) || null })),
       canManage: canManage(f, req.user),
     });
@@ -137,9 +167,17 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body || {};
     if (!String(b.title || '').trim()) return res.status(400).json({ error: 'title is required' });
+    // Whose order this is decides who may read its value, so it is answered at
+    // creation. The creator's own team is the default; someone filed under
+    // OTHER (they belong to neither) must choose, and the client offers both.
+    const creator = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { team: true } });
+    const team = ['WRC', 'HRC'].includes(b.team)
+      ? b.team
+      : (['WRC', 'HRC'].includes(creator?.team) ? creator.team : 'HRC');
     const f = await prisma.projectFollowUp.create({
       data: {
         title: String(b.title).trim(),
+        team,
         orderNo: b.orderNo || null,
         customerId: b.customerId ? parseInt(b.customerId) : null,
         hotProjectId: b.hotProjectId ? parseInt(b.hotProjectId) : null,
@@ -164,21 +202,27 @@ router.put('/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     if (!canManage(existing, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
     const b = req.body || {};
+    // Someone who cannot read the value cannot write it either — otherwise the
+    // field is protected against reading and wide open to being overwritten
+    // blind, which is worse than not protecting it at all.
+    const viewer = await valueViewer(req.user);
+    const mayWriteValue = canSeeValue(viewer, b.team ?? existing.team);
     const f = await prisma.projectFollowUp.update({
       where: { id: existing.id },
       data: {
         ...(b.title !== undefined ? { title: String(b.title).trim() } : {}),
+        ...(['WRC', 'HRC'].includes(b.team) ? { team: b.team } : {}),
         ...(b.orderNo !== undefined ? { orderNo: b.orderNo || null } : {}),
         ...(b.customerId !== undefined ? { customerId: b.customerId ? parseInt(b.customerId) : null } : {}),
         ...(b.hotProjectId !== undefined ? { hotProjectId: b.hotProjectId ? parseInt(b.hotProjectId) : null } : {}),
         ...(b.ownerId !== undefined ? { ownerId: b.ownerId ? parseInt(b.ownerId) : null } : {}),
         ...(b.status !== undefined ? { status: b.status } : {}),
         ...(b.machineType !== undefined ? { machineType: b.machineType || null } : {}),
-        ...(b.contractValue !== undefined ? { contractValue: b.contractValue || null } : {}),
+        ...(b.contractValue !== undefined && mayWriteValue ? { contractValue: b.contractValue || null } : {}),
         ...(b.notes !== undefined ? { notes: b.notes || null } : {}),
       },
     });
-    res.json(f);
+    res.json(redactValue(f, viewer));
   } catch (error) {
     console.error('Error updating follow-up:', error);
     res.status(500).json({ error: 'Failed to update follow-up' });
@@ -441,8 +485,17 @@ router.post('/prefill', requireUnlock, async (req, res) => {
       }
     }
 
+    // The value is confidential on the record, so it is confidential as a
+    // suggestion too — otherwise the read that fills the field is a way to
+    // learn the number without being allowed to see it. `team` is the team the
+    // record will be (or already is) filed under; the client sends it.
+    const viewer = await valueViewer(req.user);
+    const forTeam = ['WRC', 'HRC'].includes(req.body?.team) ? req.body.team : viewer.team;
+    const mayValue = canSeeValue(viewer, forTeam);
+
     const suggestions = {};
     for (const [formField, prefs] of Object.entries(SUGGEST_FROM)) {
+      if (formField === 'contractValue' && !mayValue) continue;
       for (const [docType, key] of prefs) {
         const field = byDocType.get(docType)?.find((x) => x.key === key);
         // '—' is how the summariser says "asked, not found" — a real answer,

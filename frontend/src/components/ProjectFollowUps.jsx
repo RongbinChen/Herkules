@@ -277,7 +277,7 @@ function ContactCard({ f, c, canManage, onChanged }) {
 // allowed to overturn it silently; where the field is already filled the
 // suggestion is offered as a chip instead. And it is a suggestion either way:
 // the model read the contract, the person signed it.
-function useContractPrefill({ fileIds, token, values, onFill }) {
+function useContractPrefill({ fileIds, token, team, values, onFill }) {
   const [state, setState] = useState({ busy: false, suggestions: {}, sources: [], ran: false })
   const key = fileIds.slice().sort().join(',')
 
@@ -285,7 +285,7 @@ function useContractPrefill({ fileIds, token, values, onFill }) {
     if (!token || !fileIds.length) { setState({ busy: false, suggestions: {}, sources: [], ran: false }); return }
     let ignore = false
     setState((s) => ({ ...s, busy: true }))
-    followUpsAPI.prefill(fileIds, token)
+    followUpsAPI.prefill(fileIds, team, token)
       .then(({ data }) => {
         if (ignore) return
         setState({ busy: false, suggestions: data.suggestions || {}, sources: data.sources || [], ran: true })
@@ -299,7 +299,7 @@ function useContractPrefill({ fileIds, token, values, onFill }) {
     return () => { ignore = true }
     // Keyed on the selection alone: re-running because someone typed in the
     // machine field would spend GPU to answer a question already answered.
-  }, [key, token]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key, token, team]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return state
 }
@@ -463,7 +463,7 @@ function LinkedContracts({ f, onChanged, onPatch }) {
   const fillFromContracts = async () => {
     setFilling(true)
     try {
-      const { data } = await followUpsAPI.prefill((files || []).map((x) => x.id), unlock.token)
+      const { data } = await followUpsAPI.prefill((files || []).map((x) => x.id), f.team, unlock.token)
       const patch = {}
       for (const k of missing) if (data.suggestions?.[k]?.value) patch[k] = data.suggestions[k].value
       if (!Object.keys(patch).length) {
@@ -660,7 +660,12 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
             <button onClick={() => navigate('/hotprojects')} className="text-brand-600 hover:underline">🔥 From Hot Projects ↗</button>
           )}
           {f.machineType && <span>🛠 {f.machineType}</span>}
-          {f.contractValue && <span>💰 {f.contractValue}</span>}
+          {/* Restricted and empty are not the same thing to someone chasing a
+              number, so the restricted case says so. */}
+          {f.contractValueHidden
+            ? <span className="text-slate-400" title={`Visible to ${f.team} and admins`}>🔒 Contract value restricted</span>
+            : f.contractValue && <span>💰 {f.contractValue}</span>}
+          <span className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{f.team}</span>
           <span className="flex items-center gap-1">
             👤 Owner
             <span className="inline-block w-36">
@@ -782,7 +787,14 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 
 // ── New record modal ─────────────────────────────────────────────────────────
 function NewModal({ users, onClose, onCreated }) {
-  const [form, setForm] = useState({ title: '', orderNo: '', customerId: '', customerName: '', machineType: '', contractValue: '', ownerId: '', notes: '' })
+  const { user } = useAuth()
+  // The team owns the record's contract value, so it is chosen up front rather
+  // than inferred later. Defaults to the creator's own team; someone in neither
+  // (team OTHER) starts on HRC and picks.
+  const [form, setForm] = useState({
+    title: '', orderNo: '', customerId: '', customerName: '', machineType: '', contractValue: '',
+    ownerId: '', notes: '', team: ['WRC', 'HRC'].includes(user?.team) ? user.team : 'HRC',
+  })
   const [customers, setCustomers] = useState([])
   const [contractIds, setContractIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -796,6 +808,7 @@ function NewModal({ users, onClose, onCreated }) {
   const prefill = useContractPrefill({
     fileIds: contractIds,
     token: unlockToken,
+    team: form.team,
     values: form,
     onFill: (fields) => setForm((s) => ({ ...s, ...fields })),
   })
@@ -814,7 +827,7 @@ function NewModal({ users, onClose, onCreated }) {
         <div className="space-y-3 px-5 py-4">
           <label className="block text-xs font-semibold text-slate-600">
             Project / order name *
-            <Input value={form.title} onChange={set('title')} placeholder="e.g. Qingdao Haixi — 2× CNC roll grinder" className="mt-1" />
+            <Input value={form.title} onChange={set('title')} placeholder="e.g. Qingdao Haixi - 2 x CNC crankshaft lathes" className="mt-1" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-semibold text-slate-600">
@@ -827,6 +840,18 @@ function NewModal({ users, onClose, onCreated }) {
                 <option value="">Me</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </Select>
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-semibold text-slate-600">
+              Team
+              <Select value={form.team} onChange={set('team')} className="mt-1">
+                <option value="WRC">WRC</option>
+                <option value="HRC">HRC</option>
+              </Select>
+              <span className="mt-0.5 block font-normal text-[10px] text-slate-400">
+                Only this team and admins can see the contract value.
+              </span>
             </label>
           </div>
           <div className="text-xs font-semibold text-slate-600">
