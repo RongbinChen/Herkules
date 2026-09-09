@@ -1624,7 +1624,29 @@ export async function generateTrendReport(lang = 'zh') {
   }, null, 1);
 
   const report = await generateMarketReport(context, lang);
-  return { report, lang, generatedAt: new Date(), basedOn: { months: 6, projects: trends.totalProjects } };
+  return {
+    report,
+    lang,
+    generatedAt: new Date(),
+    basedOn: { months: 6, projects: trends.totalProjects },
+    // The same aggregates the model was shown, handed to the UI so every chart
+    // in the brief plots the numbers the prose is talking about. Deliberately
+    // NOT drawn by the model: a language model asked to produce its own
+    // evidence rounds, drops and occasionally invents a figure, and here the
+    // figure is the whole point. The model writes the reading; the database
+    // supplies the numbers.
+    charts: {
+      monthly: trends.monthly.map(({ month, total }) => ({ month, total })),
+      // Top 5 plus a computed remainder — a share bar past ~6 segments stops
+      // being readable, and the tail is not what the brief is about.
+      equipmentTypes: trends.equipmentTypes.slice(0, 5),
+      equipmentTotal: trends.totalProjects,
+      competitors: trends.competitorStats
+        .filter((c) => c.winCount > 0)
+        .slice(0, 8)
+        .map(({ name, winCount, watchType }) => ({ name, winCount, watchType })),
+    },
+  };
 }
 
 // ── Backfill: run structured extraction on existing records ──────────────────

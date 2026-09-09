@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getStatistics, getTrends, generateReport } from '../api/chinabidding';
+import { BriefProse, TrendArea, ShareBar, WinsBar } from './MarketBriefCharts';
 
 function StatCard({ label, value, accent = false, onClick = null }) {
   const clickable = typeof onClick === 'function';
@@ -137,6 +138,20 @@ function MonthlyChart({ monthly, onBarClick = null }) {
   );
 }
 
+// A figure inside the brief. Deliberately quieter than the page's own Panels:
+// these are the brief's evidence, not a second copy of the dashboard below.
+function ChartTile({ title, note, children }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{title}</h4>
+        <span className="text-[10px] text-slate-400">{note}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function BidStatistics() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
@@ -235,7 +250,7 @@ function BidStatistics() {
 
         {/* ── AI Market Report (bilingual — toggle zh / en) ──────────── */}
         {reportOpen && (
-          <div className="rounded-2xl border border-brand-200 bg-brand-50/60 p-5 shadow-sm sm:p-6">
+          <div className="rounded-2xl border border-brand-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <h3 className="text-sm font-bold text-brand-800">
                 {reportLang === 'en'
@@ -271,14 +286,49 @@ function BidStatistics() {
               </div>
             ) : (
               <>
-                <div className="prose prose-sm mt-3 max-w-none whitespace-pre-wrap text-[13px] leading-relaxed text-slate-700">
-                  {report?.report || (reportLang === 'en' ? '(generation failed)' : '（生成失败）')}
+                {/* Figures first, then the reading of them. The three panels
+                    plot the aggregates the model was given, so a reader can
+                    check a claim in the prose against the number it came from
+                    without leaving the brief. */}
+                {/* Prose left, figures in a rail on the right. A full-width
+                    strip of charts above a text column left the right half of
+                    the card empty on a desktop screen; side by side, the
+                    reading and the evidence it rests on stay in view together
+                    and the measure stays readable. */}
+                <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                  <div className="order-2 lg:order-1">
+                    {report?.report
+                      ? <BriefProse text={report.report} />
+                      : <p className="text-[13px] text-slate-500">{reportLang === 'en' ? '(generation failed)' : '（生成失败）'}</p>}
+                  </div>
+                  {report?.charts && (
+                  <div className="order-1 space-y-3 lg:order-2">
+                    <ChartTile
+                      title={reportLang === 'en' ? 'Tender volume' : '招标量'}
+                      note={reportLang === 'en' ? 'per month' : '按月'}
+                    >
+                      <TrendArea monthly={report.charts.monthly} lang={reportLang} />
+                    </ChartTile>
+                    <ChartTile
+                      title={reportLang === 'en' ? 'Equipment mix' : '设备类型构成'}
+                      note={reportLang === 'en' ? 'share of tenders' : '占比'}
+                    >
+                      <ShareBar items={report.charts.equipmentTypes} total={report.charts.equipmentTotal} lang={reportLang} />
+                    </ChartTile>
+                    <ChartTile
+                      title={reportLang === 'en' ? 'Awards won' : '中标数'}
+                      note={reportLang === 'en' ? 'this period' : '本期'}
+                    >
+                      <WinsBar competitors={report.charts.competitors} lang={reportLang} />
+                    </ChartTile>
+                  </div>
+                  )}
                 </div>
                 {report && (
-                  <p className="mt-3 text-xs text-slate-400">
+                  <p className="mt-4 text-xs text-slate-400">
                     {reportLang === 'en'
-                      ? `Generated ${new Date(report.generatedAt).toLocaleString('en-GB')} · by DeepSeek, for reference only`
-                      : `生成时间：${new Date(report.generatedAt).toLocaleString('zh-CN')} · 由 DeepSeek 生成，仅供参考`}
+                      ? `Generated ${new Date(report.generatedAt).toLocaleString('en-GB')} · text by DeepSeek, charts from the tender database · for reference only`
+                      : `生成时间：${new Date(report.generatedAt).toLocaleString('zh-CN')} · 文字由 DeepSeek 生成，图表取自招标数据库 · 仅供参考`}
                   </p>
                 )}
               </>
