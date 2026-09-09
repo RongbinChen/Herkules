@@ -685,7 +685,7 @@ export default function BidOpenPage() {
                 ← Project List
               </button>
               <button onClick={() => navigate('/')} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-                Modules
+                Dashboard
               </button>
             </div>
           </div>

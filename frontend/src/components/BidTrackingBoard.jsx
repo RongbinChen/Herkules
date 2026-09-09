@@ -299,7 +299,7 @@ export default function BidTrackingBoard() {
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <button onClick={() => navigate('/')}
               className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm">
-              Modules
+              Dashboard
             </button>
             <button onClick={() => navigate('/chinabidding')}
               className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm">

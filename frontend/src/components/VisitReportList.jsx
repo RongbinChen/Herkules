@@ -89,7 +89,7 @@ export default function VisitReportList() {
                 </button>
               ))}
             </div>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Modules</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
             <Button size="sm" onClick={() => setChooserOpen(true)}>{t.newReport}</Button>
           </div>
         </div>
