@@ -15,8 +15,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { followUpsAPI, usersAPI, customersAPI } from '../api/api'
+import { followUpsAPI, usersAPI, customersAPI, contractsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
+import useContractUnlock from '../hooks/useContractUnlock'
+import { docTypeMeta, displayFilename } from '../constants/contract'
 import { Button, Input, Select, Textarea, Badge } from './ui'
 
 const STATUSES = [
@@ -39,6 +41,11 @@ const GROUPS = [
 // Roles that come up on a machine-tool export order. Free text is still
 // allowed — this is a shortcut, not a schema.
 const CONTACT_ROLES = ['采购 Purchasing', '技术 Technical', '财务 Finance', '开证行 Issuing bank', '货代 Forwarder', '清关 Customs', '现场 Site']
+
+// Every date on the timeline is agreed in one of these two, so they are what
+// the picker offers first. The rest of the customer's file are one click away.
+const CONTRACT_PRIMARY = ['COMMERCIAL', 'TECHNICAL']
+const fmtKB = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 
 const fmtDate = (d) => { try { return d ? format(new Date(d), 'yyyy-MM-dd') : '' } catch { return '' } }
 const todayCN = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date())
@@ -262,6 +269,222 @@ function ContactCard({ f, c, canManage, onChanged }) {
   )
 }
 
+// ── Contract picker ──────────────────────────────────────────────────────────
+// Contract files live behind the contracts module's team PIN. This is a link
+// into that module, not a second way in: the same unlock, the same team scope,
+// the same server-side check. Locked, it shows a PIN prompt rather than a list
+// of filenames — the names are part of what the PIN withholds.
+function ContractPicker({ customerId, selected, onChange, note }) {
+  const { user } = useAuth()
+  const { unlock, team, setTeam, doUnlock, busy, error, configured } = useContractUnlock(
+    user?.team === 'WRC' ? 'WRC' : 'HRC',
+  )
+  const [pin, setPin] = useState('')
+  const [files, setFiles] = useState(null)
+  const [showAll, setShowAll] = useState(false)
+
+  useEffect(() => {
+    if (!unlock || !customerId) { setFiles(null); return }
+    let ignore = false
+    contractsAPI.list(customerId, unlock.token)
+      .then((r) => { if (!ignore) setFiles(r.data || []) })
+      .catch(() => { if (!ignore) setFiles([]) })
+    return () => { ignore = true }
+  }, [unlock, customerId])
+
+  if (!customerId) {
+    return <p className="text-[11px] text-slate-400">先关联客户档案，才能挑这个客户的合同。</p>
+  }
+
+  if (!unlock) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-[11px] text-slate-500">合同文件在团队 PIN 后面。输入 PIN 就能挑这个客户的商务合同和技术协议。</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="inline-block w-24">
+            <Select value={team} onChange={(e) => setTeam(e.target.value)} className="py-1 text-xs">
+              {['WRC', 'HRC'].map((t) => (
+                <option key={t} value={t} disabled={Array.isArray(configured) && !configured.includes(t)}>{t}</option>
+              ))}
+            </Select>
+          </span>
+          <span className="inline-block w-32">
+            <Input type="password" value={pin} placeholder="团队 PIN" className="py-1 text-xs"
+              onChange={(e) => setPin(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doUnlock(pin) } }} />
+          </span>
+          <Button size="sm" variant="secondary" disabled={busy || !pin.trim()} onClick={() => doUnlock(pin)}>
+            {busy ? '解锁中…' : '解锁'}
+          </Button>
+          {error && <span className="text-[11px] text-rose-600">{error}</span>}
+        </div>
+      </div>
+    )
+  }
+
+  if (files === null) return <p className="text-[11px] text-slate-400">读取合同中…</p>
+
+  const shown = showAll ? files : files.filter((f) => CONTRACT_PRIMARY.includes(f.docType))
+  const hiddenCount = files.length - shown.length
+
+  return (
+    <div>
+      {shown.length === 0 ? (
+        <p className="text-[11px] text-slate-400">
+          {files.length === 0
+            ? `这个客户在 ${unlock.team} 下还没有合同文件。`
+            : '这个客户没有商务合同或技术协议。'}
+        </p>
+      ) : (
+        <ul className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-1.5">
+          {shown.map((f) => {
+            const on = selected.includes(f.id)
+            return (
+              <li key={f.id}>
+                <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition ${on ? 'bg-brand-50' : 'hover:bg-slate-50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => onChange(on ? selected.filter((x) => x !== f.id) : [...selected, f.id])}
+                    className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600"
+                  />
+                  <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-700" title={f.filename}>
+                    {displayFilename(f.filename)}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-slate-400">{fmtKB(f.size)}</span>
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-400">
+        <span>{unlock.team} · 已选 {selected.length}</span>
+        {(hiddenCount > 0 || showAll) && (
+          <button type="button" onClick={() => setShowAll((v) => !v)} className="font-semibold text-brand-600 hover:underline">
+            {showAll ? '只看合同与技术协议' : `显示全部类型（+${hiddenCount}）`}
+          </button>
+        )}
+        <span className="flex-1" />
+        {note}
+      </div>
+    </div>
+  )
+}
+
+// ── Linked contracts on the detail page ──────────────────────────────────────
+// Locked, this says how many are attached and nothing else: the count is
+// ordinary project data, the filenames are not.
+function LinkedContracts({ f, onChanged }) {
+  const { user } = useAuth()
+  const { unlock, team, setTeam, doUnlock, busy, error, configured } = useContractUnlock(
+    user?.team === 'WRC' ? 'WRC' : 'HRC',
+  )
+  const [pin, setPin] = useState('')
+  const [files, setFiles] = useState(null)
+  const [editing, setEditing] = useState(false)
+  const [picked, setPicked] = useState([])
+  const count = f._count?.contractFiles ?? 0
+
+  const load = useCallback(async () => {
+    if (!unlock) return
+    try {
+      const { data } = await followUpsAPI.contracts(f.id, unlock.token)
+      setFiles(data)
+      setPicked(data.map((x) => x.id))
+    } catch { setFiles([]) }
+  }, [unlock, f.id])
+  useEffect(() => { load() }, [load])
+
+  const download = async (file) => {
+    try {
+      const res = await contractsAPI.download(file.id, unlock.token)
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url; a.download = file.filename; a.click()
+      URL.revokeObjectURL(url)
+    } catch { window.alert('下载失败') }
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-800">
+          合同依据 <span className="text-slate-300">{count}</span>
+        </h3>
+        {unlock && f.canManage && (
+          <Button size="sm" variant="secondary" onClick={() => setEditing((v) => !v)}>
+            {editing ? '完成' : '挑选合同'}
+          </Button>
+        )}
+      </div>
+      <p className="mt-0.5 text-[11px] text-slate-400">时间节点上的日期都是这两份文件里约定的，对不上时以合同为准。</p>
+
+      {!unlock ? (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] text-slate-500">
+            {count > 0 ? `已关联 ${count} 份合同文件。` : '还没关联合同。'}
+            {' '}文件在团队 PIN 后面，输入 PIN 查看或修改。
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="inline-block w-24">
+              <Select value={team} onChange={(e) => setTeam(e.target.value)} className="py-1 text-xs">
+                {['WRC', 'HRC'].map((t) => (
+                  <option key={t} value={t} disabled={Array.isArray(configured) && !configured.includes(t)}>{t}</option>
+                ))}
+              </Select>
+            </span>
+            <span className="inline-block w-32">
+              <Input type="password" value={pin} placeholder="团队 PIN" className="py-1 text-xs"
+                onChange={(e) => setPin(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doUnlock(pin) } }} />
+            </span>
+            <Button size="sm" variant="secondary" disabled={busy || !pin.trim()} onClick={() => doUnlock(pin)}>
+              {busy ? '解锁中…' : '解锁'}
+            </Button>
+            {error && <span className="text-[11px] text-rose-600">{error}</span>}
+          </div>
+        </div>
+      ) : editing ? (
+        <div className="mt-3">
+          <ContractPicker
+            customerId={f.customerId}
+            selected={picked}
+            onChange={setPicked}
+            note={(
+              <button
+                onClick={async () => {
+                  await followUpsAPI.linkContracts(f.id, picked, unlock.token)
+                  setEditing(false); await load(); await onChanged()
+                }}
+                className="font-semibold text-brand-600 hover:underline">保存关联</button>
+            )}
+          />
+        </div>
+      ) : (
+        <ul className="mt-3 space-y-1.5">
+          {(files || []).map((x) => (
+            <li key={x.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+              <Badge tone={docTypeMeta(x.docType).tone}>{docTypeMeta(x.docType).short}</Badge>
+              <button onClick={() => download(x)} title={x.filename}
+                className="min-w-0 flex-1 truncate text-left text-xs font-medium text-slate-700 transition hover:text-brand-600">
+                {displayFilename(x.filename)}
+              </button>
+              <span className="shrink-0 text-[10px] text-slate-400">{fmtKB(x.size)}</span>
+            </li>
+          ))}
+          {files && files.length === 0 && (
+            <li className="py-3 text-center text-xs text-slate-400">
+              还没关联合同{f.canManage ? '——点「挑选合同」挂上去' : ''}。
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ── Detail ───────────────────────────────────────────────────────────────────
 function Detail({ id, catalogue, users, onBack, onChanged }) {
   const navigate = useNavigate()
@@ -359,6 +582,10 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
         </div>
         {f.notes && <p className="mt-2 whitespace-pre-wrap text-xs text-slate-500">{f.notes}</p>}
       </div>
+
+      {/* Contracts — placed above the timeline because it is where the
+          timeline's dates come from, not an appendix to them. */}
+      <LinkedContracts f={f} onChanged={refresh} />
 
       {/* Milestones */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -460,6 +687,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 function NewModal({ users, onClose, onCreated }) {
   const [form, setForm] = useState({ title: '', orderNo: '', customerId: '', customerName: '', machineType: '', contractValue: '', ownerId: '', notes: '' })
   const [customers, setCustomers] = useState([])
+  const [contractIds, setContractIds] = useState([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => { customersAPI.getAll().then((r) => setCustomers(r.data || [])).catch(() => {}) }, [])
@@ -528,7 +756,21 @@ function NewModal({ users, onClose, onCreated }) {
             备注
             <Textarea rows={2} value={form.notes} onChange={set('notes')} className="mt-1" />
           </label>
-          <p className="text-[11px] text-slate-400">建好之后在详情页填时间节点——填了日期才会开始提醒。</p>
+          {/* The timeline's dates are all agreed in these two documents, so the
+              files get attached at creation — by the time someone is filling in
+              a letter-of-credit date, the contract that states it should
+              already be one click away. */}
+          <div className="text-xs font-semibold text-slate-600">
+            合同（商务合同 / 技术协议，可多选）
+            <div className="mt-1 font-normal">
+              <ContractPicker
+                customerId={form.customerId || null}
+                selected={contractIds}
+                onChange={setContractIds}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400">建好之后在详情页填时间节点——节点日期照着合同里约定的填，填了日期才会开始提醒。</p>
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
@@ -538,6 +780,16 @@ function NewModal({ users, onClose, onCreated }) {
             setErr(''); setSaving(true)
             try {
               const { data } = await followUpsAPI.create({ ...form, customerId: form.customerId || null })
+              // Linking is a second call because the record has no id until the
+              // first one returns. A failure here is not worth throwing the
+              // created record away for — the detail page can link them.
+              if (contractIds.length) {
+                const u = JSON.parse(sessionStorage.getItem('contractUnlock') || 'null')
+                if (u?.token) {
+                  await followUpsAPI.linkContracts(data.id, contractIds, u.token)
+                    .catch(() => window.alert('项目已创建，但合同没关联上——去详情页再挂一次。'))
+                }
+              }
               onCreated(data.id)
             } catch (e) { setErr(e.response?.data?.error || '创建失败'); setSaving(false) }
           }}>{saving ? '创建中…' : '创建'}</Button>

@@ -129,6 +129,11 @@ export const followUpsAPI = {
   deleteContact: (id, contactId) => api.delete(`/followups/${id}/contacts/${contactId}`),
   addUpdate: (id, data) => api.post(`/followups/${id}/updates`, data),
   deleteUpdate: (id, updateId) => api.delete(`/followups/${id}/updates/${updateId}`),
+  // Linked contracts sit behind the contracts module's team PIN, so these three
+  // carry the same unlock token every /contracts call does.
+  contracts: (id, token) => api.get(`/followups/${id}/contracts`, withUnlock(token)),
+  availableContracts: (id, token) => api.get(`/followups/${id}/contracts/available`, withUnlock(token)),
+  linkContracts: (id, fileIds, token) => api.put(`/followups/${id}/contracts`, { fileIds }, withUnlock(token)),
 }
 
 export const agentsAPI = {
