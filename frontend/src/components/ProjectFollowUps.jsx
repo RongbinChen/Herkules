@@ -22,25 +22,25 @@ import { docTypeMeta, displayFilename } from '../constants/contract'
 import { Button, Input, Select, Textarea, Badge } from './ui'
 
 const STATUSES = [
-  { key: 'ACTIVE', label: '进行中 Active', tone: 'emerald' },
-  { key: 'ON_HOLD', label: '挂起 On hold', tone: 'amber' },
-  { key: 'COMPLETED', label: '完结 Completed', tone: 'slate' },
-  { key: 'CANCELLED', label: '取消 Cancelled', tone: 'slate' },
+  { key: 'ACTIVE', label: 'Active', tone: 'emerald' },
+  { key: 'ON_HOLD', label: 'On hold', tone: 'amber' },
+  { key: 'COMPLETED', label: 'Completed', tone: 'slate' },
+  { key: 'CANCELLED', label: 'Cancelled', tone: 'slate' },
 ]
 const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.key, s.label]))
 
 // The four groups the timeline is split into. Money and paperwork are chased by
 // different people, and a flat list of sixteen dates reads as a wall.
 const GROUPS = [
-  { key: 'contract', label: '合同 Contract' },
-  { key: 'lc', label: '信用证 Letter of credit' },
-  { key: 'money', label: '资金 Payments & guarantees' },
-  { key: 'exec', label: '执行 Execution' },
+  { key: 'contract', label: 'Contract' },
+  { key: 'lc', label: 'Letter of credit' },
+  { key: 'money', label: 'Payments & guarantees' },
+  { key: 'exec', label: 'Execution' },
 ]
 
 // Roles that come up on a machine-tool export order. Free text is still
 // allowed — this is a shortcut, not a schema.
-const CONTACT_ROLES = ['采购 Purchasing', '技术 Technical', '财务 Finance', '开证行 Issuing bank', '货代 Forwarder', '清关 Customs', '现场 Site']
+const CONTACT_ROLES = ['Purchasing', 'Technical', 'Finance', 'Issuing bank', 'Forwarder', 'Customs broker', 'Site contact']
 
 // Every date on the timeline is agreed in one of these two, so they are what
 // the picker offers first. The rest of the customer's file are one click away.
@@ -56,13 +56,13 @@ const daysTo = (d) => Math.round((new Date(`${fmtDate(d)}T00:00:00Z`) - new Date
 function dueTone(m) {
   // Short enough to sit on one line in the status column; the full date is on
   // the element's title.
-  if (m.doneAt) return { cls: 'text-emerald-600', text: '✓ 已完成', title: `完成于 ${fmtDate(m.doneAt)}` }
+  if (m.doneAt) return { cls: 'text-emerald-600', text: '✓ Done', title: `Completed ${fmtDate(m.doneAt)}` }
   if (!m.dueDate) return { cls: 'text-slate-300', text: '' }
   const d = daysTo(m.dueDate)
-  if (d < 0) return { cls: 'font-semibold text-rose-600', text: `逾期 ${-d} 天` }
-  if (d === 0) return { cls: 'font-semibold text-rose-500', text: '今天' }
-  if (d <= 14) return { cls: 'font-semibold text-amber-600', text: `${d} 天后` }
-  return { cls: 'text-slate-500', text: `${d} 天后` }
+  if (d < 0) return { cls: 'font-semibold text-rose-600', text: `${-d}d over` }
+  if (d === 0) return { cls: 'font-semibold text-rose-500', text: 'Today' }
+  if (d <= 14) return { cls: 'font-semibold text-amber-600', text: `in ${d}d` }
+  return { cls: 'text-slate-500', text: `in ${d}d` }
 }
 
 // ── List ─────────────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ function FollowUpRow({ f, onOpen }) {
       <div className="flex flex-wrap items-center gap-2">
         {f.overdueCount > 0 && (
           <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
-            {f.overdueCount} 个节点逾期
+            {f.overdueCount} overdue
           </span>
         )}
         <span className="font-semibold text-slate-800">{f.title}</span>
@@ -87,13 +87,13 @@ function FollowUpRow({ f, onOpen }) {
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-3 text-[11px] text-slate-400">
         {f.customer?.name && <span>🏭 {f.customer.name}</span>}
         {f.owner?.name && <span>👤 {f.owner.name}</span>}
-        <span>{f.doneCount}/{f.totalDated} 节点完成</span>
-        {f._count?.contacts > 0 && <span>{f._count.contacts} 位联系人</span>}
+        <span>{f.doneCount}/{f.totalDated} milestones done</span>
+        {f._count?.contacts > 0 && <span>{f._count.contacts} contacts</span>}
       </div>
       {next && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
-          <span className="text-slate-400">下一个节点</span>
-          <span className="font-medium text-slate-700">{next.label || next.meta?.zh || next.kind}</span>
+          <span className="text-slate-400">Next</span>
+          <span className="font-medium text-slate-700">{next.label || next.meta?.en || next.kind}</span>
           <span className="text-slate-400">{fmtDate(next.dueDate)}</span>
           <span className={tone.cls}>{tone.text}</span>
         </div>
@@ -112,7 +112,7 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
   const save = async (data) => {
     setBusy(true)
     try { await followUpsAPI.saveMilestone(f.id, item.kind, data); await onChanged() }
-    catch (e) { window.alert(e.response?.data?.error || '保存失败') }
+    catch (e) { window.alert(e.response?.data?.error || 'Save failed') }
     finally { setBusy(false) }
   }
 
@@ -121,9 +121,9 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
     try {
       const { data } = await followUpsAPI.notifyMilestone(f.id, item.kind)
       window.alert(data.sent
-        ? `已发送给 ${data.to}${data.cc ? `，抄送 ${data.cc}` : ''}`
-        : '邮件未发出——服务器上还没配置 SMTP，或该节点没有指派到人')
-    } catch (e) { window.alert(e.response?.data?.error || '发送失败') }
+        ? `Sent to ${data.to}${data.cc ? `, cc ${data.cc}` : ''}`
+        : 'Not sent — SMTP is not configured on the server, or nobody is assigned to this milestone')
+    } catch (e) { window.alert(e.response?.data?.error || 'Send failed') }
     finally { setBusy(false) }
   }
 
@@ -135,13 +135,13 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
           checked={Boolean(m?.doneAt)}
           disabled={!canManage || !m?.dueDate || busy}
           onChange={(e) => save({ done: e.target.checked })}
-          title={m?.dueDate ? '标记完成后不再提醒' : '先填日期'}
+          title={m?.dueDate ? 'Ticking it off stops the reminders' : 'Set a date first'}
           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 disabled:opacity-40"
         />
         <span className={`text-sm ${m?.doneAt ? 'text-slate-400 line-through' : 'font-medium text-slate-700'}`}>
-          {m?.label || item.zh}
+          {m?.label || item.en}
         </span>
-        <span className="text-[11px] text-slate-300">{item.en}</span>
+        <span className="text-[11px] text-slate-300">{item.zh}</span>
         <span className="flex-1" />
         {/* Wrapped rather than sized directly: the shared Input carries
             `w-full`, which wins over a width passed in className — Tailwind
@@ -160,20 +160,20 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
           onClick={() => setOpen((v) => !v)}
           className="shrink-0 text-[11px] font-semibold text-slate-400 transition hover:text-brand-600"
         >
-          {open ? '收起' : '更多'}
+          {open ? 'Less' : 'More'}
         </button>
       </div>
       {open && (
         <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
           <Input
-            placeholder="备注（写进提醒邮件）"
+            placeholder="Note — goes into the reminder email"
             defaultValue={m?.notes || ''}
             disabled={!canManage}
             onBlur={(e) => (e.target.value !== (m?.notes || '')) && save({ notes: e.target.value })}
             className="py-1 text-xs"
           />
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-            <span>提前提醒</span>
+            <span>Remind</span>
             <span className="inline-block w-28">
               <Input
                 defaultValue={(m?.remindDaysBefore ?? item.lead).join(', ')}
@@ -185,21 +185,21 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
                 className="py-1 text-xs"
               />
             </span>
-            <span>天，逾期后每 3 天一次</span>
+            <span>days before, then every 3 days once overdue</span>
             <span className="flex-1" />
             {canManage && m?.dueDate && !m?.doneAt && (
               <button onClick={notify} disabled={busy}
                 className="rounded-lg border border-brand-200 px-2 py-1 font-semibold text-brand-600 transition hover:bg-brand-50 disabled:opacity-50">
-                ✉ 立即发一封
+                ✉ Send now
               </button>
             )}
             {canManage && m && (
               <button
                 onClick={async () => {
-                  if (!window.confirm('清空这个节点的日期和备注？')) return
+                  if (!window.confirm('Clear this milestone\u2019s date and note?')) return
                   await followUpsAPI.clearMilestone(f.id, item.kind); await onChanged()
                 }}
-                className="font-semibold text-slate-400 transition hover:text-rose-500">清空</button>
+                className="font-semibold text-slate-400 transition hover:text-rose-500">Clear</button>
             )}
           </div>
         </div>
@@ -218,21 +218,21 @@ function ContactCard({ f, c, canManage, onChanged }) {
     return (
       <li className="rounded-xl border border-brand-200 bg-white p-3">
         <div className="grid gap-2 sm:grid-cols-2">
-          <Input value={form.name || ''} onChange={set('name')} placeholder="姓名 *" className="py-1 text-xs" />
-          <Input value={form.role || ''} onChange={set('role')} placeholder="角色（采购 / 开证行 / 货代…）" list="fu-roles" className="py-1 text-xs" />
-          <Input value={form.company || ''} onChange={set('company')} placeholder="单位" className="py-1 text-xs" />
-          <Input value={form.title || ''} onChange={set('title')} placeholder="职务" className="py-1 text-xs" />
-          <Input value={form.phone || ''} onChange={set('phone')} placeholder="电话" className="py-1 text-xs" />
-          <Input value={form.email || ''} onChange={set('email')} placeholder="邮箱" className="py-1 text-xs" />
-          <Input value={form.wechat || ''} onChange={set('wechat')} placeholder="微信" className="py-1 text-xs" />
-          <Input value={form.notes || ''} onChange={set('notes')} placeholder="备注" className="py-1 text-xs" />
+          <Input value={form.name || ''} onChange={set('name')} placeholder="Name *" className="py-1 text-xs" />
+          <Input value={form.role || ''} onChange={set('role')} placeholder="Role (purchasing / issuing bank / forwarder…)" list="fu-roles" className="py-1 text-xs" />
+          <Input value={form.company || ''} onChange={set('company')} placeholder="Company" className="py-1 text-xs" />
+          <Input value={form.title || ''} onChange={set('title')} placeholder="Title" className="py-1 text-xs" />
+          <Input value={form.phone || ''} onChange={set('phone')} placeholder="Phone" className="py-1 text-xs" />
+          <Input value={form.email || ''} onChange={set('email')} placeholder="Email" className="py-1 text-xs" />
+          <Input value={form.wechat || ''} onChange={set('wechat')} placeholder="WeChat" className="py-1 text-xs" />
+          <Input value={form.notes || ''} onChange={set('notes')} placeholder="Note" className="py-1 text-xs" />
         </div>
         <div className="mt-2 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" onClick={() => { setForm(c); setEdit(false) }}>取消</Button>
+          <Button size="sm" variant="ghost" onClick={() => { setForm(c); setEdit(false) }}>Cancel</Button>
           <Button size="sm" onClick={async () => {
-            if (!form.name?.trim()) return window.alert('姓名必填')
+            if (!form.name?.trim()) return window.alert('Name is required')
             await followUpsAPI.updateContact(f.id, c.id, form); setEdit(false); await onChanged()
-          }}>保存</Button>
+          }}>Save</Button>
         </div>
       </li>
     )
@@ -246,13 +246,13 @@ function ContactCard({ f, c, canManage, onChanged }) {
         <span className="flex-1" />
         {canManage && (
           <>
-            <button onClick={() => setEdit(true)} className="text-[11px] font-semibold text-slate-400 hover:text-brand-600">编辑</button>
+            <button onClick={() => setEdit(true)} className="text-[11px] font-semibold text-slate-400 hover:text-brand-600">Edit</button>
             <button
               onClick={async () => {
-                if (!window.confirm(`删除联系人 ${c.name}？`)) return
+                if (!window.confirm(`Delete contact ${c.name}?`)) return
                 await followUpsAPI.deleteContact(f.id, c.id); await onChanged()
               }}
-              className="text-[11px] font-semibold text-slate-400 hover:text-rose-500">删除</button>
+              className="text-[11px] font-semibold text-slate-400 hover:text-rose-500">Delete</button>
           </>
         )}
       </div>
@@ -307,7 +307,7 @@ function useContractPrefill({ fileIds, token, values, onFill }) {
 // One line under the form telling the reader where the values came from, and
 // offering the ones that could not be applied because the field was taken.
 function PrefillNote({ state, values, onUse }) {
-  if (state.busy) return <p className="text-[11px] text-brand-600">正在从合同读取机型和金额…（未读过的文件要花约 1 分钟）</p>
+  if (state.busy) return <p className="text-[11px] text-brand-600">Reading machine model and value from the contracts… (about a minute for a file nobody has read yet)</p>
   if (!state.ran) return null
   const offline = state.sources.some((s) => s.reason === 'dgx-offline')
   const unread = state.sources.filter((s) => s.reason === 'not-read')
@@ -317,20 +317,20 @@ function PrefillNote({ state, values, onUse }) {
 
   return (
     <div className="space-y-1 text-[11px]">
-      {applied > 0 && <p className="text-emerald-600">✓ 已从合同填入 {applied} 项，可以随手改。</p>}
+      {applied > 0 && <p className="text-emerald-600">✓ Filled {applied} field(s) from the contracts — change anything that looks wrong.</p>}
       {conflicts.map(([field, s]) => (
         <p key={field} className="text-slate-500">
-          合同里的{field === 'machineType' ? '机型' : field === 'contractValue' ? '金额' : '合同号'}是
+          The contract says {field === 'machineType' ? 'machine' : field === 'contractValue' ? 'value' : 'contract no.'}
           <span className="mx-1 font-semibold text-slate-700">{s.value}</span>
-          <button type="button" onClick={() => onUse(field, s.value)} className="font-semibold text-brand-600 hover:underline">用这个</button>
+          <button type="button" onClick={() => onUse(field, s.value)} className="font-semibold text-brand-600 hover:underline">use it</button>
         </p>
       ))}
-      {offline && <p className="text-amber-600">DGX 离线，读不了没缓存过的合同——手填即可，不影响创建。</p>}
+      {offline && <p className="text-amber-600">DGX is offline, so contracts nobody has read yet cannot be read now — fill these in by hand; it does not block anything.</p>}
       {!offline && unread.length > 0 && (
-        <p className="text-slate-400">{unread.length} 份文件还没转写完，读不出内容。</p>
+        <p className="text-slate-400">{unread.length} file(s) are still being transcribed and cannot be read yet.</p>
       )}
       {state.ran && !applied && !conflicts.length && !offline && !unread.length && (
-        <p className="text-slate-400">合同里没读出机型或金额，手填即可。</p>
+        <p className="text-slate-400">Nothing readable in the contracts for these fields — fill them in by hand.</p>
       )}
     </div>
   )
@@ -360,13 +360,13 @@ function ContractPicker({ customerId, selected, onChange, note }) {
   }, [unlock, customerId])
 
   if (!customerId) {
-    return <p className="text-[11px] text-slate-400">先关联客户档案，才能挑这个客户的合同。</p>
+    return <p className="text-[11px] text-slate-400">Link a customer first, then their contracts can be picked.</p>
   }
 
   if (!unlock) {
     return (
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <p className="text-[11px] text-slate-500">合同文件在团队 PIN 后面。输入 PIN 就能挑这个客户的商务合同和技术协议。</p>
+        <p className="text-[11px] text-slate-500">Contract files sit behind a team PIN. Enter it to pick this customer’s commercial contract and technical agreement.</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="inline-block w-24">
             <Select value={team} onChange={(e) => setTeam(e.target.value)} className="py-1 text-xs">
@@ -376,12 +376,12 @@ function ContractPicker({ customerId, selected, onChange, note }) {
             </Select>
           </span>
           <span className="inline-block w-32">
-            <Input type="password" value={pin} placeholder="团队 PIN" className="py-1 text-xs"
+            <Input type="password" value={pin} placeholder="Team PIN" className="py-1 text-xs"
               onChange={(e) => setPin(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doUnlock(pin) } }} />
           </span>
           <Button size="sm" variant="secondary" disabled={busy || !pin.trim()} onClick={() => doUnlock(pin)}>
-            {busy ? '解锁中…' : '解锁'}
+            {busy ? 'Unlocking…' : 'Unlock'}
           </Button>
           {error && <span className="text-[11px] text-rose-600">{error}</span>}
         </div>
@@ -389,7 +389,7 @@ function ContractPicker({ customerId, selected, onChange, note }) {
     )
   }
 
-  if (files === null) return <p className="text-[11px] text-slate-400">读取合同中…</p>
+  if (files === null) return <p className="text-[11px] text-slate-400">Loading contracts…</p>
 
   const shown = showAll ? files : files.filter((f) => CONTRACT_PRIMARY.includes(f.docType))
   const hiddenCount = files.length - shown.length
@@ -399,8 +399,8 @@ function ContractPicker({ customerId, selected, onChange, note }) {
       {shown.length === 0 ? (
         <p className="text-[11px] text-slate-400">
           {files.length === 0
-            ? `这个客户在 ${unlock.team} 下还没有合同文件。`
-            : '这个客户没有商务合同或技术协议。'}
+            ? `No contract files for this customer under ${unlock.team}.`
+            : 'No commercial contract or technical agreement for this customer.'}
         </p>
       ) : (
         <ul className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-1.5">
@@ -427,10 +427,10 @@ function ContractPicker({ customerId, selected, onChange, note }) {
         </ul>
       )}
       <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-400">
-        <span>{unlock.team} · 已选 {selected.length}</span>
+        <span>{unlock.team} · {selected.length} selected</span>
         {(hiddenCount > 0 || showAll) && (
           <button type="button" onClick={() => setShowAll((v) => !v)} className="font-semibold text-brand-600 hover:underline">
-            {showAll ? '只看合同与技术协议' : `显示全部类型（+${hiddenCount}）`}
+            {showAll ? 'Contracts & agreements only' : `Show all types (+${hiddenCount})`}
           </button>
         )}
         <span className="flex-1" />
@@ -468,11 +468,11 @@ function LinkedContracts({ f, onChanged, onPatch }) {
       for (const k of missing) if (data.suggestions?.[k]?.value) patch[k] = data.suggestions[k].value
       if (!Object.keys(patch).length) {
         const offline = (data.sources || []).some((x) => x.reason === 'dgx-offline')
-        window.alert(offline ? 'DGX 离线，读不了没缓存过的合同。' : '合同里没读出机型 / 金额 / 合同号。')
+        window.alert(offline ? 'DGX is offline, so contracts nobody has read yet cannot be read now.' : 'Nothing readable in the contracts for machine / value / contract no.')
       } else {
         await onPatch(patch)
       }
-    } catch { window.alert('读取失败') }
+    } catch { window.alert('Read failed') }
     finally { setFilling(false) }
   }
 
@@ -493,35 +493,35 @@ function LinkedContracts({ f, onChanged, onPatch }) {
       const a = document.createElement('a')
       a.href = url; a.download = file.filename; a.click()
       URL.revokeObjectURL(url)
-    } catch { window.alert('下载失败') }
+    } catch { window.alert('Download failed') }
   }
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-800">
-          合同依据 <span className="text-slate-300">{count}</span>
+          Contract basis <span className="text-slate-300">{count}</span>
         </h3>
         {unlock && f.canManage && (
           <div className="flex gap-2">
             {!editing && missing.length > 0 && (files?.length ?? 0) > 0 && (
               <Button size="sm" variant="secondary" disabled={filling} onClick={fillFromContracts}>
-                {filling ? '读取中…' : '从合同填机型/金额'}
+                {filling ? 'Reading…' : 'Fill from contracts'}
               </Button>
             )}
             <Button size="sm" variant="secondary" onClick={() => setEditing((v) => !v)}>
-              {editing ? '完成' : '挑选合同'}
+              {editing ? 'Done' : 'Pick contracts'}
             </Button>
           </div>
         )}
       </div>
-      <p className="mt-0.5 text-[11px] text-slate-400">时间节点上的日期都是这两份文件里约定的，对不上时以合同为准。</p>
+      <p className="mt-0.5 text-[11px] text-slate-400">Every date on the timeline is agreed in these documents — where they disagree, the contract wins.</p>
 
       {!unlock ? (
         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <p className="text-[11px] text-slate-500">
-            {count > 0 ? `已关联 ${count} 份合同文件。` : '还没关联合同。'}
-            {' '}文件在团队 PIN 后面，输入 PIN 查看或修改。
+            {count > 0 ? `${count} contract file(s) linked.` : 'No contracts linked yet.'}
+            {' '}The files sit behind a team PIN — enter it to view or change them.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="inline-block w-24">
@@ -532,12 +532,12 @@ function LinkedContracts({ f, onChanged, onPatch }) {
               </Select>
             </span>
             <span className="inline-block w-32">
-              <Input type="password" value={pin} placeholder="团队 PIN" className="py-1 text-xs"
+              <Input type="password" value={pin} placeholder="Team PIN" className="py-1 text-xs"
                 onChange={(e) => setPin(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doUnlock(pin) } }} />
             </span>
             <Button size="sm" variant="secondary" disabled={busy || !pin.trim()} onClick={() => doUnlock(pin)}>
-              {busy ? '解锁中…' : '解锁'}
+              {busy ? 'Unlocking…' : 'Unlock'}
             </Button>
             {error && <span className="text-[11px] text-rose-600">{error}</span>}
           </div>
@@ -554,7 +554,7 @@ function LinkedContracts({ f, onChanged, onPatch }) {
                   await followUpsAPI.linkContracts(f.id, picked, unlock.token)
                   setEditing(false); await load(); await onChanged()
                 }}
-                className="font-semibold text-brand-600 hover:underline">保存关联</button>
+                className="font-semibold text-brand-600 hover:underline">Save selection</button>
             )}
           />
         </div>
@@ -572,7 +572,7 @@ function LinkedContracts({ f, onChanged, onPatch }) {
           ))}
           {files && files.length === 0 && (
             <li className="py-3 text-center text-xs text-slate-400">
-              还没关联合同{f.canManage ? '——点「挑选合同」挂上去' : ''}。
+              No contracts linked{f.canManage ? ' — use “Pick contracts” to attach them' : ''}.
             </li>
           )}
         </ul>
@@ -603,7 +603,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 
   const patch = async (data) => {
     try { await followUpsAPI.update(f.id, data); await refresh() }
-    catch (e) { window.alert(e.response?.data?.error || '保存失败') }
+    catch (e) { window.alert(e.response?.data?.error || 'Save failed') }
   }
 
   // The customer's standing contact list is the obvious starting point, but it
@@ -614,10 +614,10 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
     const seed = raw.length ? raw : (f.customer?.contactName
       ? [{ name: f.customer.contactName, phone: f.customer.contactPhone, email: f.customer.email }]
       : [])
-    if (!seed.length) return window.alert('这个客户档案里没有联系人')
+    if (!seed.length) return window.alert('This customer record has no contacts')
     const have = new Set(f.contacts.map((c) => c.name))
     const fresh = seed.filter((c) => c.name && !have.has(c.name))
-    if (!fresh.length) return window.alert('客户档案里的联系人都已经在这里了')
+    if (!fresh.length) return window.alert('Every contact on the customer record is already here')
     for (const c of fresh) {
       await followUpsAPI.addContact(f.id, {
         name: c.name, title: c.title || null, phone: c.phone || null,
@@ -630,7 +630,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
   return (
     <div className="space-y-5">
       <div>
-        <button onClick={onBack} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">← 返回列表</button>
+        <button onClick={onBack} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">← Back to list</button>
       </div>
 
       {/* Head */}
@@ -657,12 +657,12 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
             </button>
           )}
           {f.hotProject && (
-            <button onClick={() => navigate('/hotprojects')} className="text-brand-600 hover:underline">🔥 来自 Hot Project ↗</button>
+            <button onClick={() => navigate('/hotprojects')} className="text-brand-600 hover:underline">🔥 From Hot Projects ↗</button>
           )}
           {f.machineType && <span>🛠 {f.machineType}</span>}
           {f.contractValue && <span>💰 {f.contractValue}</span>}
           <span className="flex items-center gap-1">
-            👤 跟进人
+            👤 Owner
             <span className="inline-block w-36">
               <Select
                 value={f.ownerId || ''}
@@ -670,7 +670,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
                 onChange={(e) => patch({ ownerId: e.target.value || null })}
                 className="py-0.5 text-xs"
               >
-                <option value="">未指派</option>
+                <option value="">Unassigned</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </Select>
             </span>
@@ -685,10 +685,11 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 
       {/* Milestones */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-800">时间节点</h3>
+        <h3 className="text-sm font-bold text-slate-800">Milestones</h3>
         <p className="mt-0.5 text-[11px] text-slate-400">
-          填了日期才会提醒。到期前按各自的提前天数发，逾期后每 3 天一次，直到打勾。
-          邮件发给跟进人，抄送 Stefan Elze，密送 Rongbin Chen。
+          A milestone only reminds once it has a date. Mail goes out on each of its lead days,
+          then every 3 days once overdue, until it is ticked off — to the owner,
+          copied to Stefan Elze, blind copied to Rongbin Chen.
         </p>
         <div className="mt-3 space-y-4">
           {GROUPS.map((g) => {
@@ -718,48 +719,48 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <datalist id="fu-roles">{CONTACT_ROLES.map((r) => <option key={r} value={r} />)}</datalist>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-bold text-slate-800">联系人 <span className="text-slate-300">{f.contacts.length}</span></h3>
+          <h3 className="text-sm font-bold text-slate-800">Contacts <span className="text-slate-300">{f.contacts.length}</span></h3>
           {canManage && (
             <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={importFromCustomer}>从客户档案导入</Button>
-              <Button size="sm" onClick={() => setAdding((v) => !v)}>＋ 添加</Button>
+              <Button size="sm" variant="secondary" onClick={importFromCustomer}>Import from customer</Button>
+              <Button size="sm" onClick={() => setAdding((v) => !v)}>＋ Add</Button>
             </div>
           )}
         </div>
         {adding && (
           <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50/40 p-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              <Input value={newContact.name} onChange={(e) => setNewContact((s) => ({ ...s, name: e.target.value }))} placeholder="姓名 *" className="py-1 text-xs" />
-              <Input value={newContact.role} onChange={(e) => setNewContact((s) => ({ ...s, role: e.target.value }))} placeholder="角色（采购 / 开证行 / 货代…）" list="fu-roles" className="py-1 text-xs" />
-              <Input value={newContact.company} onChange={(e) => setNewContact((s) => ({ ...s, company: e.target.value }))} placeholder="单位" className="py-1 text-xs" />
-              <Input value={newContact.phone} onChange={(e) => setNewContact((s) => ({ ...s, phone: e.target.value }))} placeholder="电话" className="py-1 text-xs" />
-              <Input value={newContact.email} onChange={(e) => setNewContact((s) => ({ ...s, email: e.target.value }))} placeholder="邮箱" className="py-1 text-xs" />
+              <Input value={newContact.name} onChange={(e) => setNewContact((s) => ({ ...s, name: e.target.value }))} placeholder="Name *" className="py-1 text-xs" />
+              <Input value={newContact.role} onChange={(e) => setNewContact((s) => ({ ...s, role: e.target.value }))} placeholder="Role (purchasing / issuing bank / forwarder…)" list="fu-roles" className="py-1 text-xs" />
+              <Input value={newContact.company} onChange={(e) => setNewContact((s) => ({ ...s, company: e.target.value }))} placeholder="Company" className="py-1 text-xs" />
+              <Input value={newContact.phone} onChange={(e) => setNewContact((s) => ({ ...s, phone: e.target.value }))} placeholder="Phone" className="py-1 text-xs" />
+              <Input value={newContact.email} onChange={(e) => setNewContact((s) => ({ ...s, email: e.target.value }))} placeholder="Email" className="py-1 text-xs" />
             </div>
             <div className="mt-2 flex justify-end">
               <Button size="sm" onClick={async () => {
-                if (!newContact.name.trim()) return window.alert('姓名必填')
+                if (!newContact.name.trim()) return window.alert('Name is required')
                 await followUpsAPI.addContact(f.id, newContact)
                 setNewContact({ name: '', role: '', company: '', phone: '', email: '' })
                 setAdding(false); await refresh()
-              }}>保存</Button>
+              }}>Save</Button>
             </div>
           </div>
         )}
         <ul className="mt-3 space-y-2">
           {f.contacts.map((c) => <ContactCard key={c.id} f={f} c={c} canManage={canManage} onChanged={refresh} />)}
-          {f.contacts.length === 0 && <li className="py-4 text-center text-xs text-slate-400">还没有联系人</li>}
+          {f.contacts.length === 0 && <li className="py-4 text-center text-xs text-slate-400">No contacts yet</li>}
         </ul>
       </div>
 
       {/* Log */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-800">跟进记录</h3>
+        <h3 className="text-sm font-bold text-slate-800">Log</h3>
         <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="记一笔进展…" />
+          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note what happened…" />
           <div className="mt-2 flex justify-end">
             <Button size="sm" disabled={!note.trim()} onClick={async () => {
               await followUpsAPI.addUpdate(f.id, { content: note.trim() }); setNote(''); await refresh()
-            }}>＋ 添加</Button>
+            }}>＋ Add</Button>
           </div>
         </div>
         <ol className="mt-3 space-y-2">
@@ -772,7 +773,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
               <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-600">{u.content}</p>
             </li>
           ))}
-          {f.updates.length === 0 && <li className="py-3 text-center text-xs text-slate-400">还没有记录</li>}
+          {f.updates.length === 0 && <li className="py-3 text-center text-xs text-slate-400">Nothing logged yet</li>}
         </ol>
       </div>
     </div>
@@ -807,33 +808,33 @@ function NewModal({ users, onClose, onCreated }) {
     <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-3 sm:p-6" onClick={onClose}>
       <div className="my-6 w-full max-w-lg rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-bold text-slate-800">新建执行跟进</h2>
+          <h2 className="text-base font-bold text-slate-800">New follow-up</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
         </div>
         <div className="space-y-3 px-5 py-4">
           <label className="block text-xs font-semibold text-slate-600">
-            项目 / 订单名 *
+            Project / order name *
             <Input value={form.title} onChange={set('title')} placeholder="e.g. Qingdao Haixi — 2× CNC roll grinder" className="mt-1" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-semibold text-slate-600">
-              合同号
+              Order / contract no.
               <Input value={form.orderNo} onChange={set('orderNo')} className="mt-1" />
             </label>
             <label className="block text-xs font-semibold text-slate-600">
-              跟进人
+              Owner
               <Select value={form.ownerId} onChange={set('ownerId')} className="mt-1">
-                <option value="">我自己</option>
+                <option value="">Me</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </Select>
             </label>
           </div>
           <div className="text-xs font-semibold text-slate-600">
-            客户
+            Customer
             <div className="relative mt-1">
               <Input
                 value={form.customerName}
-                placeholder="输入以搜索并关联客户档案"
+                placeholder="Type to search and link a customer record"
                 onChange={(e) => setForm((s) => ({ ...s, customerName: e.target.value, customerId: '' }))}
               />
               {matches.length > 0 && (
@@ -848,14 +849,14 @@ function NewModal({ users, onClose, onCreated }) {
                 </ul>
               )}
             </div>
-            {form.customerId && <span className="mt-1 block text-[10px] font-bold text-emerald-600">✓ 已关联客户档案</span>}
+            {form.customerId && <span className="mt-1 block text-[10px] font-bold text-emerald-600">✓ Linked to customer record</span>}
           </div>
           {/* The timeline's dates are all agreed in these two documents, so the
               files get attached at creation — by the time someone is filling in
               a letter-of-credit date, the contract that states it should
               already be one click away. */}
           <div className="text-xs font-semibold text-slate-600">
-            合同（商务合同 / 技术协议，可多选）
+            Contracts (commercial / technical — pick any)
             <div className="mt-1 font-normal">
               <ContractPicker
                 customerId={form.customerId || null}
@@ -866,16 +867,16 @@ function NewModal({ users, onClose, onCreated }) {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-semibold text-slate-600">
-              机型
+              Machine model
               <Input value={form.machineType} onChange={set('machineType')} className="mt-1" />
             </label>
             <label className="block text-xs font-semibold text-slate-600">
-              合同金额
+              Contract value
               <Input value={form.contractValue} onChange={set('contractValue')} placeholder="e.g. EUR 4.2m" className="mt-1" />
             </label>
           </div>
           <label className="block text-xs font-semibold text-slate-600">
-            备注
+            Notes
             <Textarea rows={2} value={form.notes} onChange={set('notes')} className="mt-1" />
           </label>
           <PrefillNote
@@ -883,13 +884,13 @@ function NewModal({ users, onClose, onCreated }) {
             values={form}
             onUse={(field, value) => setForm((s) => ({ ...s, [field]: value }))}
           />
-          <p className="text-[11px] text-slate-400">建好之后在详情页填时间节点——节点日期照着合同里约定的填，填了日期才会开始提醒。</p>
+          <p className="text-[11px] text-slate-400">Fill the milestone dates on the record itself, straight from the contracts — a date is what starts the reminders.</p>
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
-          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button disabled={saving} onClick={async () => {
-            if (!form.title.trim()) { setErr('项目名必填'); return }
+            if (!form.title.trim()) { setErr('Project name is required'); return }
             setErr(''); setSaving(true)
             try {
               const { data } = await followUpsAPI.create({ ...form, customerId: form.customerId || null })
@@ -900,12 +901,12 @@ function NewModal({ users, onClose, onCreated }) {
                 const u = JSON.parse(sessionStorage.getItem('contractUnlock') || 'null')
                 if (u?.token) {
                   await followUpsAPI.linkContracts(data.id, contractIds, u.token)
-                    .catch(() => window.alert('项目已创建，但合同没关联上——去详情页再挂一次。'))
+                    .catch(() => window.alert('The record was created, but the contracts were not linked — attach them on the record itself.'))
                 }
               }
               onCreated(data.id)
-            } catch (e) { setErr(e.response?.data?.error || '创建失败'); setSaving(false) }
-          }}>{saving ? '创建中…' : '创建'}</Button>
+            } catch (e) { setErr(e.response?.data?.error || 'Could not create'); setSaving(false) }
+          }}>{saving ? 'Creating…' : 'Create'}</Button>
         </div>
       </div>
     </div>
@@ -956,7 +957,7 @@ export default function ProjectFollowUps() {
           <div>
             <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">📌 Project Follow-up</h1>
             <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-              订单执行跟进：信用证、付款、验收的时间节点，到期自动发邮件提醒
+              Order execution: letter-of-credit, payment and acceptance dates, with email reminders as they come due
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -964,7 +965,7 @@ export default function ProjectFollowUps() {
               className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
               Dashboard
             </button>
-            <Button onClick={() => setNewOpen(true)}>＋ 新建</Button>
+            <Button onClick={() => setNewOpen(true)}>＋ New</Button>
           </div>
         </div>
 
@@ -982,7 +983,7 @@ export default function ProjectFollowUps() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <button onClick={() => setStatus('')}
                   className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${status === '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                  在跑的
+                  Live
                 </button>
                 {STATUSES.map((s) => (
                   <button key={s.key} onClick={() => setStatus(s.key)}
@@ -994,23 +995,23 @@ export default function ProjectFollowUps() {
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setMine((v) => !v)}
                   className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${mine ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                  只看我的
+                  Mine
                 </button>
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜项目 / 合同号 / 客户 / 联系人"
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search project / order no. / customer / contact"
                   className="w-56 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs" />
               </div>
             </div>
 
             <div className="mb-2 flex items-center gap-3 text-xs text-slate-400">
-              <span>{rows.length} 个项目</span>
-              {overdueTotal > 0 && <span className="font-semibold text-rose-600">{overdueTotal} 个节点已逾期</span>}
+              <span>{rows.length} project{rows.length === 1 ? '' : 's'}</span>
+              {overdueTotal > 0 && <span className="font-semibold text-rose-600">{overdueTotal} milestone{overdueTotal === 1 ? '' : 's'} overdue</span>}
             </div>
 
             {loading ? (
               <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
             ) : rows.length === 0 ? (
               <div className="py-16 text-center text-sm text-slate-400">
-                还没有执行跟进单。赢下的订单建一条，把信用证和付款的日子填进去。
+                No follow-ups yet. Open one for a won order and put its letter-of-credit and payment dates in.
               </div>
             ) : (
               <ul className="space-y-3">
