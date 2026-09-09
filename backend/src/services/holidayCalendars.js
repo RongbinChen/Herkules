@@ -1,11 +1,5 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { readHolidayCalendars, writeHolidayCalendars } from './holidayCalendarStore.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, '..', 'data', 'holiday-calendars.json');
-const TEMP_DATA_FILE = `${DATA_FILE}.tmp`;
 const OFFICIAL_SEARCH_API = 'https://sousuo.www.gov.cn/search-gov/data';
 const CHECK_INTERVAL_MS = 1000 * 60 * 60 * 24 * 60;
 let updateInFlight = null;
@@ -86,16 +80,6 @@ function parseHolidayEventsFromNotice(text, year) {
   }
 
   return events;
-}
-
-async function readHolidayCalendars() {
-  const raw = await fs.readFile(DATA_FILE, 'utf8');
-  return JSON.parse(raw);
-}
-
-async function writeHolidayCalendars(calendars) {
-  await fs.writeFile(TEMP_DATA_FILE, `${JSON.stringify(calendars, null, 2)}\n`, 'utf8');
-  await fs.rename(TEMP_DATA_FILE, DATA_FILE);
 }
 
 function sortCalendars(calendars) {
