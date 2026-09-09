@@ -343,21 +343,34 @@ function PrefillNote({ state, values, onUse }) {
 // of filenames — the names are part of what the PIN withholds.
 function ContractPicker({ customerId, selected, onChange, note }) {
   const { user } = useAuth()
-  const { unlock, team, setTeam, doUnlock, busy, error, configured } = useContractUnlock(
+  const { unlock, team, setTeam, doUnlock, busy, error, configured, lock } = useContractUnlock(
     user?.team === 'WRC' ? 'WRC' : 'HRC',
   )
   const [pin, setPin] = useState('')
   const [files, setFiles] = useState(null)
+  const [loadError, setLoadError] = useState('')
+  const [retry, setRetry] = useState(0)
   const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     if (!unlock || !customerId) { setFiles(null); return }
     let ignore = false
+    setLoadError('')
     contractsAPI.list(customerId, unlock.token)
       .then((r) => { if (!ignore) setFiles(r.data || []) })
-      .catch(() => { if (!ignore) setFiles([]) })
+      .catch((err) => {
+        if (ignore) return
+        // An unlock lasts 45 minutes on the server but its token sits in
+        // sessionStorage until the tab closes, so a stale one leaves the picker
+        // looking open while every request 401s. Swallowing that used to render
+        // as "this customer has no contracts", which is a different statement
+        // and a false one — the files were there the whole time.
+        if (err.response?.status === 401) { lock(); setLoadError('') }
+        else setLoadError('Could not read the contract list. Try again.')
+        setFiles(null)
+      })
     return () => { ignore = true }
-  }, [unlock, customerId])
+  }, [unlock, customerId, lock, retry])
 
   if (!customerId) {
     return <p className="text-[11px] text-slate-400">Link a customer first, then their contracts can be picked.</p>
@@ -389,6 +402,14 @@ function ContractPicker({ customerId, selected, onChange, note }) {
     )
   }
 
+  if (loadError) {
+    return (
+      <p className="text-[11px] text-rose-600">
+        {loadError}{' '}
+        <button type="button" onClick={() => { setLoadError(''); setRetry((n) => n + 1) }} className="font-semibold underline">retry</button>
+      </p>
+    )
+  }
   if (files === null) return <p className="text-[11px] text-slate-400">Loading contracts…</p>
 
   const shown = showAll ? files : files.filter((f) => CONTRACT_PRIMARY.includes(f.docType))
@@ -445,7 +466,7 @@ function ContractPicker({ customerId, selected, onChange, note }) {
 // ordinary project data, the filenames are not.
 function LinkedContracts({ f, onChanged, onPatch }) {
   const { user } = useAuth()
-  const { unlock, team, setTeam, doUnlock, busy, error, configured } = useContractUnlock(
+  const { unlock, team, setTeam, doUnlock, busy, error, configured, lock } = useContractUnlock(
     user?.team === 'WRC' ? 'WRC' : 'HRC',
   )
   const [pin, setPin] = useState('')
@@ -482,8 +503,13 @@ function LinkedContracts({ f, onChanged, onPatch }) {
       const { data } = await followUpsAPI.contracts(f.id, unlock.token)
       setFiles(data)
       setPicked(data.map((x) => x.id))
-    } catch { setFiles([]) }
-  }, [unlock, f.id])
+    } catch (err) {
+      // Same rule as the picker: a stale unlock is not "no contracts". Drop the
+      // expired token so the PIN prompt comes back instead of an empty list.
+      if (err.response?.status === 401) lock()
+      setFiles(null)
+    }
+  }, [unlock, f.id, lock])
   useEffect(() => { load() }, [load])
 
   const download = async (file) => {
