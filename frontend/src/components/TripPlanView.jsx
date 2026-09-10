@@ -5,6 +5,9 @@ export default function TripPlanView({ trip }) {
   const days = trip.itinerary?.days || []
   const notes = trip.itinerary?.notes || []
   const transports = Array.isArray(trip.itinerary?.transports) ? trip.itinerary.transports : []
+  // Measured, not suggested — so it gets its own section rather than sitting
+  // under the "verify before booking" heading next door.
+  const driveLegs = Array.isArray(trip.itinerary?.driveLegs) ? trip.itinerary.driveLegs : []
 
   return (
     <div className="space-y-6">
@@ -56,6 +59,25 @@ export default function TripPlanView({ trip }) {
           <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
             {notes.map((n, i) => (
               <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {driveLegs.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Driving times <span className="font-normal normal-case text-slate-400">· measured on the road network (AMap)</span>
+          </h3>
+          <ul className="grid gap-1.5 sm:grid-cols-2">
+            {driveLegs.map((l, i) => (
+              <li key={i} className="flex items-baseline gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+                <span className="min-w-0 flex-1 truncate text-slate-700" title={`${l.fromName} → ${l.toName}`}>
+                  {l.fromName} → {l.toName}
+                </span>
+                <span className="shrink-0 font-semibold text-slate-800">🚗 {l.text}</span>
+                <span className="shrink-0 text-slate-400">{l.km} km</span>
+              </li>
             ))}
           </ul>
         </section>

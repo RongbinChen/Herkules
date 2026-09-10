@@ -7,6 +7,7 @@ import {
   deepseekNetworkError,
   deepseekFailureMessage,
 } from './deepseekErrors.js';
+import { drivingMatrix, isAmapConfigured } from './amap.js';
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 // deepseek-chat/deepseek-reasoner retire 2026-07-24. Replacements:
@@ -24,6 +25,7 @@ const SYSTEM = `你是一位资深的企业差旅行程规划师。给定客户�
 - 尊重航班：到达日只安排抵达+休整；离开日按航班时间倒推（如早班机需前一晚住机场附近）。
 - **已预订航班是事实，不是待补全的草稿。** 航班号、路线、时刻只能原样引用用户给的值；用户没给时刻，就写"as booked"或干脆不提时刻，**严禁推测、换算或补一个看起来合理的时间**。你没有航班时刻表，一个编出来的到达时间会让人按错的时间去接机。
 - 只有用户【没有预订】的城际段，才可以给建议班次；这类必须标注 "Reference only — verify before booking"，且绝不能与已预订航班混在同一句话里。
+- **驾车时间：只能引用下面"实测驾车时间"里给出的数字**（来自地图服务的真实路网查询）。清单里没有的路段，写"allow time to transfer"之类的定性说明，**不要自己估一个分钟数**——一个编出来的车程会让人踩着点出发然后迟到。
 - 若两个客户相距很远、同一天无法都拜访，明确指出需取舍。
 - 周末工厂可能不接待——如不确定，给出提示而非武断安排。
 - 始终用英文输出所有描述性文字（days 的 program/logistics、notes、transports 的 note 等），即使客户名/地址/约束等输入为中文；地名也用英文（如 Chengdu、Qingdao）。
@@ -105,7 +107,42 @@ export function buildUserPrompt(trip) {
   if (trip.constraints && trip.constraints.trim()) {
     lines.push(`\n额外约束/偏好：\n${trip.constraints.trim()}`);
   }
+
+  // Real road-network times, when we have them. Handed over as facts the model
+  // must quote rather than as background it may reinterpret: the whole point is
+  // that these are the numbers it was previously making up.
+  if (Array.isArray(trip.driveLegs) && trip.driveLegs.length) {
+    lines.push('\n实测驾车时间（高德路网查询，直接引用，勿自行估算）：');
+    trip.driveLegs.forEach((l) => {
+      lines.push(`- ${l.fromName} → ${l.toName}：${l.km} km，驾车约 ${l.text}`);
+    });
+  }
   return lines.join('\n');
+}
+
+// Road-network driving times between the trip's stops, for the planner to
+// quote. Returns [] when there is no map key or too few stops — the prompt then
+// omits the section entirely and its rule tells the model to stay qualitative.
+async function lookupDriveLegs(trip) {
+  if (!isAmapConfigured()) return [];
+  const points = (trip.stops || [])
+    .map((s, i) => ({
+      key: String(i),
+      name: s.customer?.name || `Stop ${i + 1}`,
+      latitude: s.customer?.latitude,
+      longitude: s.customer?.longitude,
+    }))
+    .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+  const byKey = new Map(points.map((p) => [p.key, p.name]));
+  try {
+    const legs = await drivingMatrix(points);
+    return legs.map((l) => ({ ...l, fromName: byKey.get(l.from), toName: byKey.get(l.to) }));
+  } catch (err) {
+    // A map lookup failing must not cost the itinerary — the plan is still
+    // worth having without the minutes.
+    console.warn('[tripPlanner] drive-time lookup failed:', err.message);
+    return [];
+  }
 }
 
 const tryParse = (s) => {
@@ -190,7 +227,8 @@ async function callModel(model, userPrompt) {
 // Returns { itinerary: {days, notes, transports}, stopArrivals, model } or throws.
 export async function planItinerary(trip) {
   if (!API_KEY) throw new DeepSeekError(deepseekFailureMessage(401), 401);
-  const userPrompt = buildUserPrompt(trip);
+  const driveLegs = await lookupDriveLegs(trip);
+  const userPrompt = buildUserPrompt({ ...trip, driveLegs });
 
   let lastErr = null;
   for (const model of [PRIMARY_MODEL, FALLBACK_MODEL]) {
@@ -203,6 +241,10 @@ export async function planItinerary(trip) {
             days: parsed.days,
             notes: Array.isArray(parsed.notes) ? parsed.notes : [],
             transports: Array.isArray(parsed.transports) ? parsed.transports : [],
+            // Stored alongside the plan so the page can show the measured times
+            // as their own section — they are lookups, not suggestions, and
+            // they should not sit under a "verify before booking" heading.
+            driveLegs,
           },
           stopArrivals: Array.isArray(parsed.stops) ? parsed.stops : [],
           model,
