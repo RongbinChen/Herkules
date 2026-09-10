@@ -22,7 +22,8 @@ const SYSTEM = `你是一位资深的企业差旅行程规划师。给定客户�
 - 按地理就近原则把同城/邻近客户安排在相邻日期，减少往返；跨城用航班或高铁，预留旅途时间与过夜地点。
 - PRIORITY（优先）客户优先保证时间与天数；BACKUP（备选）客户仅在时间富裕时安排，并在备注中说明条件。
 - 尊重航班：到达日只安排抵达+休整；离开日按航班时间倒推（如早班机需前一晚住机场附近）。
-- 为每段跨城转场推荐具体交通班次：优先使用上方"已预订航班"；其余城际段给出建议的航班号或高铁车次，并附参考出发/到达时刻与大致时长。你没有实时时刻表，自行建议的班次一律标注"参考，请核实"。
+- **已预订航班是事实，不是待补全的草稿。** 航班号、路线、时刻只能原样引用用户给的值；用户没给时刻，就写"as booked"或干脆不提时刻，**严禁推测、换算或补一个看起来合理的时间**。你没有航班时刻表，一个编出来的到达时间会让人按错的时间去接机。
+- 只有用户【没有预订】的城际段，才可以给建议班次；这类必须标注 "Reference only — verify before booking"，且绝不能与已预订航班混在同一句话里。
 - 若两个客户相距很远、同一天无法都拜访，明确指出需取舍。
 - 周末工厂可能不接待——如不确定，给出提示而非武断安排。
 - 始终用英文输出所有描述性文字（days 的 program/logistics、notes、transports 的 note 等），即使客户名/地址/约束等输入为中文；地名也用英文（如 Chengdu、Qingdao）。
@@ -31,7 +32,7 @@ const SYSTEM = `你是一位资深的企业差旅行程规划师。给定客户�
 只输出 JSON，不要任何解释或 markdown 代码块，格式：
 {
   "days": [
-    { "date": "8 Jul", "day": "Wed", "location": "Chengdu", "program": "Arrive on CA4508; check in, rest.", "logistics": "Overnight Chengdu" }
+    { "date": "8 Jul", "day": "Wed", "location": "Chengdu", "program": "Arrive on CA4508 (as booked); check in, rest.", "logistics": "Overnight Chengdu" }
   ],
   "stops": [
     { "index": 1, "arrival": "2026-07-09T09:30" }
@@ -68,11 +69,19 @@ export function buildUserPrompt(trip) {
   if (trip.assignees?.length) lines.push(`出差同事：${trip.assignees.map((a) => a.name).join('、')}`);
 
   if (Array.isArray(trip.flights) && trip.flights.length) {
-    lines.push('\n航班（已预订）：');
+    lines.push('\n航班（已预订，以下为事实，不得推测或补全）：');
     trip.flights.forEach((f) => {
-      lines.push(
-        `- ${[f.date, f.flightNo, f.routing, f.time, f.notes].filter(Boolean).join(' | ')}`,
-      );
+      // A missing time is stated as missing. Left as a blank slot the model
+      // fills it with a plausible number, and a plausible number is exactly
+      // what gets somebody to the airport at the wrong hour.
+      const bits = [
+        f.date || '日期: 用户未提供',
+        f.flightNo || '航班号: 用户未提供',
+        f.routing || '航线: 用户未提供',
+        f.time ? `时刻: ${f.time}` : '时刻: 用户未提供（禁止推测）',
+      ];
+      if (f.notes) bits.push(f.notes);
+      lines.push(`- ${bits.join(' | ')}`);
     });
   } else {
     lines.push('\n航班：未提供（可按需在 notes 中建议）');

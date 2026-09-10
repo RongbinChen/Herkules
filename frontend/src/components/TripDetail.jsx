@@ -191,10 +191,10 @@ export default function TripDetail() {
           <TripMap stops={stops} height={460} />
         </div>
         <div>
-          {trip.notes && (
-            <p className="mb-3 rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-600">{trip.notes}</p>
-          )}
-
+          {/* The trip's own notes are the raw input the planner already read —
+              echoing the paragraph back above the finished plan is the same
+              text twice, and the second time it is noise. Still editable in
+              Edit, still sent to the planner. */}
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">Visit order / times (editable)</h2>
             {dirty && (
