@@ -5,6 +5,7 @@ import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { planItinerary } from '../services/tripPlanner.js';
 import { runTripChat, summariseTripChat } from '../services/tripChat.js';
+import { lookupDriveLegs } from '../services/tripPlanner.js';
 
 const router = express.Router();
 
@@ -239,7 +240,13 @@ function chatHandler(fn) {
   return async (req, res) => {
     try {
       const { messages, context } = chatBodySchema.parse(req.body);
-      res.json(await fn(messages, context));
+      // The interview describes the trip with the same builder the planner
+      // uses, so the driving times have to be looked up here too — otherwise
+      // asking "how long is the taxi from the airport" during the interview
+      // gets "I have no map tools" while the generated plan two clicks later
+      // quotes the real 37 minutes.
+      const driveLegs = await lookupDriveLegs(context);
+      res.json(await fn(messages, { ...context, driveLegs }));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
       // 502 keeps DeepSeek's own classification (out of balance / bad key /
