@@ -162,6 +162,13 @@ DATABASE_URL=postgresql://postgres:postgres123@localhost:5432/calendar_db
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
 JWT_EXPIRES_IN=30d
 VITE_API_URL=http://localhost:3001  # 前端访问后端的地址
+
+# 高德地图 Web 服务 key —— 客户地址地理编码 + 行程规划的实测驾车时间。
+# 平台类型必须是「Web服务」，且 key 的 IP 白名单里要有服务器的 IPv4（35.76.38.203）。
+# 注意：高德请求强制走 IPv4（services/amap.js），因为 VPS 同时有 IPv6，
+# Node 默认优先 v6，高德看到的就不是白名单里那个地址，会返回 INVALID_USER_IP。
+# 不配这个 key 也能跑：地理编码退回问大模型，行程里不再出现驾车分钟数。
+AMAP_KEY=
 ```
 
 ---

@@ -1,13 +1,30 @@
-// Geocoding via DeepSeek chat API. The model is given an address and asked to
-// return JSON coordinates. Returns null when the address simply can't be
-// resolved, but THROWS a DeepSeekError when the API itself is unavailable
-// (out of balance / bad key / rate limited) so the UI can show why.
+// Address → coordinates.
+//
+// AMap first: it is a geocoder, it knows the Chinese address grammar these
+// customers are written in, and it returns the same answer twice. Asking a
+// language model for a latitude and longitude — which is what this file used to
+// do, and still does when no map key is configured — produces a number that
+// looks like a coordinate and lands the pin in the wrong district often enough
+// to matter. Every driving time in the trip planner is measured from these
+// points, so a guessed coordinate is a guessed itinerary.
 import { DeepSeekError, deepseekErrorFromResponse, deepseekNetworkError } from './deepseekErrors.js';
+import { amapGeocode, isAmapConfigured } from './amap.js';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
 export async function geocodeAddress(address) {
   if (!address || !address.trim()) return null;
+
+  if (isAmapConfigured()) {
+    const hit = await amapGeocode(address);
+    // A city-level match is not a location — it is the city centre wearing the
+    // address's name, and on a map it looks exactly like a real fix. Fall
+    // through rather than store it.
+    if (hit && hit.level !== '省' && hit.level !== '市') {
+      return { latitude: hit.latitude, longitude: hit.longitude };
+    }
+    if (hit) console.warn(`[geocode] AMap resolved "${address}" only to ${hit.level} — falling back`);
+  }
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
