@@ -7,7 +7,7 @@ import {
   deepseekNetworkError,
   deepseekFailureMessage,
 } from './deepseekErrors.js';
-import { drivingMatrix, isAmapConfigured } from './amap.js';
+import { airportPoints, drivingMatrix, isAmapConfigured } from './amap.js';
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 // deepseek-chat/deepseek-reasoner retire 2026-07-24. Replacements:
@@ -123,9 +123,9 @@ export function buildUserPrompt(trip) {
 // Road-network driving times between the trip's stops, for the planner to
 // quote. Returns [] when there is no map key or too few stops — the prompt then
 // omits the section entirely and its rule tells the model to stay qualitative.
-async function lookupDriveLegs(trip) {
+export async function lookupDriveLegs(trip) {
   if (!isAmapConfigured()) return [];
-  const points = (trip.stops || [])
+  const stopPoints = (trip.stops || [])
     .map((s, i) => ({
       key: String(i),
       name: s.customer?.name || `Stop ${i + 1}`,
@@ -133,10 +133,25 @@ async function lookupDriveLegs(trip) {
       longitude: s.customer?.longitude,
     }))
     .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
-  const byKey = new Map(points.map((p) => [p.key, p.name]));
   try {
+    // The airports named in the booked flights join the matrix: "how long from
+    // the airport to the first customer" is the question people actually ask,
+    // and an airport is not a stop, so the stop list alone can never answer it.
+    const airports = await airportPoints(
+      (trip.flights || []).map((f) => [f.routing, f.notes].filter(Boolean).join(' ')),
+    );
+    const points = [...airports, ...stopPoints];
+    const byKey = new Map(points.map((p) => [p.key, p.name]));
     const legs = await drivingMatrix(points);
-    return legs.map((l) => ({ ...l, fromName: byKey.get(l.from), toName: byKey.get(l.to) }));
+    return legs
+      // Two filters, both about what a car is actually for. Nobody drives
+      // Beijing to Shanghai — past a few hundred kilometres the segment is a
+      // flight or a train, which the planner handles separately, and listing a
+      // 13-hour drive only buries the 39-minute one that matters. And an
+      // airport-to-airport drive is never the question.
+      .filter((l) => l.km <= 400)
+      .filter((l) => !(l.from.startsWith('apt:') && l.to.startsWith('apt:')))
+      .map((l) => ({ ...l, fromName: byKey.get(l.from), toName: byKey.get(l.to) }));
   } catch (err) {
     // A map lookup failing must not cost the itinerary — the plan is still
     // worth having without the minutes.

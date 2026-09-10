@@ -156,3 +156,54 @@ export async function drivingMatrix(points) {
   }
   return legs;
 }
+
+// Airports the trips actually use, by IATA code. The table supplies the name;
+// AMap supplies the coordinate — hardcoding latitudes would be inventing the
+// one kind of number this whole file exists to stop inventing.
+//
+// "Airport to the first customer" is the leg people ask about most and the one
+// the stop list cannot answer, because an airport is not a customer.
+const AIRPORTS = {
+  PEK: '北京首都国际机场', PKX: '北京大兴国际机场', TSN: '天津滨海国际机场',
+  SHA: '上海虹桥国际机场', PVG: '上海浦东国际机场', NKG: '南京禄口国际机场',
+  HGH: '杭州萧山国际机场', CAN: '广州白云国际机场', SZX: '深圳宝安国际机场',
+  CTU: '成都双流国际机场', TFU: '成都天府国际机场', CKG: '重庆江北国际机场',
+  XIY: '西安咸阳国际机场', TAO: '青岛胶东国际机场', DLC: '大连周水子国际机场',
+  SHE: '沈阳桃仙国际机场', HRB: '哈尔滨太平国际机场', WUH: '武汉天河国际机场',
+  CSX: '长沙黄花国际机场', KMG: '昆明长水国际机场', XMN: '厦门高崎国际机场',
+  FOC: '福州长乐国际机场', TNA: '济南遥墙国际机场', CGO: '郑州新郑国际机场',
+  HFE: '合肥新桥国际机场', NNG: '南宁吴圩国际机场', URC: '乌鲁木齐地窝堡国际机场',
+};
+
+const airportCache = new Map();
+
+/**
+ * IATA codes mentioned in a flight's routing → [{ key, name, latitude, longitude }].
+ * Unknown codes are skipped rather than guessed at.
+ */
+export async function airportPoints(routings) {
+  if (!KEY) return [];
+  const codes = new Set();
+  for (const r of routings || []) {
+    for (const m of String(r || '').toUpperCase().matchAll(/\b([A-Z]{3})\b/g)) {
+      if (AIRPORTS[m[1]]) codes.add(m[1]);
+    }
+  }
+  const out = [];
+  for (const code of codes) {
+    if (!airportCache.has(code)) {
+      const hit = await amapGeocode(AIRPORTS[code]);
+      airportCache.set(code, hit || null);
+    }
+    const hit = airportCache.get(code);
+    if (hit) {
+      out.push({
+        key: `apt:${code}`,
+        name: `${AIRPORTS[code]} (${code})`,
+        latitude: hit.latitude,
+        longitude: hit.longitude,
+      });
+    }
+  }
+  return out;
+}
