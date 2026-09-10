@@ -291,6 +291,12 @@ model Customer {
   latitude      Float?
   longitude     Float?
   status        CustomerStatus        @default(LEAD) // 潜在 / 合作中 / 暂停 / 流失
+  // Do they already own one of our machines? A different question from status,
+  // and the one status cannot answer: a lapsed customer with a machine in their
+  // workshop is still a spares, service and retrofit relationship, while a
+  // lapsed lead that never bought is nothing. Kept as a fact about the
+  // installed base, not as a stage of the relationship.
+  installedBase Boolean               @default(false)
   tier          CustomerTier          @default(C) // A=战略 / B=重点 / C=普通
   tags          String[] // 自由标签（行业、来源等）
   createdAt     DateTime              @default(now())
