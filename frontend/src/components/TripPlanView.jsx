@@ -21,7 +21,8 @@ export default function TripPlanView({ trip }) {
                   {f.date && <span className="font-semibold text-slate-800">{f.date}</span>}
                   {f.flightNo && <span className="rounded bg-brand-50 px-1.5 py-0.5 text-xs font-semibold text-brand-700">{f.flightNo}</span>}
                   {f.routing && <span className="text-slate-700">{f.routing}</span>}
-                  {f.time && <span className="text-slate-500">{f.time}</span>}
+                  {(f.depart || f.time) && <span className="text-slate-500">dep {f.depart || f.time}</span>}
+                  {f.arrive && <span className="font-semibold text-slate-700">arr {f.arrive}</span>}
                 </div>
                 {f.notes && <p className="mt-1 text-xs text-slate-500">{f.notes}</p>}
               </li>
