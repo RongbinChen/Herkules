@@ -23,6 +23,7 @@ const SYSTEM = `你是一位资深的企业差旅行程规划师。给定客户�
 - 按地理就近原则把同城/邻近客户安排在相邻日期，减少往返；跨城用航班或高铁，预留旅途时间与过夜地点。
 - PRIORITY（优先）客户优先保证时间与天数；BACKUP（备选）客户仅在时间富裕时安排，并在备注中说明条件。
 - 尊重航班：到达日只安排抵达+休整；离开日按航班时间倒推（如早班机需前一晚住机场附近）。
+- **到达时间决定当天能排什么。** 用户给了到达时刻，就按它倒推：落地后先算机场到市区/客户的车程（见下方实测驾车时间），再判断当天还来不来得及拜访。没给到达时刻，就写明"行程假设下午早些时候抵达"这类前提，并在 notes 里提示确认，**不要自己填一个时刻**。
 - **已预订航班是事实，不是待补全的草稿。** 航班号、路线、时刻只能原样引用用户给的值；用户没给时刻，就写"as booked"或干脆不提时刻，**严禁推测、换算或补一个看起来合理的时间**。你没有航班时刻表，一个编出来的到达时间会让人按错的时间去接机。
 - 只有用户【没有预订】的城际段，才可以给建议班次；这类必须标注 "Reference only — verify before booking"，且绝不能与已预订航班混在同一句话里。
 - **驾车时间：只能引用下面"实测驾车时间"里给出的数字**（来自地图服务的真实路网查询）。清单里没有的路段，写"allow time to transfer"之类的定性说明，**不要自己估一个分钟数**——一个编出来的车程会让人踩着点出发然后迟到。
@@ -76,11 +77,15 @@ export function buildUserPrompt(trip) {
       // A missing time is stated as missing. Left as a blank slot the model
       // fills it with a plausible number, and a plausible number is exactly
       // what gets somebody to the airport at the wrong hour.
+      // `time` is the legacy single field, kept readable so trips entered
+      // before departure and arrival were separated still plan correctly.
+      const dep = f.depart || f.time || '';
       const bits = [
         f.date || '日期: 用户未提供',
         f.flightNo || '航班号: 用户未提供',
         f.routing || '航线: 用户未提供',
-        f.time ? `时刻: ${f.time}` : '时刻: 用户未提供（禁止推测）',
+        dep ? `起飞: ${dep}` : '起飞: 用户未提供（禁止推测）',
+        f.arrive ? `到达: ${f.arrive}` : '到达: 用户未提供（禁止推测）',
       ];
       if (f.notes) bits.push(f.notes);
       lines.push(`- ${bits.join(' | ')}`);

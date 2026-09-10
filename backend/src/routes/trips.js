@@ -22,7 +22,11 @@ const flightSchema = z.object({
   date: z.string().optional(),
   flightNo: z.string().optional(),
   routing: z.string().optional(),
+  // `time` is the original single field. Kept accepted, and read as the
+  // departure, so trips saved before the split still load and still plan.
   time: z.string().optional(),
+  depart: z.string().optional(),
+  arrive: z.string().optional(),
   notes: z.string().optional(),
 });
 

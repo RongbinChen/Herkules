@@ -155,9 +155,22 @@ export default function StepChat({ draft, patch, customerById }) {
                     <input value={f.flightNo || ''} onChange={(e) => updateFlight(i, 'flightNo', e.target.value)} placeholder="CA4501" className="w-full min-w-0 rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-brand-400" aria-label="Flight number" />
                     <button type="button" onClick={() => removeFlight(i)} className="shrink-0 px-1 text-slate-300 hover:text-rose-500" aria-label="Remove flight">✕</button>
                   </div>
+                  {/* Departure and arrival, separately and labelled. One box
+                      called "Time" left it ambiguous and mostly empty — and the
+                      arrival is the one the whole day hangs on: it decides
+                      whether an afternoon visit is possible at all. The planner
+                      is forbidden to invent it, so an empty box costs a real
+                      answer. */}
                   <div className="mt-1 flex gap-1">
-                    <input value={f.routing || ''} onChange={(e) => updateFlight(i, 'routing', e.target.value)} placeholder="PEK → TAO" className="w-full min-w-0 rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-brand-400" aria-label="Routing" />
-                    <input value={f.time || ''} onChange={(e) => updateFlight(i, 'time', e.target.value)} placeholder="06:55" className="w-16 shrink-0 rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-brand-400" aria-label="Time" />
+                    <input value={f.routing || ''} onChange={(e) => updateFlight(i, 'routing', e.target.value)} placeholder="PVG → XIY" title="Use 3-letter airport codes — they let the planner look up airport↔customer driving times" className="w-full min-w-0 rounded border border-slate-200 px-1.5 py-1 text-xs outline-none focus:border-brand-400" aria-label="Routing" />
+                    <label className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">
+                      dep
+                      <input value={f.depart ?? f.time ?? ''} onChange={(e) => updateFlight(i, 'depart', e.target.value)} placeholder="06:55" className="w-12 rounded border border-slate-200 px-1 py-1 text-xs outline-none focus:border-brand-400" aria-label="Departure time" />
+                    </label>
+                    <label className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-brand-600">
+                      arr
+                      <input value={f.arrive || ''} onChange={(e) => updateFlight(i, 'arrive', e.target.value)} placeholder="11:00" title="Arrival decides what fits into that day — the planner never guesses it" className="w-12 rounded border border-brand-200 px-1 py-1 text-xs outline-none focus:border-brand-400" aria-label="Arrival time" />
+                    </label>
                   </div>
                 </div>
               ))}
