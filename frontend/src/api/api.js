@@ -160,8 +160,9 @@ export const tripsAPI = {
   plan: (id) => api.post(`/trips/${id}/plan`, null, { timeout: 300000 }),
   // Wizard step 3: constraint-gathering interview, and the pass that condenses
   // it into `constraints`.
-  planChat: (payload) => api.post('/trips/plan-chat', payload, { timeout: 90000 }),
-  planChatSummary: (payload) => api.post('/trips/plan-chat/summary', payload, { timeout: 90000 }),
+  // One paste → the planner's constraint list. Runs on the local model, which
+  // answers in seconds; the timeout covers the cloud fallback's slower path.
+  planBrief: (payload) => api.post('/trips/plan-brief', payload, { timeout: 120000 }),
   // Public — no auth required (interceptor simply omits the header when logged out).
   getShared: (token) => api.get(`/trips/share/${token}`),
 }

@@ -62,9 +62,9 @@ transports 字段：列出行程中跨城转场的建议交通（已被上方"�
 // the model, which then planned around the wrong window. en-CA gives YYYY-MM-DD.
 const CN_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' });
 
-// Exported for tripChat.js: the interview must describe the trip to the model
-// exactly the way the planner will, so the constraints it collects line up with
-// what actually gets planned.
+// Exported for tripBrief.js: the brief reader must describe the trip to the
+// model exactly the way the planner will, so the constraints it produces line
+// up with what actually gets planned.
 export function buildUserPrompt(trip) {
   const fmt = (d) => (d ? CN_DATE.format(new Date(d)) : '');
   const lines = [];
@@ -175,7 +175,7 @@ const tryParse = (s) => {
 
 // Robustly pull a JSON object out of an LLM reply that may wrap it in prose or
 // ```json fences (the reasoner model sometimes does this).
-// Exported for tripChat.js.
+// Exported for tripBrief.js.
 export function extractJson(text) {
   if (!text) return null;
   let r = tryParse(text.trim());
