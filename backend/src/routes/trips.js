@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { planItinerary } from '../services/tripPlanner.js';
-import { runTripChat, summariseTripChat } from '../services/tripChat.js';
+import { parseTripBrief } from '../services/tripBrief.js';
 import { lookupDriveLegs } from '../services/tripPlanner.js';
 
 const router = express.Router();
@@ -232,38 +232,20 @@ const chatContextSchema = z.object({
     .default([]),
 });
 
-const chatBodySchema = z.object({
-  messages: z
-    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) }))
-    .min(1)
-    .max(40),
-  context: chatContextSchema,
+// One paste in, a constraint list out. Replaces the multi-turn interview and
+// its separate summary call — the two endpoints it needed are gone with it.
+router.post('/plan-brief', authenticateToken, async (req, res) => {
+  try {
+    const { brief, context } = briefBodySchema.parse(req.body);
+    const driveLegs = await lookupDriveLegs(context);
+    res.json(await parseTripBrief(brief, { ...context, driveLegs }));
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    if (error.isDeepSeek) return res.status(502).json({ error: error.message });
+    console.error('[trips] plan-brief error:', error.message);
+    return res.status(500).json({ error: 'Could not read that — write the constraints by hand and continue.' });
+  }
 });
-
-function chatHandler(fn) {
-  return async (req, res) => {
-    try {
-      const { messages, context } = chatBodySchema.parse(req.body);
-      // The interview describes the trip with the same builder the planner
-      // uses, so the driving times have to be looked up here too — otherwise
-      // asking "how long is the taxi from the airport" during the interview
-      // gets "I have no map tools" while the generated plan two clicks later
-      // quotes the real 37 minutes.
-      const driveLegs = await lookupDriveLegs(context);
-      res.json(await fn(messages, { ...context, driveLegs }));
-    } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
-      // 502 keeps DeepSeek's own classification (out of balance / bad key /
-      // rate limited / unreachable) intact so the wizard can show it verbatim.
-      if (error.isDeepSeek) return res.status(502).json({ error: error.message });
-      console.error('[trips] plan-chat error:', error.message);
-      return res.status(500).json({ error: 'Planning chat failed' });
-    }
-  };
-}
-
-router.post('/plan-chat', authenticateToken, chatHandler(runTripChat));
-router.post('/plan-chat/summary', authenticateToken, chatHandler(summariseTripChat));
 
 // ── Public share endpoint (NO auth) ──────────────────────────────────────────
 // Defined before the authenticated routes. Anyone with the token can view the

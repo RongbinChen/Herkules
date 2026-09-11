@@ -11,8 +11,6 @@ export const DRAFT_VERSION = 1
 const PREFIX = 'tripDraft:'
 // A trip you started planning a week ago is not a draft any more.
 const TTL_MS = 7 * 24 * 3600 * 1000
-// localStorage is ~5 MB per origin; a long interview must not be able to fill it.
-const MAX_CHAT = 30
 
 export const draftKey = (mode, tripId) =>
   mode === 'edit' ? `${PREFIX}v${DRAFT_VERSION}:edit:${tripId}` : `${PREFIX}v${DRAFT_VERSION}:new`
@@ -49,14 +47,13 @@ export function emptyDraft(mode = 'create', tripId = null) {
     // never show a stale address, and a customer deleted meanwhile just drops
     // out (same semantics as the backend's buildManualStops filter).
     stops: [],
-    chat: [],
+    // What the user pasted, kept so coming back to the step shows their own
+    // words rather than an empty box.
+    brief: '',
     constraints: '',
-    // Once the user edits the constraints by hand, the AI summary stops
+    // Once the user edits the constraints by hand, re-reading the brief stops
     // overwriting them.
     constraintsEdited: false,
-    // Transcript length at the last summarise, so re-entering step 3 without
-    // saying anything new doesn't pay for another summary.
-    summarisedChatLen: 0,
     // Set the moment POST /trips succeeds. This is what stops a retry after a
     // failed plan from creating a second trip.
     createdTripId: null,
@@ -80,7 +77,7 @@ export function saveDraft(draft) {
   try {
     localStorage.setItem(
       draftKey(draft.mode, draft.tripId),
-      JSON.stringify({ ...draft, updatedAt: Date.now(), chat: (draft.chat || []).slice(-MAX_CHAT) }),
+      JSON.stringify({ ...draft, updatedAt: Date.now() }),
     )
   } catch (err) {
     // Quota exceeded / private mode. Losing the draft is bad; breaking the

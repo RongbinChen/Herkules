@@ -1,59 +1,55 @@
 import { useState } from 'react'
 import { tripsAPI } from '../../api/api'
-import ChatComposer from '../chat/ChatComposer'
-import ChatThread from '../chat/ChatThread'
 import { Button, Card, Textarea } from '../ui'
 import { buildChatContext } from './context'
 
-// Shown before the first request so the panel is never blank — and so the first
-// real call happens after the user has typed something, which means a DeepSeek
-// outage cannot leave them staring at an empty screen with no way in.
-const OPENING = {
-  role: 'assistant',
-  content:
-    "I'll help you pin down the requirements for this trip. First: are the flights or trains already booked? If so, tell me the dates and services; if not, roughly when do you want to travel?",
-}
+// One box, not an interview.
+//
+// This step used to ask nine questions one turn at a time. Nobody answered it
+// that way — people pasted the whole trip in a single message and then got
+// asked eight more questions about what they had just written. So the box takes
+// the paragraph, and one pass turns it into the bullet list the planner reads.
+//
+// Whatever the model could not find, it says so underneath rather than asking:
+// a missing return flight is worth knowing about, and worth ignoring when it
+// does not matter yet.
+const PLACEHOLDER = `Paste or type everything you know about this trip, in any language. For example:
+
+我们的飞机将于 11:00 左右到西安咸阳机场，第一天拜访西安的客户，第二天拜访汉中的客户，从西安到汉中可以安排坐火车过去。如果时间排得开，第二天（9 月 15 日）回家，Uwe 回上海，我回北京。`
 
 export default function StepChat({ draft, patch, customerById }) {
-  const [input, setInput] = useState('')
+  const [brief, setBrief] = useState(draft.brief || '')
   const [loading, setLoading] = useState(false)
   const [aiError, setAiError] = useState('')
-  const [manual, setManual] = useState(false)
-
-  const messages = draft.chat.length ? draft.chat : [OPENING]
+  const [missing, setMissing] = useState([])
+  const [ranOn, setRanOn] = useState(null)
 
   const setConstraints = (value) =>
     patch((d) => ({ ...d, constraints: value, constraintsEdited: true }))
 
-  async function send(text) {
-    const content = (text ?? input).trim()
-    if (!content || loading) return
+  async function readBrief() {
+    const text = brief.trim()
+    if (!text || loading) return
     setAiError('')
-    // Keep the user's turn in the thread even if the request fails, so Retry
-    // re-sends exactly what they wrote.
-    const next = [...messages, { role: 'user', content }]
-    patch((d) => ({ ...d, chat: next }))
-    setInput('')
     setLoading(true)
+    patch((d) => ({ ...d, brief: text }))
     try {
-      const { data } = await tripsAPI.planChat({
-        messages: next.map(({ role, content: c }) => ({ role, content: c })),
+      const { data } = await tripsAPI.planBrief({
+        brief: text,
         context: buildChatContext(draft, customerById),
       })
-      patch((d) => ({ ...d, chat: [...next, { role: 'assistant', content: data.reply }] }))
+      setMissing(data.missing || [])
+      setRanOn(data.model || null)
+      // Hand-edited constraints are a decision; the reader does not overwrite
+      // them, it offers its version and lets the person choose.
+      if (!draft.constraintsEdited) {
+        patch((d) => ({ ...d, constraints: data.constraints || '' }))
+      }
     } catch (e) {
-      setAiError(e.response?.data?.error || 'The planning assistant is temporarily unavailable.')
+      setAiError(e.response?.data?.error || 'Could not read that. Write the constraints on the right and continue.')
     } finally {
       setLoading(false)
     }
-  }
-
-  const retry = () => {
-    const lastUser = [...draft.chat].reverse().find((m) => m.role === 'user')
-    if (!lastUser) return
-    // Drop the turn we are about to re-send so it isn't duplicated.
-    patch((d) => ({ ...d, chat: d.chat.slice(0, d.chat.findLastIndex((m) => m.role === 'user')) }))
-    send(lastUser.content)
   }
 
   const addFlight = () =>
@@ -71,49 +67,49 @@ export default function StepChat({ draft, patch, customerById }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-      {/* ── Interview ── */}
+      {/* ── The brief ── */}
       <div className="flex min-h-[420px] flex-col">
-        {aiError && (
-          <Card className="mb-3 border-amber-200 bg-amber-50 p-3">
-            <p className="text-sm font-semibold text-amber-800">Planning assistant unavailable</p>
-            <p className="mt-1 text-sm text-amber-700">{aiError}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={retry}>Retry</Button>
-              <Button size="sm" variant="secondary" onClick={() => { setManual(true); setAiError('') }}>
-                Write constraints myself
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-amber-600">
-              You can continue to the next step either way — the interview is optional.
-            </p>
-          </Card>
-        )}
-
-        {!manual && (
-          <>
-            <ChatThread messages={messages} loading={loading} loadingLabel="Thinking…" className="mb-3" />
-            <ChatComposer
-              value={input}
-              onChange={setInput}
-              onSubmit={() => send()}
-              disabled={loading}
-              placeholder="Answer, or tell me anything else about the trip…"
-              sendDisabled={!input.trim() || loading}
-            />
-          </>
-        )}
-
-        {manual && (
-          <Card className="p-4">
-            <p className="text-sm text-slate-500">
-              Interview skipped. Write the constraints in the panel and continue — the planner reads that
-              text directly.
-            </p>
-            <Button size="sm" variant="secondary" className="mt-3" onClick={() => setManual(false)}>
-              Back to the assistant
+        <Card className="flex flex-1 flex-col p-4">
+          <h3 className="text-sm font-semibold text-slate-700">Tell the planner about this trip</h3>
+          <p className="mt-0.5 text-xs text-slate-400">
+            One box. Write it however you would tell a colleague — flights, who you must see, what has
+            to happen on which day, when you fly home.
+          </p>
+          <Textarea
+            rows={12}
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            placeholder={PLACEHOLDER}
+            className="mt-3 flex-1 text-sm"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button onClick={readBrief} disabled={!brief.trim() || loading}>
+              {loading ? 'Reading…' : '✨ Turn this into constraints'}
             </Button>
-          </Card>
-        )}
+            {ranOn && !loading && (
+              <span className="text-xs text-slate-400">
+                Read {ranOn === 'local' ? 'on the local model' : 'in the cloud'} · edit anything on the right
+              </span>
+            )}
+          </div>
+
+          {aiError && (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              {aiError}
+            </p>
+          )}
+
+          {/* Told, not asked. The step never blocks on these — a trip with an
+              unbooked return flight is still worth planning. */}
+          {missing.length > 0 && !loading && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-xs font-semibold text-slate-600">Still unknown — add it above if it matters:</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-500">
+                {missing.map((m, i) => <li key={i}>{m}</li>)}
+              </ul>
+            </div>
+          )}
+        </Card>
       </div>
 
       {/* ── Always-visible side panel. The constraints are the thing that
@@ -124,8 +120,8 @@ export default function StepChat({ draft, patch, customerById }) {
           <h3 className="mb-1 text-sm font-semibold text-slate-700">Planning constraints</h3>
           <p className="mb-2 text-xs text-slate-400">
             {draft.constraintsEdited
-              ? 'Edited by hand — the assistant will not overwrite this.'
-              : 'Filled in from the conversation when you continue.'}
+              ? 'Edited by hand — reading the brief again will not overwrite this.'
+              : 'This is what the planner actually reads. Filled in from your brief.'}
           </p>
           <Textarea
             rows={8}
