@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import SectionBody from './visit-report/SectionBody'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
@@ -258,7 +259,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
               {SECTIONS.filter((s) => form.content?.[s.key]).map((s) => (
                 <section key={s.key}>
                   <h4 className="mb-1 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500">{s.label}</h4>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{form.content[s.key]}</p>
+                  <SectionBody sectionKey={s.key} text={form.content[s.key]} />
                 </section>
               ))}
               {!form.summary && SECTIONS.every((s) => !form.content?.[s.key]) && (
