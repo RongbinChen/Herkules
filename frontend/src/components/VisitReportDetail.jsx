@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { Button, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
 import { useVRLang, STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
+import SectionBody from './visit-report/SectionBody'
 
 // Full-page article view for one visit report — the modal stays for create/edit,
 // but reading happens here with room to breathe (esp. on desktop).
@@ -160,7 +161,7 @@ export default function VisitReportDetail() {
             {SECTIONS.filter((s) => content[s.key]).map((s) => (
               <section key={s.key}>
                 <h2 className="mb-1.5 border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700">{s.label}</h2>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{content[s.key]}</p>
+                <SectionBody sectionKey={s.key} text={content[s.key]} />
               </section>
             ))}
           </div>
