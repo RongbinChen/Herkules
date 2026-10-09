@@ -35,6 +35,7 @@ const customerSchema = z.object({
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
   status: z.enum(['LEAD', 'ACTIVE', 'INACTIVE', 'LOST']).optional(),
+  installedBase: z.boolean().optional(),
   tier: z.enum(['A', 'B', 'C']).optional(),
   tags: z.array(z.string()).optional(),
   contacts: z
