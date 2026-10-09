@@ -213,16 +213,23 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
             {thread.tracking ? 'Edit tracking' : '＋ Add tracking'}
           </button>
           <button onClick={() => setShowTimeline((v) => !v)}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
-            {showTimeline ? 'Hide timeline' : `Timeline (${thread.announcements.length})`}
+            aria-expanded={showTimeline}
+            aria-controls={`project-timeline-${thread.announcements[0]?.id}`}
+            title="Expand announcements and open their full details"
+            className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100">
+            {showTimeline ? 'Hide details' : `View details · Timeline (${thread.announcements.length})`}
           </button>
           {thread.tracking?.ourPrice && (
             <span className="text-xs text-slate-500">Price {thread.tracking.ourPrice}</span>
           )}
         </div>
 
+        {!showTimeline && (
+          <p className="text-xs text-brand-600">Click “View details” to see announcements and open the full notice.</p>
+        )}
+
         {showTimeline && (
-          <ol className="mt-2 space-y-1.5 border-l-2 border-slate-100 pl-3">
+          <ol id={`project-timeline-${thread.announcements[0]?.id}`} className="mt-2 space-y-1.5 border-l-2 border-slate-100 pl-3">
             {/* newest first; same-day ties break by tender round then id */}
             {[...thread.announcements]
               .sort((a, b) =>
@@ -234,7 +241,7 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
                 <span className="text-slate-400">{fmtDate(a.publishDate)}</span>{' '}
                 <span className="font-semibold text-slate-700">{a.infoClass || a.bidStage || 'Notice'}</span>
                 {a.winner ? ` — Winner: ${a.winner}` : ''}{' '}
-                <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">Source↗</a>
+                <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="font-semibold text-brand-600 hover:underline">Open full notice ↗</a>
               </li>
             ))}
           </ol>
@@ -346,8 +353,9 @@ export default function BidTrackingBoard() {
               <option value="">Our status: All</option>
               {OUR_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.en}</option>)}
             </select>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search project / org / no."
-              className="w-44 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title / body / org / no."
+              aria-label="Search project titles, announcement bodies, organizations or project numbers"
+              className="w-56 max-w-full rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs" />
           </div>
         </div>
 

@@ -6,6 +6,7 @@ import { sendMail } from './mailer.js';
 import { renderEmail } from './emailTemplate.js';
 import { solveSession, SCRAPER_UA } from './browserSolver.js';
 import { normalizeCompany, matchCompanyProfile } from './companyName.js';
+import { findMatchingAnnouncementIds, filterThreadsByAnnouncementMatches } from './projectThreadSearch.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -1252,15 +1253,18 @@ export async function getProjectThread(projectId) {
 const OUR_BID_STATUSES = ['WATCHING', 'PREPARING', 'SUBMITTED', 'SHORTLISTED', 'WON', 'LOST', 'ABANDONED'];
 
 export async function listProjectThreads(userId, { ourStatus = null, stage = null, q = null, myCustomers = false } = {}) {
-  const projects = await prisma.bidProject.findMany({
-    orderBy: { publishDate: 'asc' },
-    select: {
-      id: true, projectName: true, projectCode: true, region: true, equipmentType: true,
-      purchaser: true, winner: true, manufacturer: true, winningPrice: true, budget: true, deadline: true,
-      infoClass: true, bidStage: true, status: true, sourceUrl: true, publishDate: true,
-      threadKey: true, updatedAt: true,
-    },
-  });
+  const [projects, matchingIds] = await Promise.all([
+    prisma.bidProject.findMany({
+      orderBy: { publishDate: 'asc' },
+      select: {
+        id: true, projectName: true, projectCode: true, region: true, equipmentType: true,
+        purchaser: true, winner: true, manufacturer: true, winningPrice: true, budget: true, deadline: true,
+        infoClass: true, bidStage: true, status: true, sourceUrl: true, publishDate: true,
+        threadKey: true, updatedAt: true,
+      },
+    }),
+    findMatchingAnnouncementIds(prisma, q),
+  ]);
 
   const groups = new Map();
   for (const p of projects) {
@@ -1376,15 +1380,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
   if (stage) threads = threads.filter((t) => t.currentStage === stage);
   if (ourStatus) threads = threads.filter((t) => (t.tracking?.ourStatus || null) === ourStatus);
   if (myCustomers) threads = threads.filter((t) => t.customers.length > 0);
-  if (q) {
-    const needle = String(q).toLowerCase();
-    threads = threads.filter((t) =>
-      // projectCode included so typing a bidding number into the box works;
-      // it was the one obvious thing to search by that this filter ignored.
-      [t.projectName, t.projectCode, t.purchaser, t.winner, t.threadKey, t.equipmentType]
-        .filter(Boolean).some((s) => String(s).toLowerCase().includes(needle)));
-  }
-  return threads;
+  return filterThreadsByAnnouncementMatches(threads, matchingIds);
 }
 
 export async function upsertBidTracking(threadKey, data = {}, userId = null) {
