@@ -158,8 +158,6 @@ export const tripsAPI = {
   // planItinerary tries v4-pro then v4-flash, each with a 150s abort, so the
   // worst case is ~300s. Say so rather than relying on axios' default of none.
   plan: (id) => api.post(`/trips/${id}/plan`, null, { timeout: 300000 }),
-  // Wizard step 3: constraint-gathering interview, and the pass that condenses
-  // it into `constraints`.
   // One paste → the planner's constraint list. Runs on the local model, which
   // answers in seconds; the timeout covers the cloud fallback's slower path.
   planBrief: (payload) => api.post('/trips/plan-brief', payload, { timeout: 120000 }),

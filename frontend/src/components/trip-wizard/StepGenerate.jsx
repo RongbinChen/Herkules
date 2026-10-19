@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { tripsAPI } from '../../api/api'
 import { useElapsedSeconds } from '../../hooks/useElapsedSeconds'
@@ -19,7 +19,7 @@ function waitingLabel(seconds) {
   return 'Taking unusually long. You can keep waiting, or open the trip and generate later — nothing is lost.'
 }
 
-export default function StepGenerate({ draft, patch, customers, onDone }) {
+export default function StepGenerate({ draft, patch, customers, onDone, bindRef, onPhase, children }) {
   const navigate = useNavigate()
   // idle | saving | planning | done | planFailed | failed
   const [phase, setPhase] = useState('idle')
@@ -29,29 +29,36 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
 
   const busy = phase === 'saving' || phase === 'planning'
 
-  async function run({ regenerate = true } = {}) {
+  async function run({ regenerate = true, skipConstraints = false } = {}) {
     setError('')
     setPhase('saving')
+    // Skip plans from customers, order, dates, and flights only. The empty
+    // list is what gets saved; the pasted brief stays in the draft.
+    const source = skipConstraints ? { ...draft, constraints: '' } : draft
+    let savedId = draft.createdTripId ?? (draft.mode === 'edit' ? draft.tripId : null)
     try {
       // Reuse the trip we already created if the user refreshed or retried
       // after a failed plan — otherwise every retry leaves another trip behind.
-      let id = draft.createdTripId ?? (draft.mode === 'edit' ? draft.tripId : null)
-      const payload = buildTripPayload(draft)
+      const payload = buildTripPayload(source)
 
-      if (!id) {
+      if (!savedId) {
         const { data } = await tripsAPI.create(payload)
-        id = data.id
+        savedId = data.id
         setTrip(data)
         patch((d) => ({ ...d, createdTripId: data.id }))
       } else {
         // Only tell the backend the plan is stale when the order actually
         // moved. Changing the title or a note must leave the itinerary alone;
         // a customer-set change is detected server-side regardless.
-        const order = draft.stops.map((s) => s.customerId)
-        const base = draft.baseStopOrder || order
+        const order = source.stops.map((s) => s.customerId)
+        const base = source.baseStopOrder || order
         const reordered = order.length !== base.length || order.some((c, i) => c !== base[i])
-        const { data } = await tripsAPI.update(id, { ...payload, clearItinerary: reordered })
+        const { data } = await tripsAPI.update(savedId, { ...payload, clearItinerary: reordered })
         setTrip(data)
+      }
+
+      if (skipConstraints) {
+        patch((d) => ({ ...d, constraints: '', constraintsEdited: false }))
       }
 
       if (!regenerate) {
@@ -60,14 +67,13 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
       }
 
       setPhase('planning')
-      const { data: planned } = await tripsAPI.plan(id)
+      const { data: planned } = await tripsAPI.plan(savedId)
       setTrip(planned)
       setPhase('done')
     } catch (e) {
-      const id = draft.createdTripId
-      if (id && isTimeoutish(e)) {
+      if (savedId && isTimeoutish(e)) {
         const recovered = await tripsAPI
-          .get(id)
+          .get(savedId)
           .then((r) => (r.data.itineraryAt ? r.data : null))
           .catch(() => null)
         if (recovered) {
@@ -83,10 +89,22 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
       )
       // The trip itself is real work — customers, order, dates, priorities —
       // and a failed plan says nothing about it. Keep it and let the user
-      // retry or generate later from the trip page.
-      setPhase(draft.createdTripId || trip ? 'planFailed' : 'failed')
+      // retry or generate later from the trip page. savedId is set once the
+      // row exists, including edit mode, so a plan failure is not reported
+      // as a failed save.
+      setPhase(savedId ? 'planFailed' : 'failed')
     }
   }
+
+  if (bindRef) {
+    bindRef.current = {
+      generate: () => run({ regenerate: true }),
+      skip: () => run({ regenerate: true, skipConstraints: true }),
+      save: () => run({ regenerate: false }),
+    }
+  }
+
+  useEffect(() => { onPhase?.(phase) }, [phase, onPhase])
 
   const open = () => {
     onDone()
@@ -97,31 +115,31 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
     .map((s) => customers.find((c) => c.id === s.customerId))
     .filter(Boolean)
 
+  const showForm = phase === 'idle' || phase === 'failed' || phase === 'planFailed'
+  const constraintText = (draft.constraints || '').trim()
+
   return (
     <div className="space-y-4">
       {phase === 'idle' && (
         <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Ready to generate</h2>
-          <dl className="space-y-1.5 text-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Plan</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Constraints are optional. Generate uses what you write below. “Skip — generate without
+            constraints” plans from the customers, order, dates, and flights only. The trip is saved
+            either way.
+          </p>
+          <dl className="mt-3 space-y-1.5 text-sm">
             <div className="flex gap-2"><dt className="w-24 shrink-0 text-slate-400">Title</dt><dd className="min-w-0 font-medium text-slate-700">{draft.meta.title}</dd></div>
             <div className="flex gap-2"><dt className="w-24 shrink-0 text-slate-400">Dates</dt><dd className="text-slate-700">{draft.meta.startTime.replace('T', ' ')} → {draft.meta.endTime.replace('T', ' ')}</dd></div>
-            <div className="flex gap-2"><dt className="w-24 shrink-0 text-slate-400">Stops</dt><dd className="min-w-0 text-slate-700">{selected.map((c) => c.name).join(' → ')}</dd></div>
+            <div className="flex gap-2"><dt className="w-24 shrink-0 text-slate-400">Stops</dt><dd className="min-w-0 text-slate-700">{selected.map((c) => c.name).join(' → ') || 'None yet'}</dd></div>
             {draft.meta.flights.length > 0 && (
               <div className="flex gap-2"><dt className="w-24 shrink-0 text-slate-400">Flights</dt><dd className="text-slate-700">{draft.meta.flights.length} recorded</dd></div>
             )}
-            {draft.constraints.trim() && (
-              <div className="flex gap-2"><dt className="w-24 shrink-0 text-slate-400">Constraints</dt><dd className="min-w-0 whitespace-pre-wrap text-slate-600">{draft.constraints.trim()}</dd></div>
-            )}
+            <div className="flex gap-2">
+              <dt className="w-24 shrink-0 text-slate-400">Constraints</dt>
+              <dd className="min-w-0 whitespace-pre-wrap text-slate-600">{constraintText || 'None — optional'}</dd>
+            </div>
           </dl>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={() => run({ regenerate: true })}>✨ Generate itinerary</Button>
-            <Button variant="secondary" onClick={() => run({ regenerate: false })}>
-              Save without a plan
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-slate-400">
-            The trip is saved either way — you can always generate the plan later from the trip page.
-          </p>
         </Card>
       )}
 
@@ -169,8 +187,9 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
               {trip.itinerary?.days?.length > 0 && (
                 <Card className="p-4"><TripPlanView trip={trip} /></Card>
               )}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={open}>Open trip</Button>
+                <Button variant="secondary" onClick={() => setPhase('idle')}>Edit constraints</Button>
               </div>
             </>
           )}
@@ -185,6 +204,8 @@ export default function StepGenerate({ draft, patch, customers, onDone }) {
           <Button size="sm" className="mt-3" onClick={() => run({ regenerate: true })}>Try again</Button>
         </Card>
       )}
+
+      {showForm && children}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { planItinerary } from '../services/tripPlanner.js';
 import { parseTripBrief } from '../services/tripBrief.js';
+import { briefBodySchema, flightSchema } from '../services/tripBriefSchema.js';
 import { lookupDriveLegs } from '../services/tripPlanner.js';
 
 const router = express.Router();
@@ -16,18 +17,6 @@ const stopInputSchema = z.object({
   priority: z.enum(['PRIORITY', 'NORMAL', 'BACKUP']).nullable().optional(),
   visitDuration: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
-});
-
-const flightSchema = z.object({
-  date: z.string().optional(),
-  flightNo: z.string().optional(),
-  routing: z.string().optional(),
-  // `time` is the original single field. Kept accepted, and read as the
-  // departure, so trips saved before the split still load and still plan.
-  time: z.string().optional(),
-  depart: z.string().optional(),
-  arrive: z.string().optional(),
-  notes: z.string().optional(),
 });
 
 const tripSchema = z
@@ -199,39 +188,14 @@ const stopInclude = {
   createdBy: { select: { id: true, name: true } },
 };
 
-// ── Trip-planning interview (wizard step 3) ──────────────────────────────────
+// ── Paste a brief, get a constraint list (wizard Plan step) ──────────────────
 // Kept above the `/:id` routes so a literal path segment is never parsed as an
 // id, matching the convention the share endpoint below already follows.
 //
 // The trip does not exist yet while the wizard runs, so the client sends the
 // draft's shape as `context`. That context is prompt content, not a credential:
-// it is only used to phrase questions back to the same user, and nothing here
-// reads or writes the database. The zod caps exist to stop anyone stuffing
-// megabytes into a prompt.
-const chatContextSchema = z.object({
-  startTime: z.string(),
-  endTime: z.string(),
-  assignees: z.array(z.object({ name: z.string() })).max(20).optional(),
-  flights: z.array(flightSchema).max(20).optional(),
-  constraints: z.string().max(4000).nullable().optional(),
-  stops: z
-    .array(
-      z.object({
-        customer: z.object({
-          name: z.string(),
-          address: z.string().nullable().optional(),
-          latitude: z.number().nullable().optional(),
-          longitude: z.number().nullable().optional(),
-        }),
-        priority: z.string().nullable().optional(),
-        visitDuration: z.string().nullable().optional(),
-        notes: z.string().nullable().optional(),
-      }),
-    )
-    .max(60)
-    .default([]),
-});
-
+// it is only used to phrase the brief back to the same user, and nothing here
+// reads or writes the database.
 // One paste in, a constraint list out. Replaces the multi-turn interview and
 // its separate summary call — the two endpoints it needed are gone with it.
 router.post('/plan-brief', authenticateToken, async (req, res) => {
