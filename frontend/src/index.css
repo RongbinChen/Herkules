@@ -768,3 +768,16 @@ body {
     font-size: 0.68rem;
   }
 }
+
+/*
+ * iOS Safari 会在聚焦字号 < 16px 的输入框时自动放大页面，且失焦后不缩回，
+ * 导致整个版面错乱（例如合同上传弹窗自动聚焦 Customer 输入框）。
+ * 触屏设备上把所有表单控件统一为 16px；不禁用双指缩放，保留无障碍。
+ */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
