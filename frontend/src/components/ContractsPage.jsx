@@ -34,6 +34,8 @@ export default function ContractsPage() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
+  // Prefer the customer picked from a group header; fall back to the URL filter.
+  const [uploadCustomer, setUploadCustomer] = useState(null)
   const [editing, setEditing] = useState(null) // the file being re-categorised
   // Grouping is a view over the rows already loaded, not a server query. With a
   // customer filter active there is only ever one group, so it turns itself off.
@@ -332,7 +334,10 @@ export default function ContractsPage() {
           </h1>
           <div className="flex items-center gap-2">
             {isOcrOwner && <TranscriptionToggle />}
-            <Button size="sm" onClick={() => setUploadOpen(true)}>＋ Upload</Button>
+            <Button size="sm" onClick={() => {
+              setUploadCustomer(customerId && customerName ? { id: Number(customerId), name: customerName } : null)
+              setUploadOpen(true)
+            }}>＋ Upload</Button>
             <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
           </div>
         </div>
@@ -449,6 +454,20 @@ export default function ContractsPage() {
                         {g.files.length}
                       </span>
                     </button>
+                    {g.id ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadCustomer({ id: g.id, name: g.name })
+                          setUploadOpen(true)
+                        }}
+                        title={`Add file for ${g.name}`}
+                        aria-label={`Add file for ${g.name}`}
+                        className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:border-brand-300 hover:text-brand-700"
+                      >
+                        ＋ Add file
+                      </button>
+                    ) : null}
                     <button
                       onClick={() => navigate(`/customers/${g.id}`)}
                       title={`Open ${g.name}`}
@@ -489,8 +508,8 @@ export default function ContractsPage() {
         <ContractUploadModal
           token={unlock.token}
           team={unlock.team}
-          initialCustomer={customerId && customerName ? { id: Number(customerId), name: customerName } : null}
-          onClose={() => setUploadOpen(false)}
+          initialCustomer={uploadCustomer || (customerId && customerName ? { id: Number(customerId), name: customerName } : null)}
+          onClose={() => { setUploadOpen(false); setUploadCustomer(null) }}
           onUploaded={() => { load(false); loadSummary() }}
         />
       )}
