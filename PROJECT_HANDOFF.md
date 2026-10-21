@@ -141,7 +141,7 @@
 ```
 DATABASE_URL            # postgres 连接串
 JWT_SECRET              # JWT 签名密钥
-JWT_EXPIRES_IN          # 如 30d
+JWT_EXPIRES_IN          # 如 3d
 PORT                    # 后端端口，线上=3001
 CHINABIDDING_BASE_URL
 CHINABIDDING_CAS_LOGIN_URL

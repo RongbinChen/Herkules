@@ -44,7 +44,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/calendar_db
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      JWT_EXPIRES_IN: 30d
+      JWT_EXPIRES_IN: 3d
       PORT: 3001
       CHINABIDDING_BASE_URL: ${CHINABIDDING_BASE_URL:-https://www.chinabidding.com/en}
       CHINABIDDING_CAS_LOGIN_URL: ${CHINABIDDING_CAS_LOGIN_URL:-https://cas.ebnew.com/cas/login}

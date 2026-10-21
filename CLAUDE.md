@@ -160,7 +160,7 @@ POSTGRES_PASSWORD=postgres123
 POSTGRES_DB=calendar_db
 DATABASE_URL=postgresql://postgres:postgres123@localhost:5432/calendar_db
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
-JWT_EXPIRES_IN=30d
+JWT_EXPIRES_IN=3d
 VITE_API_URL=http://localhost:3001  # 前端访问后端的地址
 
 # 高德地图 Web 服务 key —— 客户地址地理编码 + 行程规划的实测驾车时间。
