@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { eventsAPI } from '../api/api'
+import { eventsAPI, usersAPI } from '../api/api'
 import { listProjectThreads } from '../api/chinabidding'
 import { Button, Card } from './ui'
+import UserManagementModal from './UserManagementModal'
 
 // Lifecycle stage → compact badge for the Watching panel.
 const WATCH_STAGES = {
@@ -193,14 +194,50 @@ function ReminderRow({ ev, onResolved }) {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, updateUser } = useAuth()
+  const isAdmin = user?.isAdmin === true
   const [reminders, setReminders] = useState([])
   const [watching, setWatching] = useState([])
+  const [users, setUsers] = useState([])
+  const [userManagerOpen, setUserManagerOpen] = useState(false)
+
   useEffect(() => {
     eventsAPI.dueReminders().then((r) => setReminders(r.data || [])).catch(() => {})
     listProjectThreads({ ourStatus: 'WATCHING' }).then((t) => setWatching(t || [])).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin || !userManagerOpen) return
+    usersAPI.getAll().then((r) => setUsers(r.data || [])).catch(() => setUsers([]))
+  }, [isAdmin, userManagerOpen])
+
   const onResolved = (id) => setReminders((prev) => prev.filter((e) => e.id !== id))
+
+  async function handleCreateUser(payload) {
+    await usersAPI.create(payload)
+    const response = await usersAPI.getAll()
+    setUsers(response.data || [])
+  }
+
+  async function handleUpdateUser(userId, payload) {
+    const response = await usersAPI.update(userId, payload)
+    const list = await usersAPI.getAll()
+    setUsers(list.data || [])
+    if (user?.id === userId) {
+      updateUser({
+        ...user,
+        name: response.data.name,
+        email: response.data.email,
+        isAdmin: response.data.isAdmin,
+      })
+    }
+  }
+
+  async function handleDeleteUser(targetUser) {
+    await usersAPI.delete(targetUser.id)
+    const response = await usersAPI.getAll()
+    setUsers(response.data || [])
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -220,6 +257,11 @@ export default function Dashboard() {
             <img src="/brand/wasi.png" alt="WALDRICH SIEGEN" className="h-5 w-auto object-contain sm:h-9" />
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin && (
+              <Button variant="secondary" size="sm" pill onClick={() => setUserManagerOpen(true)}>
+                Manage staff
+              </Button>
+            )}
             {user?.name && <span className="hidden text-sm text-slate-500 sm:inline">{user.name}</span>}
             <Button variant="secondary" size="sm" onClick={logout}>Sign out</Button>
           </div>
@@ -314,6 +356,16 @@ export default function Dashboard() {
           ))}
         </div>
       </main>
+
+      <UserManagementModal
+        isOpen={userManagerOpen}
+        onClose={() => setUserManagerOpen(false)}
+        users={users}
+        currentUser={user}
+        onCreateUser={handleCreateUser}
+        onUpdateUser={handleUpdateUser}
+        onDeleteUser={handleDeleteUser}
+      />
     </div>
   )
 }
