@@ -17,6 +17,7 @@ import searchRoutes from './routes/search.js';
 import assistantRoutes from './routes/assistant.js';
 import hotProjectsRoutes from './routes/hotProjects.js';
 import followUpsRoutes from './routes/followUps.js';
+import internalGmtRoutes from './routes/internalGmt.js';
 import shareMetaRoutes from './routes/shareMeta.js';
 
 dotenv.config();
@@ -72,6 +73,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/hotprojects', hotProjectsRoutes);
 app.use('/api/followups', followUpsRoutes);
+app.use('/api/internal/gmt', internalGmtRoutes);
 // Public share pages (SPA shell + per-record OG meta for WeChat link cards)
 app.use(shareMetaRoutes);
 
