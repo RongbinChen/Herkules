@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { customersAPI, tripsAPI, usersAPI } from '../../api/api'
 import {
@@ -16,9 +16,14 @@ import StepCustomers from './StepCustomers'
 import StepGenerate from './StepGenerate'
 import StepOrder from './StepOrder'
 import WizardShell from './WizardShell'
-import { buildChatContext, canLeave, maxReachable, stepErrors } from './context'
-
-const clampStep = (n) => Math.min(4, Math.max(1, Number(n) || 1))
+import {
+  STEPS,
+  canLeave,
+  maxReachable,
+  resolveWizardStep,
+  stepErrors,
+  wizardStepNeedsRedirect,
+} from './context'
 
 function withSeededStops(draft, customerIds) {
   const have = new Set(draft.stops.map((s) => s.customerId))
@@ -37,7 +42,9 @@ export default function TripWizard({ mode = 'create' }) {
   // The step lives in the URL so the phone's system back button walks back a
   // step instead of dropping out of the wizard, and a refresh stays put.
   const [params, setParams] = useSearchParams()
-  const step = clampStep(params.get('step'))
+  const rawStep = params.get('step')
+  // Edit opens on Plan. ?step=4 (the old confirmation step) clamps to 3.
+  const step = resolveWizardStep(rawStep, mode)
 
   const [draft, setDraft] = useState(null)
   const [customers, setCustomers] = useState([])
@@ -46,13 +53,28 @@ export default function TripWizard({ mode = 'create' }) {
   const [loadError, setLoadError] = useState('')
   const [conflict, setConflict] = useState(null)
   const [showErrors, setShowErrors] = useState(false)
+  // Plan's generate/save/skip live in the sticky footer, but the request state
+  // stays inside StepGenerate. The ref is written during that child's render.
+  const planApi = useRef(null)
+  const [planPhase, setPlanPhase] = useState('idle')
 
   const patch = useCallback((fn) => setDraft((d) => (d ? fn(d) : d)), [])
 
   const goStep = (n) => {
     setShowErrors(false)
-    setParams({ step: String(clampStep(n)) })
+    setParams({ step: String(resolveWizardStep(n, 'create')) })
   }
+
+  useEffect(() => {
+    if (!wizardStepNeedsRedirect(rawStep, mode)) return
+    setParams({ step: String(step) }, { replace: true, state: location.state })
+  }, [rawStep, mode, step, setParams, location.state])
+
+  // Leaving Plan unmounts the generator. Don't keep a stale "saving" phase
+  // and hide the actions when the user comes back.
+  useEffect(() => {
+    if (step !== STEPS.length) setPlanPhase('idle')
+  }, [step])
 
   useEffect(() => {
     let cancelled = false
@@ -137,14 +159,18 @@ export default function TripWizard({ mode = 'create' }) {
   const errors = stepErrors(draft)
   const reachable = maxReachable(draft)
   const stepBlocked = !canLeave(draft, step)
+  const earlierErrors = [...new Set([...errors[1], ...errors[2]])]
 
-  // The constraint list is produced the moment the brief is pasted, so leaving
-  // this step no longer has to condense anything on the way out. What remains
-  // is the step's own guard.
   const next = () => {
     if (stepBlocked) return setShowErrors(true)
-    if (step === 3) return goStep(4)
     goStep(step + 1)
+  }
+
+  // Generate/save/skip all persist the trip. Basics and order still have to be
+  // valid — the URL can open Plan directly, the buttons cannot skip that.
+  const runPlan = (action) => {
+    if (earlierErrors.length) return setShowErrors(true)
+    action?.()
   }
 
   const banner = conflict && (
@@ -161,25 +187,38 @@ export default function TripWizard({ mode = 'create' }) {
     </div>
   )
 
-  const footer =
-    step === 4 ? (
+  const planCanAct = planPhase === 'idle' || planPhase === 'failed' || planPhase === 'planFailed'
+  const footer = step === STEPS.length ? (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center justify-between gap-2">
-        <Button variant="secondary" onClick={() => goStep(3)}>← Back</Button>
-        <span className="text-xs text-slate-400">Step 4 of 4</span>
+        <Button variant="secondary" onClick={() => goStep(step - 1)}>← Back</Button>
+        <span className="text-xs text-slate-400">Step {step} of {STEPS.length}</span>
       </div>
-    ) : (
-      <div className="flex items-center justify-between gap-2">
-        {step > 1
-          ? <Button variant="secondary" onClick={() => goStep(step - 1)}>← Back</Button>
-          : <Button variant="secondary" onClick={() => navigate('/trips')}>Cancel</Button>}
-        <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-slate-400 sm:inline">Step {step} of 4</span>
-          <Button onClick={next}>
-            {step === 3 ? 'Review and generate →' : 'Next →'}
+      {planCanAct && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          <Button variant="secondary" className="w-full sm:w-auto" onClick={() => runPlan(planApi.current?.skip)}>
+            Skip — generate without constraints
+          </Button>
+          <Button variant="secondary" className="w-full sm:w-auto" onClick={() => runPlan(planApi.current?.save)}>
+            Save without a plan
+          </Button>
+          <Button className="w-full sm:w-auto" onClick={() => runPlan(planApi.current?.generate)}>
+            ✨ Generate itinerary
           </Button>
         </div>
+      )}
+    </div>
+  ) : (
+    <div className="flex items-center justify-between gap-2">
+      {step > 1
+        ? <Button variant="secondary" onClick={() => goStep(step - 1)}>← Back</Button>
+        : <Button variant="secondary" onClick={() => navigate('/trips')}>Cancel</Button>}
+      <div className="flex items-center gap-2">
+        <span className="hidden text-xs text-slate-400 sm:inline">Step {step} of {STEPS.length}</span>
+        <Button onClick={next}>Next →</Button>
       </div>
-    )
+    </div>
+  )
 
   return (
     <WizardShell
@@ -188,17 +227,20 @@ export default function TripWizard({ mode = 'create' }) {
       onStep={goStep}
       onExit={() => navigate('/trips')}
       title={mode === 'edit' ? 'Edit trip' : 'Schedule a trip'}
-      subtitle={draft.meta.title || (mode === 'edit' ? '' : 'Four steps: customers, order, constraints, generate')}
+      subtitle={draft.meta.title || (mode === 'edit' ? '' : 'Three steps: basics, order, and plan')}
       banner={banner}
-      errors={showErrors ? errors[step] : []}
+      errors={showErrors ? (step === STEPS.length ? earlierErrors : errors[step]) : []}
       footer={footer}
     >
       {step === 1 && (
         <StepCustomers draft={draft} patch={patch} customers={customers} users={users} onCustomerSaved={onCustomerSaved} />
       )}
       {step === 2 && <StepOrder draft={draft} patch={patch} customers={customers} />}
-      {step === 3 && <StepChat draft={draft} patch={patch} customerById={customerById} />}
-      {step === 4 && <StepGenerate draft={draft} patch={patch} customers={customers} onDone={finish} />}
+      {step === 3 && (
+        <StepGenerate draft={draft} patch={patch} customers={customers} onDone={finish} bindRef={planApi} onPhase={setPlanPhase}>
+          <StepChat draft={draft} patch={patch} customerById={customerById} />
+        </StepGenerate>
+      )}
     </WizardShell>
   )
 }

@@ -28,8 +28,8 @@ export default function WizardShell({
       {banner}
 
       {/* Every step already reached stays clickable — editing an existing trip
-          usually means changing one thing, and walking through four screens to
-          get to it is busywork. */}
+          usually means changing one thing, and walking back through Basics and
+          Order to reach it is busywork. */}
       <ol className="mb-5 flex items-center gap-1 overflow-x-auto pb-1">
         {STEPS.map((label, i) => {
           const n = i + 1
@@ -62,13 +62,12 @@ export default function WizardShell({
 
       <div className="min-h-0 flex-1 pb-4">{children}</div>
 
-      {errors.length > 0 && (
-        <div className="sticky bottom-[4.25rem] z-10 mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-          {errors.map((e) => <p key={e}>{e}</p>)}
-        </div>
-      )}
-
       <div className="sticky bottom-0 z-10 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5">
+        {errors.length > 0 && (
+          <div className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {errors.map((e) => <p key={e}>{e}</p>)}
+          </div>
+        )}
         {footer}
       </div>
     </div>

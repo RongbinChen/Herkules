@@ -1,13 +1,12 @@
 // Pure helpers shared by the wizard steps: validation, and the two shapes we
 // hand to the backend.
 
-export const STEPS = ['Customers', 'Order', 'Constraints', 'Generate']
+export const STEPS = ['Basics', 'Order', 'Plan']
 
-// Per-step blocking problems. Step 3 → 4 is deliberately absent: constraints
-// may be empty and the planning assistant may be down, neither of which should
-// trap the user in the interview.
+// Per-step blocking problems. Plan has none: constraints may be empty and the
+// planning assistant may be down, neither of which should trap the user.
 export function stepErrors(draft) {
-  const errors = { 1: [], 2: [], 3: [], 4: [] }
+  const errors = { 1: [], 2: [], 3: [] }
   const { title, startTime, endTime } = draft.meta
 
   if (!title.trim()) errors[1].push('Trip title is required')
@@ -25,11 +24,30 @@ export const canLeave = (draft, step) => stepErrors(draft)[step].length === 0
 // Highest step the user may jump to. Editing an existing trip usually means
 // changing one thing, so a fully valid draft unlocks the whole stepper.
 export function maxReachable(draft) {
-  for (const step of [1, 2, 3]) if (!canLeave(draft, step)) return step
-  return 4
+  for (const step of [1, 2]) if (!canLeave(draft, step)) return step
+  return STEPS.length
 }
 
-// The trip shape POST /api/trips/plan-chat expects. Joins the draft's stop
+// Missing or non-numeric values fall through to the mode default (edit opens
+// on Plan). Numbers outside 1..3 — including bookmarks from the old step 4 —
+// clamp into range.
+export function resolveWizardStep(raw, mode = 'create') {
+  const fallback = mode === 'edit' ? STEPS.length : 1
+  if (raw == null || String(raw).trim() === '') return fallback
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(STEPS.length, Math.max(1, Math.trunc(n)))
+}
+
+// Create mode keeps a clean /trips/new with no query. Everything else that
+// doesn't already name the resolved step is rewritten (edit default, ?step=4).
+export function wizardStepNeedsRedirect(raw, mode = 'create') {
+  const missing = raw == null || String(raw).trim() === ''
+  if (missing && mode !== 'edit') return false
+  return String(raw) !== String(resolveWizardStep(raw, mode))
+}
+
+// The trip shape POST /api/trips/plan-brief expects. Joins the draft's stop
 // records against the live customer list — see utils/tripDraft for why the
 // draft stores ids only.
 export function buildChatContext(draft, customerById) {
@@ -65,7 +83,7 @@ export function buildTripPayload(draft) {
     assigneeIds: draft.meta.assigneeIds,
     hidePhoneOnShare: draft.meta.hidePhoneOnShare,
     flights: draft.meta.flights.filter((f) => f.flightNo || f.routing || f.date),
-    constraints: draft.constraints.trim() || null,
+    constraints: (draft.constraints || '').trim() || null,
     startTime: new Date(draft.meta.startTime).toISOString(),
     endTime: new Date(draft.meta.endTime).toISOString(),
     // ALWAYS `stops`, NEVER `customerIds` — in both create and edit mode.
