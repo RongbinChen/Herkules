@@ -329,6 +329,15 @@ router.post('/:id/close', async (req, res) => {
       include: { author: { select: { id: true, name: true } } },
     });
     res.json({ ...project, closingUpdate: update });
+    // Winning is the moment a customer joins the installed base, so the flag is
+    // set here rather than left to someone remembering to tick a box on the
+    // customer record. Only ever set, never cleared: reopening a project or
+    // losing the next one does not remove the machine from their workshop.
+    if (outcome === 'WON' && project.customerId) {
+      prisma.customer
+        .update({ where: { id: project.customerId }, data: { installedBase: true } })
+        .catch((e) => console.error('[hotProjects] installedBase flag failed:', e.message));
+    }
     // After the response, same as the other two: never wait on SMTP.
     notifyProjectClosed(project, update);
   } catch (error) {

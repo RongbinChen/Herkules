@@ -187,11 +187,20 @@ export default function CustomerDetail() {
               <h1 className="text-xl font-bold text-slate-800">{customer.name}</h1>
               <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-bold ${tMeta.cls}`}>{tMeta.label}</span>
             </div>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${sMeta.cls}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${sMeta.dot}`} />
                 {sMeta.label}
               </span>
+              {/* Beside the status, not folded into it: a Lost customer with a
+                  machine still standing is a spares and retrofit relationship,
+                  and that is the case worth seeing at a glance. */}
+              {customer.installedBase && (
+                <span title="Owns our machines — spares, service and retrofit"
+                  className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200">
+                  ⚙ Installed base
+                </span>
+              )}
             </div>
 
             {(customer.tags || []).length > 0 && (
