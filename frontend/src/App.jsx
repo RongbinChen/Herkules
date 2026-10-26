@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Login from './components/Login'
 import Calendar from './components/Calendar'
+import CalendarErrorBoundary from './components/CalendarErrorBoundary'
 import Dashboard from './components/Dashboard'
 import BidProjectList from './components/BidProjectList'
 import BidStatistics from './components/BidStatistics'
@@ -35,7 +36,7 @@ function App() {
       <Route path="/hotprojects" element={token ? <HotProjects /> : <Navigate to="/login" />} />
       <Route path="/followups" element={token ? <ProjectFollowUps /> : <Navigate to="/login" />} />
       <Route path="/followups/:id" element={token ? <ProjectFollowUps /> : <Navigate to="/login" />} />
-      <Route path="/calendar" element={token ? <Calendar /> : <Navigate to="/login" />} />
+      <Route path="/calendar" element={token ? <CalendarErrorBoundary><Calendar /></CalendarErrorBoundary> : <Navigate to="/login" />} />
       <Route path="/chinabidding" element={token ? <BidProjectList /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/stats" element={token ? <BidStatistics /> : <Navigate to="/login" />} />
       <Route path="/chinabidding/bidopen" element={token ? <BidOpenPage /> : <Navigate to="/login" />} />

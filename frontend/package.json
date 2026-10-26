@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/utils/halfDay.test.js"
+    "test": "node --test src/utils/halfDay.test.js src/utils/calendarEvents.test.js src/components/Calendar.blankPage.test.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
