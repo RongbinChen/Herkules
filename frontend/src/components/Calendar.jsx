@@ -5,9 +5,11 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import listPlugin from '@fullcalendar/list'
+import luxon3Plugin from '@fullcalendar/luxon3'
 import { addWeeks, format, isSameDay, parseISO, startOfWeek } from 'date-fns'
 import { useAuth } from '../context/AuthContext'
 import { agentsAPI, customersAPI, eventsAPI, holidaysAPI, usersAPI } from '../api/api'
+import { BEIJING_TIME_ZONE, beijingDayKey, beijingWallToIso, formatBeijingDayHeading, formatBeijingDisplay, formatBeijingMonthDay } from '../utils/halfDay'
 import EventModal from './EventModal'
 import ProfileModal from './ProfileModal'
 import NotificationBell from './NotificationBell'
@@ -59,6 +61,8 @@ const CATEGORY_COLORS = {
   LEAVE: '#6b7280',
   REMINDER: '#e11d48',
 }
+
+const CALENDAR_PLUGINS = [dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin, luxon3Plugin]
 
 const STATUS_LABELS = {
   PLANNED: 'Planned',
@@ -160,8 +164,8 @@ function formatEventTooltip(event) {
   const title = event.title || 'Untitled activity'
   const notes = event.extendedProps.description?.trim() || 'No notes'
   const customerName = event.extendedProps.customer?.name
-  const start = event.start ? format(event.start, event.allDay ? 'MM/dd/yyyy' : 'MM/dd/yyyy hh:mm aa') : 'No start date'
-  const end = event.end ? format(event.end, event.allDay ? 'MM/dd/yyyy' : 'MM/dd/yyyy hh:mm aa') : 'No end date'
+  const start = event.start ? formatBeijingDisplay(event.start, event.allDay) : 'No start date'
+  const end = event.end ? formatBeijingDisplay(event.end, event.allDay) : 'No end date'
   const duration = `${start} - ${end}`
   const customerLine = customerName ? `\nCustomer: ${customerName}` : ''
 
@@ -279,10 +283,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemb
         {summary.map((member) => {
           const isSelected = isAllSelected || selectedUserIds.includes(member.id)
           const userColor = getUserCalendarColor(member.id, users)
-          const nextEventDate = member.nextEventStart ? parseISO(member.nextEventStart) : null
-          const nextEventLabel = nextEventDate
-            ? format(nextEventDate, nextEventDate.getFullYear() === new Date().getFullYear() ? 'MMM d' : 'MMM d, yyyy')
-            : null
+          const nextEventLabel = member.nextEventStart ? formatBeijingMonthDay(member.nextEventStart) : null
 
           return (
           <label
@@ -426,7 +427,8 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
         <div className="min-h-0 flex-1 p-2.5 sm:p-4">
           <FullCalendar
             key={`${activeUser.id}-${initialView}-${initialDate.toISOString()}`}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+            plugins={CALENDAR_PLUGINS}
+            timeZone={BEIJING_TIME_ZONE}
             initialView={initialView}
             initialDate={initialDate}
             headerToolbar={{
@@ -520,7 +522,7 @@ export default function Calendar() {
   const navigate = useNavigate()
   const calendarRef = useRef(null)
   const selectedCellElementsRef = useRef([])
-  const todayKeyRef = useRef(format(new Date(), 'yyyy-MM-dd'))
+  const todayKeyRef = useRef(beijingDayKey(new Date()))
   const isAdmin = user?.isAdmin === true
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
   const [allEvents, setAllEvents] = useState([])
@@ -583,7 +585,7 @@ export default function Calendar() {
   useEffect(() => {
     function syncTodayAnchor() {
       const today = new Date()
-      const todayKey = format(today, 'yyyy-MM-dd')
+      const todayKey = beijingDayKey(today)
       if (todayKeyRef.current === todayKey) return
 
       todayKeyRef.current = todayKey
@@ -720,13 +722,12 @@ export default function Calendar() {
   }, [allEvents, holidayEvents, selectedUserIds, deferredCategory, deferredStatus])
 
   const todayActivities = useMemo(
-    () => visibleEvents.filter((event) => isSameDay(parseISO(event.start), currentDate)).slice(0, 5),
+    () => visibleEvents.filter((event) => beijingDayKey(event.start) === beijingDayKey(currentDate)).slice(0, 5),
     [visibleEvents, currentDate],
   )
 
   const teamSummary = useMemo(() => {
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
+    const todayStart = new Date(beijingWallToIso(new Date(), true))
 
     return users.map((member) => {
       const memberEvents = allEvents.filter((event) => (
@@ -1154,7 +1155,7 @@ export default function Calendar() {
         <div className="flex items-end justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Today</p>
-            <h3 className="text-lg font-semibold text-slate-900">{format(currentDate, 'EEEE, MMM d')}</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{formatBeijingDayHeading(currentDate)}</h3>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{todayActivities.length} items</span>
         </div>
@@ -1463,7 +1464,8 @@ export default function Calendar() {
 
                           <FullCalendar
                             key={`${activeUser.id}-${currentView}-${currentDate.toISOString()}`}
-                            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+                            plugins={CALENDAR_PLUGINS}
+                            timeZone={BEIJING_TIME_ZONE}
                             initialView={currentView}
                             initialDate={currentDate}
                             headerToolbar={false}
@@ -1525,7 +1527,8 @@ export default function Calendar() {
             ) : (
               <FullCalendar
                 ref={calendarRef}
-                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
+                plugins={CALENDAR_PLUGINS}
+                timeZone={BEIJING_TIME_ZONE}
                 initialView={currentView}
                 initialDate={currentDate}
                 headerToolbar={{
