@@ -10,7 +10,9 @@ import { addWeeks, format, isSameDay, parseISO, startOfWeek } from 'date-fns'
 import { useAuth } from '../context/AuthContext'
 import { agentsAPI, customersAPI, eventsAPI, holidaysAPI, usersAPI } from '../api/api'
 import { BEIJING_TIME_ZONE, beijingDayKey, beijingWallToIso, formatBeijingDayHeading, formatBeijingDisplay, formatBeijingMonthDay } from '../utils/halfDay'
+import { exclusiveAllDayEnd, holidayRange, isValidInstant } from '../utils/calendarEvents'
 import EventModal from './EventModal'
+import CalendarErrorBoundary from './CalendarErrorBoundary'
 import ProfileModal from './ProfileModal'
 import NotificationBell from './NotificationBell'
 import UserManagementModal from './UserManagementModal'
@@ -87,12 +89,6 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-function addOneDay(value) {
-  const date = new Date(value)
-  date.setDate(date.getDate() + 1)
-  return date
-}
-
 function subtractOneDay(value) {
   const date = new Date(value)
   date.setDate(date.getDate() - 1)
@@ -136,33 +132,38 @@ function getUserCalendarSoftColor(userId, users = []) {
 }
 
 function buildHolidayEvents(calendars) {
-  return calendars.flatMap((calendar) => calendar.events.map((holiday) => ({
-    id: holiday.id,
-    title: holiday.title,
-    description: 'Official China public holiday calendar.',
-    location: 'China',
-    start: `${holiday.start}T00:00:00.000+08:00`,
-    end: `${holiday.endExclusive}T00:00:00.000+08:00`,
-    allDay: true,
-    color: getCategoryColor('LEAVE'),
-    originalColor: getCategoryColor('LEAVE'),
-    calendarColor: getCategoryColor('LEAVE'),
-    backgroundColor: hexToRgba(getCategoryColor('LEAVE'), 0.24),
-    borderColor: getCategoryColor('LEAVE'),
-    textColor: '#0f172a',
-    category: 'LEAVE',
-    status: 'PLANNED',
-    userId: null,
-    userName: calendar.label,
-    isSharedHoliday: true,
-    holidayCalendarId: calendar.id,
-  })))
+  return calendars.flatMap((calendar) => (calendar.events || []).flatMap((holiday) => {
+    const range = holidayRange(holiday)
+    if (!range) return []
+    return [{
+      id: holiday.id,
+      title: holiday.title,
+      description: 'Official China public holiday calendar.',
+      location: 'China',
+      start: range.start,
+      end: range.end,
+      allDay: true,
+      color: getCategoryColor('LEAVE'),
+      originalColor: getCategoryColor('LEAVE'),
+      calendarColor: getCategoryColor('LEAVE'),
+      backgroundColor: hexToRgba(getCategoryColor('LEAVE'), 0.24),
+      borderColor: getCategoryColor('LEAVE'),
+      textColor: '#0f172a',
+      category: 'LEAVE',
+      status: 'PLANNED',
+      userId: null,
+      userName: calendar.label,
+      isSharedHoliday: true,
+      holidayCalendarId: calendar.id,
+    }]
+  }))
 }
 
 function formatEventTooltip(event) {
   const userName = event.extendedProps.userName || 'Unassigned'
   const title = event.title || 'Untitled activity'
-  const notes = event.extendedProps.description?.trim() || 'No notes'
+  const description = event.extendedProps.description
+  const notes = typeof description === 'string' && description.trim() ? description.trim() : 'No notes'
   const customerName = event.extendedProps.customer?.name
   const start = event.start ? formatBeijingDisplay(event.start, event.allDay) : 'No start date'
   const end = event.end ? formatBeijingDisplay(event.end, event.allDay) : 'No end date'
@@ -250,7 +251,7 @@ function MiniMonth({ events, anchorDate, onJump, collapsed, onToggle }) {
   )
 }
 
-function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemberNextEvent, onSelectAllUsers, holidayCalendars, selectedHolidayCalendarIds, onToggleHolidayCalendar, isAdmin }) {
+export function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemberNextEvent, onSelectAllUsers, holidayCalendars, selectedHolidayCalendarIds, onToggleHolidayCalendar, isAdmin }) {
   if (!summary.length) return null
 
   const isAllSelected = selectedUserIds === null
@@ -283,7 +284,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemb
         {summary.map((member) => {
           const isSelected = isAllSelected || selectedUserIds.includes(member.id)
           const userColor = getUserCalendarColor(member.id, users)
-          const nextEventLabel = member.nextEventStart ? formatBeijingMonthDay(member.nextEventStart) : null
+          const nextEventLabel = member.nextEventStart ? formatBeijingMonthDay(member.nextEventStart) : ''
 
           return (
           <label
@@ -314,7 +315,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemb
                 </div>
               </div>
               <div className={classNames('mt-3 flex gap-2 text-xs', isSelected ? 'text-slate-700' : 'text-slate-500')}>
-                {nextEventDate ? (
+                {member.nextEventStart ? (
                   <button
                     type="button"
                     onClick={(event) => {
@@ -322,7 +323,7 @@ function TeamPanel({ summary, users, selectedUserIds, onToggleUser, onJumpToMemb
                       event.stopPropagation()
                       onJumpToMemberNextEvent?.(member)
                     }}
-                    title={`Jump to ${nextEventLabel}`}
+                    title={nextEventLabel ? `Jump to ${nextEventLabel}` : 'Jump to next activity'}
                     className="rounded-full underline decoration-dotted underline-offset-2 transition hover:text-slate-900"
                   >
                     {member.upcomingCount} upcoming activities
@@ -425,6 +426,7 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
         </div>
 
         <div className="min-h-0 flex-1 p-2.5 sm:p-4">
+          <CalendarErrorBoundary variant="panel">
           <FullCalendar
             key={`${activeUser.id}-${initialView}-${initialDate.toISOString()}`}
             plugins={CALENDAR_PLUGINS}
@@ -509,6 +511,7 @@ function ExpandedCalendarModal({ isOpen, activeUser, events, initialDate, initia
               )
             }}
           />
+          </CalendarErrorBoundary>
         </div>
       </div>
     </div>
@@ -602,22 +605,42 @@ export default function Calendar() {
     }
   }, [])
 
-  async function loadEvents() {
-    const response = await eventsAPI.getAll()
-    const mappedEvents = response.data.map((item) => ({
+  function mapActivity(item) {
+    if (!isValidInstant(item?.start)) return null
+    const end = item.allDay ? exclusiveAllDayEnd(item.end) : item.end
+    if (item.allDay && !end) return null
+    if (!item.allDay && item.end != null && item.end !== '' && !isValidInstant(item.end)) return null
+
+    const userId = item.user?.id ?? item.userId
+    const userColor = getUserCalendarColor(userId, users)
+    return {
       ...item,
       start: item.start,
-      end: item.allDay ? addOneDay(item.end).toISOString() : item.end,
+      end,
       rawStart: item.start,
       rawEnd: item.end,
-      userId: item.user?.id ?? item.userId,
+      userId,
       userName: item.user?.name,
       originalColor: item.color,
-      calendarColor: getUserCalendarColor(item.user?.id ?? item.userId, users),
-      backgroundColor: hexToRgba(getUserCalendarColor(item.user?.id ?? item.userId, users), 0.24),
-      borderColor: getUserCalendarColor(item.user?.id ?? item.userId, users),
+      calendarColor: userColor,
+      backgroundColor: hexToRgba(userColor, 0.24),
+      borderColor: userColor,
       textColor: '#0f172a',
-    }))
+    }
+  }
+
+  async function loadEvents() {
+    const response = await eventsAPI.getAll()
+    if (!Array.isArray(response.data)) {
+      throw new Error('Activity list was not a list')
+    }
+    const rows = response.data
+    const mappedEvents = []
+    for (const item of rows) {
+      const mapped = mapActivity(item)
+      if (mapped) mappedEvents.push(mapped)
+      else console.error('Skipping activity with an unreadable date', item?.id)
+    }
 
     setAllEvents(mappedEvents)
   }
@@ -1462,6 +1485,7 @@ export default function Calendar() {
                             </span>
                           </div>
 
+                          <CalendarErrorBoundary variant="panel">
                           <FullCalendar
                             key={`${activeUser.id}-${currentView}-${currentDate.toISOString()}`}
                             plugins={CALENDAR_PLUGINS}
@@ -1518,6 +1542,7 @@ export default function Calendar() {
                               )
                             }}
                           />
+                          </CalendarErrorBoundary>
                         </section>
                       )
                     })}
@@ -1525,6 +1550,7 @@ export default function Calendar() {
                 </div>
               </div>
             ) : (
+              <CalendarErrorBoundary variant="panel">
               <FullCalendar
                 ref={calendarRef}
                 plugins={CALENDAR_PLUGINS}
@@ -1614,6 +1640,7 @@ export default function Calendar() {
                   )
                 }}
               />
+              </CalendarErrorBoundary>
             )}
           </main>
         </div>
