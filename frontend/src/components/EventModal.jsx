@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfWeek, eachDayOfInterval, format, isSameDay, isSameMonth, startOfMonth, startOfWeek, subMonths } from 'date-fns'
 import { customersAPI, agentsAPI } from '../api/api'
+import { HALF_DAY_WINDOWS, beijingWallToIso, detectHalfDay, toBeijingWall, toHalfDayRange } from '../utils/halfDay'
 
 const CATEGORY_OPTIONS = [
   { value: 'WORK_SESSION', label: 'Internal Coordination' },
@@ -66,19 +67,13 @@ function getUserCalendarColor(userId, users = []) {
   return USER_CALENDAR_COLORS[index % USER_CALENDAR_COLORS.length]
 }
 
-// Half-day activities are a duration preset, not a stored flag: picking AM/PM
-// just snaps start/end onto the office window below, so nothing changes in the
-// schema and the event stays a normal timed event everywhere else.
+// Half-day is a duration preset (see utils/halfDay.js). Morning is 08:00–12:00
+// Beijing and Afternoon is 13:00–17:00 Beijing. Nothing is stored except start/end.
 const DURATION_MODE_OPTIONS = [
   { value: 'TIMED', label: 'Timed' },
   { value: 'HALF_DAY', label: 'Half-day' },
   { value: 'ALL_DAY', label: 'All-day' },
 ]
-
-const HALF_DAY_WINDOWS = {
-  AM: { startHour: 8, endHour: 12, label: 'Morning', hint: '8 AM – 12 PM' },
-  PM: { startHour: 13, endHour: 17, label: 'Afternoon', hint: '1 PM – 5 PM' },
-}
 
 const HOUR_OPTIONS = ['12', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11']
 const MINUTE_OPTIONS = ['00', '15', '30', '45']
@@ -86,13 +81,6 @@ const MERIDIEM_OPTIONS = ['AM', 'PM']
 
 function classNames(...values) {
   return values.filter(Boolean).join(' ')
-}
-
-function toLocalDateTime(value) {
-  if (!value) return ''
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return format(parsed, "yyyy-MM-dd'T'HH:mm")
 }
 
 function parsePickerDate(value) {
@@ -110,29 +98,6 @@ function formatPickerDisplayValue(value, allDay) {
 
 function toPickerValue(date, allDay) {
   return format(date, allDay ? "yyyy-MM-dd'T'00:00" : "yyyy-MM-dd'T'HH:mm")
-}
-
-function toHalfDayRange(anchorValue, half) {
-  const window = HALF_DAY_WINDOWS[half]
-  if (!window) return null
-
-  const base = parsePickerDate(anchorValue)
-  const start = new Date(base)
-  start.setHours(window.startHour, 0, 0, 0)
-  const end = new Date(base)
-  end.setHours(window.endHour, 0, 0, 0)
-
-  return { start: toPickerValue(start, false), end: toPickerValue(end, false) }
-}
-
-// Half-day is not persisted, so re-derive it when an existing event is opened.
-function detectHalfDay(startValue, endValue, allDay) {
-  if (allDay || !startValue || !endValue) return ''
-
-  return Object.keys(HALF_DAY_WINDOWS).find((half) => {
-    const range = toHalfDayRange(startValue, half)
-    return range && range.start === startValue && range.end === endValue
-  }) || ''
 }
 
 function getHour12(date) {
@@ -392,8 +357,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
         title: event.title || '',
         description: event.description || '',
         location: event.location || '',
-        start: toLocalDateTime(event.start),
-        end: toLocalDateTime(event.end),
+        start: toBeijingWall(event.start),
+        end: toBeijingWall(event.end),
         allDay: event.allDay || false,
         color: event.color || getUserCalendarColor(event.userId || currentUser?.id, users),
         category: event.category || 'WORK_SESSION',
@@ -402,22 +367,21 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
         customerId: event.customerId ? String(event.customerId) : '',
         agentId: event.agentId ? String(event.agentId) : '',
       })
-      setHalfDay(detectHalfDay(toLocalDateTime(event.start), toLocalDateTime(event.end), event.allDay || false))
+      setHalfDay(detectHalfDay(event.start, event.end, event.allDay || false))
       return
     }
 
-    const now = new Date()
-    now.setMinutes(0, 0, 0)
-    now.setHours(Math.max(8, now.getHours() + 1))
-    const end = new Date(now)
-    end.setHours(now.getHours() + 1)
+    const nowWall = toBeijingWall(new Date())
+    const datePart = nowWall.slice(0, 10)
+    const startHour = Math.min(23, Math.max(8, Number(nowWall.slice(11, 13)) + 1))
+    const endHour = Math.min(23, startHour + 1)
 
     setForm({
       title: '',
       description: '',
       location: '',
-      start: format(now, "yyyy-MM-dd'T'HH:mm"),
-      end: format(end, "yyyy-MM-dd'T'HH:mm"),
+      start: `${datePart}T${String(startHour).padStart(2, '0')}:00`,
+      end: `${datePart}T${String(endHour).padStart(2, '0')}:00`,
       allDay: false,
       color: getUserCalendarColor(currentUser?.id, users),
       category: 'WORK_SESSION',
@@ -470,20 +434,14 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
     setForm((prev) => ({ ...prev, allDay: false }))
   }
 
-  function normalizeDate(value, allDay) {
-    if (!value) return ''
-    if (allDay) {
-      return `${value.split('T')[0]}T00:00`
-    }
-    return value
-  }
-
   function handleSubmit(submitEvent) {
     submitEvent.preventDefault()
     if (readOnly) return
-    const startDate = new Date(normalizeDate(form.start, form.allDay))
-    const endDate = new Date(normalizeDate(form.end, form.allDay))
-    const invalid = form.allDay ? endDate < startDate : endDate <= startDate
+    const startIso = beijingWallToIso(form.start, form.allDay)
+    const endIso = beijingWallToIso(form.end, form.allDay)
+    const startDate = new Date(startIso)
+    const endDate = new Date(endIso)
+    const invalid = !startIso || !endIso || (form.allDay ? endDate < startDate : endDate <= startDate)
     if (invalid) {
       setDateError('End must be after start')
       return
@@ -492,8 +450,8 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
     onSave({
       id: event?.id,
       ...form,
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
+      start: startIso,
+      end: endIso,
       userId: Number(form.userId),
       customerId: form.customerId ? Number(form.customerId) : null,
       agentId: form.agentId ? Number(form.agentId) : null,
