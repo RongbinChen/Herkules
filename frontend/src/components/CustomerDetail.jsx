@@ -8,6 +8,8 @@ import CustomerModal from './CustomerModal'
 import CustomerContracts from './CustomerContracts'
 import CustomerNotes from './CustomerNotes'
 import { statusMeta, tierMeta } from '../constants/customer'
+import DeleteReportButton from './visit-report/DeleteReportButton'
+import { useVRLang } from '../i18n/visitReports'
 
 // Tender-lifecycle stage + our-tracking status labels (mirror BidTrackingBoard).
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
@@ -75,6 +77,7 @@ export default function CustomerDetail() {
   const backLabel = back.label
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
+  const [reportLang] = useVRLang()
 
   const [customer, setCustomer] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -414,12 +417,23 @@ export default function CustomerDetail() {
               <ul className="space-y-2">
                 {visitReports.map((r) => (
                   <li key={r.id} className="rounded-xl border border-slate-200 p-3">
-                    <button
-                      onClick={() => navigate(`/visit-reports/${r.id}`)}
-                      className="text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
-                    >
-                      {r.title}
-                    </button>
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        onClick={() => navigate(`/visit-reports/${r.id}`)}
+                        className="min-w-0 text-left text-sm font-semibold text-slate-800 hover:text-brand-600"
+                      >
+                        {r.title}
+                      </button>
+                      <DeleteReportButton
+                        report={r}
+                        user={user}
+                        lang={reportLang}
+                        onDeleted={(deleted) => setCustomer((current) => ({
+                          ...current,
+                          visitReports: (current.visitReports || []).filter((row) => row.id !== deleted.id),
+                        }))}
+                      />
+                    </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
                       <span>{fmt(r.visitDate).slice(0, 10)}</span>
                       {r.author?.name && <span>By {r.author.name}</span>}

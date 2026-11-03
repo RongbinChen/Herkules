@@ -6,6 +6,7 @@ import { Button, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
 import { useVRLang, STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 import SectionBody from './visit-report/SectionBody'
+import DeleteReportButton from './visit-report/DeleteReportButton'
 
 // Full-page article view for one visit report — the modal stays for create/edit,
 // but reading happens here with room to breathe (esp. on desktop).
@@ -111,6 +112,13 @@ export default function VisitReportDetail() {
             <Button variant="secondary" size="sm" onClick={downloadWord} disabled={downloading}>
               {downloading ? '…' : t.exportWord}
             </Button>
+            <DeleteReportButton
+              report={report}
+              user={user}
+              lang={lang}
+              onDeleted={() => navigate('/visit-reports', { replace: true })}
+              className="rounded-xl border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            />
             {canEdit && <Button size="sm" onClick={() => setEditOpen(true)}>{t.edit}</Button>}
           </div>
         </div>

@@ -5,6 +5,7 @@ import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { listProjectThreads } from '../services/chinabidding.js';
+import { withCanDelete } from '../services/visitReportAccess.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -75,7 +76,7 @@ router.get('/', async (req, res) => {
         author: { select: { id: true, name: true } },
       },
     });
-    return res.json({ type, results: reports });
+    return res.json({ type, results: reports.map((report) => withCanDelete(report, req.user)) });
   } catch (error) {
     console.error('Error in unified search:', error);
     res.status(500).json({ error: 'Search failed' });
