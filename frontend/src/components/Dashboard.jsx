@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { eventsAPI, usersAPI } from '../api/api'
@@ -140,12 +140,18 @@ const MODULES = [
   },
 ]
 
-// One due reminder row with owner actions: done / postpone / delete.
+// One due reminder. The title, customer, and date read as the item; Done is the
+// only always-visible action. Postpone, no-timeframe, delete, and the visit
+// report live in one menu so a phone row is not a second toolbar.
 function ReminderRow({ ev, onResolved }) {
   const navigate = useNavigate()
+  const menuBtnRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [pickDate, setPickDate] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuUp, setMenuUp] = useState(false)
   const overdue = new Date(ev.start) < new Date()
+  const dateLabel = new Date(ev.start).toISOString().slice(0, 10)
 
   const resolve = async (action, newDate) => {
     setBusy(true)
@@ -157,56 +163,141 @@ function ReminderRow({ ev, onResolved }) {
     } finally { setBusy(false) }
   }
 
-  // Shared by the text actions. Phone gets a 36px tap height; ≥sm keeps the
-  // original compact padding so the desktop row does not grow.
-  const textBtn =
-    'inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 sm:min-h-0 sm:py-1'
-  const iconBtn =
-    'inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border px-2 text-xs font-semibold disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:py-1'
+  useLayoutEffect(() => {
+    if (!menuOpen) return undefined
+    const rect = menuBtnRef.current?.getBoundingClientRect()
+    if (rect) {
+      const spaceBelow = window.innerHeight - rect.bottom
+      // Open upward when the list is near the bottom of the screen and there
+      // is more room above the button than below it.
+      setMenuUp(spaceBelow < 220 && rect.top > spaceBelow)
+    }
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      setMenuOpen(false)
+      setMenuUp(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
+
+  const closeMenu = () => {
+    setMenuOpen(false)
+    setMenuUp(false)
+  }
+  const menuItem = 'flex min-h-9 w-full items-center px-3 text-left text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50'
 
   return (
-    <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1.5">
-      <div className="flex min-w-0 flex-1 items-center gap-x-3">
-        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${overdue ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
-          {new Date(ev.start).toISOString().slice(0, 10)}{overdue ? ' · overdue' : ''}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={ev.title}>
-          {ev.title}
-          {ev.customer && <span className="ml-2 text-xs text-slate-400">🤝 {ev.customer.name}</span>}
-        </span>
-      </div>
-      {/* Phone: actions sit under the title, split so the long "No timeframe"
-          label and Delete share a second row inside the card. ≥sm they return
-          to one line beside the title. min-w-0 lets the row shrink and wrap
-          instead of spilling past the card edge. */}
-      <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5 sm:w-auto sm:max-w-none sm:shrink-0 sm:flex-row sm:items-center sm:gap-1.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {ev.visitReportId && (
-            <button onClick={() => navigate(`/visit-reports/${ev.visitReportId}`)}
-              aria-label="Open visit report"
-              className={`${iconBtn} border-slate-200 text-slate-500 hover:bg-slate-50`}>📝</button>
+    <li className={`relative py-3 ${menuOpen ? 'z-30' : ''}`}>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-slate-800" title={ev.title}>
+            {ev.title}
+          </p>
+          {ev.customer?.name && (
+            <p className="mt-0.5 truncate text-xs text-slate-500" title={ev.customer.name}>{ev.customer.name}</p>
           )}
-          <button disabled={busy} onClick={() => resolve('done')}
-            className="inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 sm:min-h-0 sm:py-1">✓ Done</button>
-          {!pickDate ? (
-            <button disabled={busy} onClick={() => setPickDate(true)}
-              className={textBtn}>↻ Postpone</button>
-          ) : (
-            <input type="date" autoFocus disabled={busy}
-              className="h-9 max-w-full shrink-0 rounded-lg border border-slate-300 px-2 text-xs sm:h-auto sm:py-0.5"
-              onChange={(e) => { if (e.target.value) resolve('postpone', e.target.value) }}
-              onBlur={() => setPickDate(false)} />
+          <p className="mt-1 text-xs leading-4 text-slate-400">
+            <time dateTime={dateLabel}>{dateLabel}</time>
+            {overdue && <span className="font-medium text-rose-600"> · overdue</span>}
+          </p>
+        </div>
+        <div className="relative flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => resolve('done')}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:opacity-50"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+            Done
+          </button>
+          <button
+            ref={menuBtnRef}
+            type="button"
+            disabled={busy}
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:opacity-50 ${menuOpen ? 'bg-slate-100 text-slate-800' : ''}`}
+          >
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="4.5" cy="10" r="1.35" />
+              <circle cx="10" cy="10" r="1.35" />
+              <circle cx="15.5" cy="10" r="1.35" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              aria-label="Reminder actions"
+              className={`absolute right-0 z-30 w-52 max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl ${menuUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+            >
+              {ev.visitReportId && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={() => { closeMenu(); navigate(`/visit-reports/${ev.visitReportId}`) }}
+                  className={menuItem}
+                >
+                  Open visit report
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                onClick={() => { closeMenu(); setPickDate(true) }}
+                className={menuItem}
+              >
+                Postpone
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                title="Keep the reminder without a due date — it leaves this list but stays on record (on hold)"
+                onClick={() => { closeMenu(); resolve('hold') }}
+                className={menuItem}
+              >
+                No timeframe
+              </button>
+              <div className="my-1 border-t border-slate-100" />
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                onClick={() => {
+                  closeMenu()
+                  if (window.confirm('Delete this reminder?')) resolve('delete')
+                }}
+                className="flex min-h-9 w-full items-center px-3 text-left text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
           )}
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <button disabled={busy} onClick={() => resolve('hold')}
-            title="Keep the reminder without a due date — it leaves this list but stays on record (on hold)"
-            className={textBtn}>⏸ No timeframe</button>
-          <button disabled={busy} onClick={() => { if (window.confirm('Delete this reminder?')) resolve('delete') }}
-            aria-label="Delete reminder"
-            className={`${iconBtn} border-red-200 text-red-500 hover:bg-red-50`}>🗑</button>
-        </div>
       </div>
+      {menuOpen && <div className="fixed inset-0 z-20" onClick={closeMenu} />}
+      {pickDate && (
+        <label className="mt-2.5 flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500">
+          <span className="shrink-0">Postpone to</span>
+          <input
+            type="date"
+            autoFocus
+            disabled={busy}
+            aria-label="Postpone to"
+            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-slate-700 sm:h-9 sm:max-w-[11rem] sm:flex-none"
+            onChange={(e) => { if (e.target.value) resolve('postpone', e.target.value) }}
+            onBlur={() => setPickDate(false)}
+          />
+        </label>
+      )}
     </li>
   )
 }
@@ -301,15 +392,29 @@ export default function Dashboard() {
 
         {/* Due reminders — owner decides: done / postpone / delete */}
         {reminders.length > 0 && (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/50 px-4 py-3 shadow-sm sm:mb-8">
-            <div className="mb-1 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-800">⏰ Reminders due — your decision</h2>
-              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">{reminders.length}</span>
+          <section className="relative mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm sm:mb-8" aria-labelledby="due-reminders-heading">
+            <div className="absolute bottom-4 left-0 top-4 w-1 rounded-r-full bg-amber-400" aria-hidden="true" />
+            <div className="py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5">
+              <div className="mb-1 flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 ring-1 ring-amber-100">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l2.5 1.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </span>
+                  <h2 id="due-reminders-heading" className="text-sm font-semibold leading-snug text-slate-900">
+                    Reminders due — your decision
+                  </h2>
+                </div>
+                <span className="mt-1 inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-amber-50 px-2 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">
+                  {reminders.length}
+                </span>
+              </div>
+              <ul className="divide-y divide-slate-100">
+                {reminders.map((ev) => <ReminderRow key={ev.id} ev={ev} onResolved={onResolved} />)}
+              </ul>
             </div>
-            <ul className="divide-y divide-amber-100">
-              {reminders.map((ev) => <ReminderRow key={ev.id} ev={ev} onResolved={onResolved} />)}
-            </ul>
-          </div>
+          </section>
         )}
 
         {/* Watching projects — the bids we're actively monitoring, front and center */}
