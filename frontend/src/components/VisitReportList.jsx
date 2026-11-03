@@ -66,8 +66,9 @@ export default function VisitReportList() {
   }, [reports, team, teamMemberIds, personId])
 
   // Group the already-filtered list, so All / WRC / HRC and the person
-  // sub-filter change which sections appear. Alphabetical group order and the
-  // trailing "no customer" bucket are documented in groupVisitReportsByCustomer.
+  // sub-filter change which sections appear. Group order (newest visit in
+  // each section first, including "no customer") is documented in
+  // groupVisitReportsByCustomer.
   const groups = useMemo(
     () => groupVisitReportsByCustomer(visibleReports, lang === 'zh' ? 'zh-CN' : 'en'),
     [visibleReports, lang],
@@ -151,7 +152,7 @@ export default function VisitReportList() {
             {t.emptyState} <button onClick={() => setChooserOpen(true)} className="font-semibold text-brand-600 hover:underline">{t.createOne}</button>
           </Card>
         ) : view === 'cards' ? (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {groups.map((group, index) => {
               const headingId = `vr-customer-group-${index}`
               return (
@@ -207,13 +208,23 @@ export default function VisitReportList() {
               <tbody>
                 {groups.map((group, index) => {
                   const headingId = `vr-customer-group-${index}`
+                  const accent = group.unnamed ? 'border-l-slate-400' : 'border-l-brand-600'
                   return (
                     <Fragment key={group.key}>
-                      <tr className={`border-t bg-slate-50 ${group.unnamed ? 'border-dashed border-slate-300' : 'border-slate-200'}`}>
-                        <td colSpan={showActions ? 6 : 5} className="p-0">
+                      {index > 0 && (
+                        <tr aria-hidden="true">
+                          <td colSpan={showActions ? 6 : 5} className="border-0 bg-slate-100 p-0">
+                            <div className="h-4" />
+                          </td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td colSpan={showActions ? 6 : 5} className="border-y border-slate-300 bg-slate-200 p-0">
                           {/* Sticky to the left of the horizontal scroller so the
-                              customer name stays on screen on a phone. */}
-                          <div className="sticky left-0 z-10 w-max max-w-[calc(100vw-2rem)] bg-slate-50 px-4 py-2.5">
+                              customer name stays on screen on a phone. The band
+                              itself spans the row so the section reads as a
+                              break, not another data line. */}
+                          <div className={`sticky left-0 z-10 w-max max-w-[calc(100vw-2rem)] border-l-4 ${accent} bg-slate-200 px-4 py-3.5`}>
                             <CustomerGroupHeader
                               name={group.name}
                               count={group.reports.length}

@@ -21,24 +21,24 @@ export default function CustomerGroupHeader({
       data-customer-group={unnamed ? 'none' : name}
       className={[
         sticky
-          ? `sticky top-0 z-10 -mx-4 border-b bg-slate-50/95 px-4 py-2.5 backdrop-blur-sm ${unnamed ? 'border-dashed border-slate-300' : 'border-slate-200'}`
+          ? `sticky top-0 z-10 rounded-xl border px-4 py-3.5 shadow-card ${unnamed ? 'border-slate-300 border-l-4 border-l-slate-400 bg-slate-50' : 'border-slate-200 border-l-4 border-l-brand-600 bg-white'}`
           : '',
         className,
       ].filter(Boolean).join(' ')}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-2.5">
         {!unnamed && (
-          <span aria-hidden="true" className="mt-0.5 shrink-0 text-sm leading-none">🏢</span>
+          <span aria-hidden="true" className="mt-1 shrink-0 text-base leading-none">🏢</span>
         )}
         <h2
           id={headingId}
-          className={`min-w-0 break-words text-sm font-bold leading-snug sm:text-[15px] ${unnamed ? 'text-slate-500' : 'text-slate-800'}`}
+          className={`min-w-0 break-words text-base font-bold leading-snug ${unnamed ? 'text-slate-600' : 'text-slate-900'}`}
         >
           {label}
         </h2>
         <span
           aria-label={t.countReports(count)}
-          className="mt-0.5 shrink-0 rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600"
+          className={`mt-1 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${unnamed ? 'bg-slate-200 text-slate-600' : 'bg-brand-100 text-brand-800'}`}
         >
           {count}
         </span>
