@@ -1,11 +1,13 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { visitReportsAPI, customersAPI, usersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Card, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
 import DeleteReportButton from './visit-report/DeleteReportButton'
+import CustomerGroupHeader from './visit-report/CustomerGroupHeader'
 import { showDeleteVisitReport } from '../utils/visitReportAccess'
+import { groupVisitReportsByCustomer } from '../utils/visitReportGroups'
 import { useVRLang, STRINGS } from '../i18n/visitReports'
 
 export default function VisitReportList() {
@@ -62,6 +64,14 @@ export default function VisitReportList() {
     if (team === 'ALL') return reports
     return reports.filter((r) => teamMemberIds.has(r.authorId) && (!personId || r.authorId === personId))
   }, [reports, team, teamMemberIds, personId])
+
+  // Group the already-filtered list, so All / WRC / HRC and the person
+  // sub-filter change which sections appear. Alphabetical group order and the
+  // trailing "no customer" bucket are documented in groupVisitReportsByCustomer.
+  const groups = useMemo(
+    () => groupVisitReportsByCustomer(visibleReports, lang === 'zh' ? 'zh-CN' : 'en'),
+    [visibleReports, lang],
+  )
 
   // Reading happens on the dedicated detail page (roomier, esp. on desktop).
   const openReport = (id) => navigate(`/visit-reports/${id}`)
@@ -141,27 +151,44 @@ export default function VisitReportList() {
             {t.emptyState} <button onClick={() => setChooserOpen(true)} className="font-semibold text-brand-600 hover:underline">{t.createOne}</button>
           </Card>
         ) : view === 'cards' ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {visibleReports.map((r) => (
-              <Card key={r.id} hover className="p-4 text-left">
-                <div className="flex items-start gap-2">
-                  <button type="button" onClick={() => openReport(r.id)}
-                    className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="min-w-0 truncate text-sm font-bold text-slate-800">{r.title}</h3>
-                      <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
-                    </div>
-                    {r.summary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{r.summary}</p>}
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                      <span>📅 {fmtDate(r.visitDate)}</span>
-                      {r.customer && <span>🏢 {r.customer.name}</span>}
-                      <span>✍️ {r.author?.name || t.authorFallback}</span>
-                    </div>
-                  </button>
-                  <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
-                </div>
-              </Card>
-            ))}
+          <div className="space-y-6">
+            {groups.map((group, index) => {
+              const headingId = `vr-customer-group-${index}`
+              return (
+                <section key={group.key} aria-labelledby={headingId}>
+                  <CustomerGroupHeader
+                    name={group.name}
+                    count={group.reports.length}
+                    unnamed={group.unnamed}
+                    lang={lang}
+                    sticky
+                    headingId={headingId}
+                  />
+                  <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {group.reports.map((r) => (
+                      <Card key={r.id} hover className="p-4 text-left">
+                        <div className="flex items-start gap-2">
+                          <button type="button" onClick={() => openReport(r.id)}
+                            className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="min-w-0 truncate text-sm font-bold text-slate-800">{r.title}</h3>
+                              <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
+                            </div>
+                            {r.summary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{r.summary}</p>}
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                              <span>📅 {fmtDate(r.visitDate)}</span>
+                              {r.customer && <span>🏢 {r.customer.name}</span>}
+                              <span>✍️ {r.author?.name || t.authorFallback}</span>
+                            </div>
+                          </button>
+                          <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
           </div>
         ) : (
           /* Detailed list: table with full columns; horizontal scroll on small screens */
@@ -178,26 +205,48 @@ export default function VisitReportList() {
                 </tr>
               </thead>
               <tbody>
-                {visibleReports.map((r) => (
-                  <tr key={r.id} onClick={() => openReport(r.id)}
-                    className="cursor-pointer border-t border-slate-100 transition hover:bg-brand-50/40">
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{fmtDate(r.visitDate)}</td>
-                    <td className="min-w-[240px] px-4 py-3">
-                      <div className="font-semibold text-slate-800">{r.title}</div>
-                      {r.summary && <div className="mt-0.5 line-clamp-1 text-xs text-slate-500">{r.summary}</div>}
-                    </td>
-                    <td className="max-w-[220px] truncate whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.customer?.name || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.author?.name || t.authorFallback}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
-                    </td>
-                    {showActions && (
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                {groups.map((group, index) => {
+                  const headingId = `vr-customer-group-${index}`
+                  return (
+                    <Fragment key={group.key}>
+                      <tr className={`border-t bg-slate-50 ${group.unnamed ? 'border-dashed border-slate-300' : 'border-slate-200'}`}>
+                        <td colSpan={showActions ? 6 : 5} className="p-0">
+                          {/* Sticky to the left of the horizontal scroller so the
+                              customer name stays on screen on a phone. */}
+                          <div className="sticky left-0 z-10 w-max max-w-[calc(100vw-2rem)] bg-slate-50 px-4 py-2.5">
+                            <CustomerGroupHeader
+                              name={group.name}
+                              count={group.reports.length}
+                              unnamed={group.unnamed}
+                              lang={lang}
+                              headingId={headingId}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                      {group.reports.map((r) => (
+                        <tr key={r.id} onClick={() => openReport(r.id)}
+                          className="cursor-pointer border-t border-slate-100 transition hover:bg-brand-50/40">
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{fmtDate(r.visitDate)}</td>
+                          <td className="min-w-[240px] px-4 py-3">
+                            <div className="font-semibold text-slate-800">{r.title}</div>
+                            {r.summary && <div className="mt-0.5 line-clamp-1 text-xs text-slate-500">{r.summary}</div>}
+                          </td>
+                          <td className="max-w-[220px] truncate whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.customer?.name || '—'}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.author?.name || t.authorFallback}</td>
+                          <td className="whitespace-nowrap px-4 py-3">
+                            <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
+                          </td>
+                          {showActions && (
+                            <td className="whitespace-nowrap px-4 py-3 text-right">
+                              <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
