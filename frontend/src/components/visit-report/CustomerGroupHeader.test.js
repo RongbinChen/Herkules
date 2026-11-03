@@ -51,3 +51,31 @@ test('customer group headers follow the language toggle', async () => {
   assert.match(zhNone, /aria-label="共 3 篇"/)
   assert.doesNotMatch(zhNone, /No customer/)
 })
+
+test('customer group headers read as section titles, not body rows', async () => {
+  const { default: CustomerGroupHeader } = await loadJsxModule(path.join(here, 'CustomerGroupHeader.jsx'))
+
+  const named = renderToStaticMarkup(createElement(CustomerGroupHeader, {
+    name: 'COSCO',
+    count: 4,
+    lang: 'en',
+    sticky: true,
+  }))
+  assert.match(named, /text-base/)
+  assert.match(named, /font-bold/)
+  assert.match(named, /border-l-brand-600/)
+  assert.match(named, /bg-white/)
+  assert.match(named, /py-3\.5/)
+  assert.match(named, /bg-brand-100/)
+
+  const unnamed = renderToStaticMarkup(createElement(CustomerGroupHeader, {
+    unnamed: true,
+    count: 1,
+    lang: 'en',
+    sticky: true,
+  }))
+  assert.match(unnamed, /border-l-slate-400/)
+  assert.match(unnamed, /text-slate-600/)
+  assert.doesNotMatch(unnamed, /border-l-brand-600/)
+  assert.doesNotMatch(unnamed, /🏢/)
+})

@@ -1,18 +1,22 @@
 // Group visit reports for the Visit Reports page (cards and list).
 //
-// Customer groups are alphabetical by display name, not by the group's newest
-// visit. Field staff scan a long customer list by name; ordering groups by
-// recency would reshuffle the page every time a new visit is filed. Collation
-// follows the UI language (en, or zh-CN when the page is 中文) so Chinese names
-// sort by pinyin in a Chinese session. Comparison is case-insensitive and
-// numeric ("Plant 2" before "Plant 10"), but the group key itself is the
-// trimmed display name, so "COSCO" and "cosco" stay separate groups.
+// Customer groups are ordered by the newest visit in each group, latest first.
+// COSCO appears above Anhui when COSCO's most recent report is newer, even
+// though Anhui comes first alphabetically. Groups with the same latest date
+// fall back to display-name order. A group with no parseable date sorts after
+// every dated group, and undated groups break their own ties by name.
+// Collation follows the UI language (en, or zh-CN when the page is 中文) so
+// Chinese names sort by pinyin in a Chinese session. Comparison is
+// case-insensitive and numeric ("Plant 2" before "Plant 10"), but the group
+// key itself is the trimmed display name, so "COSCO" and "cosco" stay
+// separate groups.
 //
 // Inside a group, newest visit date comes first. Reports with no date, or a
 // date that does not parse, sit at the bottom in their original order.
 //
 // A report with no customer, or a blank/whitespace-only customer name, goes in
-// one trailing "no customer" group so it is not mixed in with named customers.
+// one "no customer" group so it is not mixed in with named customers. That
+// bucket is ordered by its own latest visit, the same way named groups are.
 
 const UNNAMED_KEY = '\0unnamed'
 
@@ -39,6 +43,35 @@ function compareNewestFirst(a, b) {
   return right - left
 }
 
+function latestVisitTime(reports) {
+  let latest = null
+  for (const report of reports) {
+    const time = visitTime(report)
+    if (time != null && (latest == null || time > latest)) latest = time
+  }
+  return latest
+}
+
+function compareGroupNames(a, b, locale) {
+  return a.name.localeCompare(b.name, locale, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+// Newest group first. Undated groups sink. Equal dates keep name order.
+function compareGroupsByLatestVisit(locale) {
+  return (a, b) => {
+    const left = latestVisitTime(a.reports)
+    const right = latestVisitTime(b.reports)
+    if (left == null && right == null) return compareGroupNames(a, b, locale)
+    if (left == null) return 1
+    if (right == null) return -1
+    if (left !== right) return right - left
+    return compareGroupNames(a, b, locale)
+  }
+}
+
 export function groupVisitReportsByCustomer(reports, locale = 'en') {
   const list = Array.isArray(reports) ? reports : []
   const buckets = new Map()
@@ -55,18 +88,11 @@ export function groupVisitReportsByCustomer(reports, locale = 'en') {
     bucket.reports.push(report)
   }
 
-  const named = []
-  const unnamed = []
+  const groups = []
   for (const bucket of buckets.values()) {
-    const group = { ...bucket, reports: [...bucket.reports].sort(compareNewestFirst) }
-    if (group.unnamed) unnamed.push(group)
-    else named.push(group)
+    groups.push({ ...bucket, reports: [...bucket.reports].sort(compareNewestFirst) })
   }
 
-  named.sort((a, b) => a.name.localeCompare(b.name, locale, {
-    numeric: true,
-    sensitivity: 'base',
-  }))
-
-  return [...named, ...unnamed]
+  groups.sort(compareGroupsByLatestVisit(locale))
+  return groups
 }
