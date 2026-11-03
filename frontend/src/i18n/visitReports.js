@@ -99,6 +99,11 @@ export const STRINGS = {
     colCustomer: 'Customer',
     colAuthor: 'Author',
     colStatus: 'Status',
+    colActions: 'Actions',
+    delete: 'Delete',
+    deleting: 'Deleting…',
+    deleteFailed: 'Failed to delete the report',
+    deleteConfirm: (title) => `Delete “${title}”? This cannot be undone.`,
   },
   zh: {
     pageTitle: '拜访报告',
@@ -184,6 +189,11 @@ export const STRINGS = {
     colCustomer: '客户',
     colAuthor: '作者',
     colStatus: '状态',
+    colActions: '操作',
+    delete: '删除',
+    deleting: '删除中…',
+    deleteFailed: '删除报告失败',
+    deleteConfirm: (title) => `删除「${title}」？此操作无法撤销。`,
   },
 }
 

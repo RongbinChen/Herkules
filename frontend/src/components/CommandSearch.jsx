@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { searchAPI, visitReportsAPI, assistantAPI } from '../api/api'
+import { useAuth } from '../context/AuthContext'
+import DeleteReportButton from './visit-report/DeleteReportButton'
+import { useVRLang } from '../i18n/visitReports'
 import { statusMeta, tierMeta } from '../constants/customer'
 import ChatThread from './chat/ChatThread'
 import ChatComposer from './chat/ChatComposer'
@@ -48,6 +51,8 @@ function parseInput(raw) {
 
 export default function CommandSearch() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const [reportLang] = useVRLang()
   const inputRef = useRef(null)
   const [raw, setRaw] = useState('')
   // Slash structured search
@@ -226,7 +231,15 @@ export default function CommandSearch() {
                     {results.type === 'report' && results.results.map((r) => (
                       <ReportCard key={r.id} r={r} onOpen={() => navigate(`/visit-reports/${r.id}`)}
                         onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)}
-                        onDownload={() => downloadReport(r)} downloading={downloading === r.id} />
+                        onDownload={() => downloadReport(r)} downloading={downloading === r.id}
+                        user={user}
+                        lang={reportLang}
+                        onDeleted={(deleted) => setResults((prev) => (
+                          prev && prev.type === 'report'
+                            ? { ...prev, results: prev.results.filter((row) => row.id !== deleted.id) }
+                            : prev
+                        ))}
+                      />
                     ))}
                   </div>
                 </>
@@ -316,17 +329,20 @@ function ProjectCard({ p, onOpen, onCustomer }) {
   )
 }
 
-function ReportCard({ r, onOpen, onCustomer, onDownload, downloading }) {
+function ReportCard({ r, onOpen, onCustomer, onDownload, downloading, user, lang, onDeleted }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-brand-300 hover:shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <button onClick={onOpen} className="min-w-0 flex-1 text-left font-semibold text-slate-800 hover:text-brand-600">
           {r.title}
         </button>
-        <button onClick={onDownload} disabled={downloading}
-          className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
-          {downloading ? '…' : '⬇ Word'}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
+          <button onClick={onDownload} disabled={downloading}
+            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
+            {downloading ? '…' : '⬇ Word'}
+          </button>
+        </div>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
         <span>{fmtDate(r.visitDate)}</span>

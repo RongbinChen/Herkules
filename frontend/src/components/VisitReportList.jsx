@@ -4,6 +4,8 @@ import { visitReportsAPI, customersAPI, usersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Card, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
+import DeleteReportButton from './visit-report/DeleteReportButton'
+import { showDeleteVisitReport } from '../utils/visitReportAccess'
 import { useVRLang, STRINGS } from '../i18n/visitReports'
 
 export default function VisitReportList() {
@@ -65,6 +67,8 @@ export default function VisitReportList() {
   const openReport = (id) => navigate(`/visit-reports/${id}`)
 
   const onSaved = () => { setModal(null); load() }
+  const onDeleted = (report) => setReports((rows) => rows.filter((row) => row.id !== report.id))
+  const showActions = visibleReports.some((r) => showDeleteVisitReport(r, user))
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -139,17 +143,22 @@ export default function VisitReportList() {
         ) : view === 'cards' ? (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {visibleReports.map((r) => (
-              <Card key={r.id} as="button" hover onClick={() => openReport(r.id)}
-                className="p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="min-w-0 truncate text-sm font-bold text-slate-800">{r.title}</h3>
-                  <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
-                </div>
-                {r.summary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{r.summary}</p>}
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                  <span>📅 {fmtDate(r.visitDate)}</span>
-                  {r.customer && <span>🏢 {r.customer.name}</span>}
-                  <span>✍️ {r.author?.name || t.authorFallback}</span>
+              <Card key={r.id} hover className="p-4 text-left">
+                <div className="flex items-start gap-2">
+                  <button type="button" onClick={() => openReport(r.id)}
+                    className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="min-w-0 truncate text-sm font-bold text-slate-800">{r.title}</h3>
+                      <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
+                    </div>
+                    {r.summary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{r.summary}</p>}
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                      <span>📅 {fmtDate(r.visitDate)}</span>
+                      {r.customer && <span>🏢 {r.customer.name}</span>}
+                      <span>✍️ {r.author?.name || t.authorFallback}</span>
+                    </div>
+                  </button>
+                  <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
                 </div>
               </Card>
             ))}
@@ -165,6 +174,7 @@ export default function VisitReportList() {
                   <th className="whitespace-nowrap px-4 py-2.5">{t.colCustomer}</th>
                   <th className="whitespace-nowrap px-4 py-2.5">{t.colAuthor}</th>
                   <th className="whitespace-nowrap px-4 py-2.5">{t.colStatus}</th>
+                  {showActions && <th className="whitespace-nowrap px-4 py-2.5 text-right">{t.colActions}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -181,6 +191,11 @@ export default function VisitReportList() {
                     <td className="whitespace-nowrap px-4 py-3">
                       <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
                     </td>
+                    {showActions && (
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <DeleteReportButton report={r} user={user} lang={lang} onDeleted={onDeleted} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

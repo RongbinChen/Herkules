@@ -10,6 +10,11 @@ import { structureVisitReport, summarizeVisitReport } from '../services/visitRep
 import { ocrImage, isGeminiConfigured } from '../services/gemini.js';
 import { reportToMarkdown } from '../services/visitReportExport.js';
 import { normalizeCompany } from '../services/companyName.js';
+import {
+  canDeleteVisitReport,
+  handleDeleteVisitReport,
+  withCanDelete,
+} from '../services/visitReportAccess.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -44,7 +49,9 @@ router.get('/', async (req, res) => {
         author: { select: { id: true, name: true } },
       },
     });
-    res.json(reports);
+    // Read visibility stays "every logged-in user". canDelete is the only
+    // addition: the uploader or an admin, same rule the DELETE route enforces.
+    res.json(reports.map((report) => withCanDelete(report, req.user)));
   } catch (error) {
     console.error('Error listing visit reports:', error);
     res.status(500).json({ error: 'Failed to list visit reports' });
@@ -107,7 +114,7 @@ router.get('/:id', async (req, res) => {
       },
     });
     if (!report) return res.status(404).json({ error: 'Not found' });
-    res.json({ ...report, canEdit: canEdit(report, req.user) });
+    res.json({ ...report, canEdit: canEdit(report, req.user), canDelete: canDeleteVisitReport(report, req.user) });
   } catch (error) {
     console.error('Error fetching visit report:', error);
     res.status(500).json({ error: 'Failed to fetch visit report' });
@@ -371,18 +378,16 @@ router.get('/:id/export', async (req, res) => {
   }
 });
 
-// ── Delete (author or admin) ────────────────────────────────────────────────────
-router.delete('/:id', async (req, res) => {
-  try {
-    const existing = await prisma.visitReport.findUnique({ where: { id: parseInt(req.params.id) } });
-    if (!existing) return res.status(404).json({ error: 'Not found' });
-    if (!canEdit(existing, req.user)) return res.status(403).json({ error: '只有创建人或管理员可删除' });
-    await prisma.visitReport.delete({ where: { id: existing.id } });
-    res.status(204).end();
-  } catch (error) {
-    console.error('Error deleting visit report:', error);
-    res.status(500).json({ error: 'Failed to delete visit report' });
-  }
-});
+// ── Delete (uploader or admin) ──────────────────────────────────────────────────
+// Same lookup as GET, so a report you cannot see is a 404 and a report you can
+// read but did not upload is a 403. Hard-delete: the row goes, attachment
+// metadata goes with it, and any storedName blob under VISIT_REPORT_STORAGE_DIR
+// is unlinked. Reminders stay; their visitReportId is set null by the schema.
+router.delete('/:id', (req, res) => handleDeleteVisitReport(req, res, {
+  findReport: (id) => prisma.visitReport.findUnique({ where: { id } }),
+  removeRow: (reportId) => prisma.visitReport.delete({ where: { id: reportId } }),
+  unlinkFile: (file) => unlink(file),
+  storageRoot: process.env.VISIT_REPORT_STORAGE_DIR || null,
+}));
 
 export default router;

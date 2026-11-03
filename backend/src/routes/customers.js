@@ -5,6 +5,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { randomBytes } from 'crypto';
 import { geocodeAddress } from '../services/geocode.js';
 import { visibleWhere } from './hotProjects.js';
+import { withCanDelete } from '../services/visitReportAccess.js';
 
 const router = express.Router();
 
@@ -218,6 +219,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    // Same delete flag as the visit-report list. Reading the customer is unchanged.
+    customer.visitReports = (customer.visitReports || []).map((report) => withCanDelete(report, req.user));
     // Resolve each linked thread into a project card.
     const resolved = await resolveThreads(customer.projectLinks.map((l) => l.threadKey));
     customer.projects = customer.projectLinks.map((l) => ({
