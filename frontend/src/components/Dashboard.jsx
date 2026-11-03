@@ -5,6 +5,7 @@ import { eventsAPI, usersAPI } from '../api/api'
 import { listProjectThreads } from '../api/chinabidding'
 import { Button, Card } from './ui'
 import UserManagementModal from './UserManagementModal'
+import { visitReportRemindLocation } from '../utils/remindAnchor'
 
 // Lifecycle stage → compact badge for the Watching panel.
 const WATCH_STAGES = {
@@ -241,7 +242,7 @@ function ReminderRow({ ev, onResolved }) {
                   type="button"
                   role="menuitem"
                   disabled={busy}
-                  onClick={() => { closeMenu(); navigate(`/visit-reports/${ev.visitReportId}`) }}
+                  onClick={() => { closeMenu(); navigate(visitReportRemindLocation(ev)) }}
                   className={menuItem}
                 >
                   Open visit report

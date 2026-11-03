@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/utils/halfDay.test.js src/utils/calendarEvents.test.js src/utils/visitReportAccess.test.js src/utils/visitReportGroups.test.js src/components/Calendar.blankPage.test.js src/components/visit-report/DeleteReportButton.test.js src/components/visit-report/CustomerGroupHeader.test.js"
+    "test": "node --test src/utils/halfDay.test.js src/utils/calendarEvents.test.js src/utils/visitReportAccess.test.js src/utils/visitReportGroups.test.js src/utils/remindAnchor.test.js src/components/Calendar.blankPage.test.js src/components/visit-report/DeleteReportButton.test.js src/components/visit-report/CustomerGroupHeader.test.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
