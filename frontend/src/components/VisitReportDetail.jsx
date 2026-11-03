@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Badge } from './ui'
@@ -7,13 +7,16 @@ import VisitReportModal from './VisitReportModal'
 import { useVRLang, STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 import SectionBody from './visit-report/SectionBody'
 import DeleteReportButton from './visit-report/DeleteReportButton'
+import { remindAnchors } from '../utils/remindAnchor'
 
 // Full-page article view for one visit report — the modal stays for create/edit,
 // but reading happens here with room to breathe (esp. on desktop).
 export default function VisitReportDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
+  const [flashId, setFlashId] = useState(null)
   const [lang, setLang] = useVRLang()
   const t = STRINGS[lang]
   const SECTIONS = SECTIONS_I18N.map((s) => ({ key: s.key, label: s[lang] }))
@@ -37,6 +40,38 @@ export default function VisitReportDetail() {
   }
   useEffect(() => { load() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [id])
   useEffect(() => { customersAPI.getAll().then((r) => setCustomers(r.data)).catch(() => {}) }, [])
+
+  const content = report?.content || {}
+  const targets = Array.isArray(content.targets) ? content.targets.filter((tg) => tg?.title) : []
+  const { ids: remindIds, focusId } = remindAnchors(targets, location)
+
+  // Hash is applied after the report renders. An unknown id leaves the page
+  // where it opened (the top) — scrollIntoView only runs when the row exists.
+  useEffect(() => {
+    if (!focusId) {
+      setFlashId(null)
+      return undefined
+    }
+    let cancelled = false
+    const raf = requestAnimationFrame(() => {
+      if (cancelled) return
+      const el = document.getElementById(focusId)
+      if (!el) return
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+      // `start` keeps the row on screen even when it is the last block on the page.
+      el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+      setFlashId(focusId)
+      el.focus?.({ preventScroll: true })
+    })
+    const timer = window.setTimeout(() => {
+      if (!cancelled) setFlashId((cur) => (cur === focusId ? null : cur))
+    }, 2400)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [focusId, report?.id])
 
   const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-GB') : '—')
 
@@ -84,15 +119,13 @@ export default function VisitReportDetail() {
     )
   }
 
-  const content = report.content || {}
   const meta = content.meta || {}
   const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
   const tables = Array.isArray(content.tables) ? content.tables : []
-  const targets = Array.isArray(content.targets) ? content.targets.filter((tg) => tg?.title) : []
   const canEdit = report.canEdit || report.author?.id === user?.id || user?.isAdmin
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className={`min-h-screen bg-slate-50 ${focusId ? 'pb-[80vh]' : ''}`}>
       <div className="mx-auto max-w-3xl px-4 py-6">
         {/* Toolbar */}
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
@@ -180,7 +213,12 @@ export default function VisitReportDetail() {
               <h2 className="mb-2 border-l-[3px] border-rose-400 pl-2.5 text-sm font-bold text-slate-700">⏰ {t.targetsTitle}</h2>
               <ul className="space-y-1.5">
                 {targets.map((tg, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                  <li
+                    key={i}
+                    id={remindIds[i] || undefined}
+                    tabIndex={remindIds[i] ? -1 : undefined}
+                    className={`flex scroll-mt-24 items-start gap-2 rounded-lg text-sm text-slate-700 outline-none transition-colors duration-700 ${flashId === remindIds[i] ? 'bg-amber-100 ring-2 ring-amber-300' : ''}`}
+                  >
                     <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${tg.date ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-400'}`}>
                       {tg.date || t.targetNoDate}
                     </span>

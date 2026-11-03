@@ -275,6 +275,8 @@ router.post('/', async (req, res) => {
         const start = new Date(`${tg.date}T09:00:00+08:00`);
         await prisma.event.create({
           data: {
+            // No target id exists on content.targets[]. This title is how the
+            // dashboard deep-links back to the row (`⏰ ` + title, 180 chars).
             title: `⏰ ${String(tg.title).slice(0, 180)}`,
             description: [`From visit report: ${title}`, tg.note ? `“${tg.note}”` : null].filter(Boolean).join('\n'),
             start,
