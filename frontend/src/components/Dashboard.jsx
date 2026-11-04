@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { Fragment, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { eventsAPI, usersAPI } from '../api/api'
@@ -141,10 +141,12 @@ const MODULES = [
   },
 ]
 
-// One due reminder. The title, customer, and date read as the item; Done is the
-// only always-visible action. Postpone, no-timeframe, delete, and the visit
-// report live in one menu so a phone row is not a second toolbar.
-function ReminderRow({ ev, onResolved }) {
+// One due reminder. The title, customer, and date read as the item, and Done
+// stays the primary action. Postpone, no-timeframe, delete, and the visit
+// report are the same list in both layouts: inline ghost buttons from md up
+// (there is room beside the title), and a single overflow menu below that so
+// a phone row does not become a second toolbar.
+export function ReminderRow({ ev, onResolved }) {
   const navigate = useNavigate()
   const menuBtnRef = useRef(null)
   const [busy, setBusy] = useState(false)
@@ -163,6 +165,35 @@ function ReminderRow({ ev, onResolved }) {
       window.alert('Action failed, please retry')
     } finally { setBusy(false) }
   }
+
+  // One source for both presentations. Inline clicks and menu clicks call the
+  // same handlers; the menu only closes itself first.
+  const actions = [
+    ...(ev.visitReportId ? [{
+      key: 'report',
+      label: 'Open visit report',
+      run: () => navigate(visitReportRemindLocation(ev)),
+    }] : []),
+    {
+      key: 'postpone',
+      label: 'Postpone',
+      run: () => setPickDate(true),
+    },
+    {
+      key: 'hold',
+      label: 'No timeframe',
+      title: 'Keep the reminder without a due date — it leaves this list but stays on record (on hold)',
+      run: () => resolve('hold'),
+    },
+    {
+      key: 'delete',
+      label: 'Delete',
+      danger: true,
+      run: () => {
+        if (window.confirm('Delete this reminder?')) resolve('delete')
+      },
+    },
+  ]
 
   useLayoutEffect(() => {
     if (!menuOpen) return undefined
@@ -187,10 +218,15 @@ function ReminderRow({ ev, onResolved }) {
     setMenuUp(false)
   }
   const menuItem = 'flex min-h-9 w-full items-center px-3 text-left text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50'
+  const menuDanger = 'flex min-h-9 w-full items-center px-3 text-left text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50'
+  // Quiet text buttons. Done stays the only filled control; Delete keeps the
+  // same danger color it has in the menu.
+  const inlineBtn = 'inline-flex h-8 items-center whitespace-nowrap rounded-lg px-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:opacity-50'
+  const inlineDanger = 'inline-flex h-8 items-center whitespace-nowrap rounded-lg px-2 text-xs font-medium text-red-600 transition hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:opacity-50'
 
   return (
     <li className={`relative py-3 ${menuOpen ? 'z-30' : ''}`}>
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-2 md:items-center md:gap-3">
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-slate-800" title={ev.title}>
             {ev.title}
@@ -203,12 +239,28 @@ function ReminderRow({ ev, onResolved }) {
             {overdue && <span className="font-medium text-rose-600"> · overdue</span>}
           </p>
         </div>
+        <div className="hidden shrink-0 items-center gap-0.5 md:flex" role="group" aria-label="Reminder actions">
+          {actions.map((action) => (
+            <Fragment key={action.key}>
+              {action.danger && <span className="mx-1.5 h-4 w-px shrink-0 bg-slate-200" aria-hidden="true" />}
+              <button
+                type="button"
+                disabled={busy}
+                title={action.title}
+                onClick={action.run}
+                className={action.danger ? inlineDanger : inlineBtn}
+              >
+                {action.label}
+              </button>
+            </Fragment>
+          ))}
+        </div>
         <div className="relative flex shrink-0 items-center gap-1">
           <button
             type="button"
             disabled={busy}
             onClick={() => resolve('done')}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:opacity-50"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:opacity-50"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -223,7 +275,7 @@ function ReminderRow({ ev, onResolved }) {
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:opacity-50 ${menuOpen ? 'bg-slate-100 text-slate-800' : ''}`}
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:opacity-50 md:hidden ${menuOpen ? 'bg-slate-100 text-slate-800' : ''}`}
           >
             <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
               <circle cx="4.5" cy="10" r="1.35" />
@@ -235,56 +287,28 @@ function ReminderRow({ ev, onResolved }) {
             <div
               role="menu"
               aria-label="Reminder actions"
-              className={`absolute right-0 z-30 w-52 max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl ${menuUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+              className={`absolute right-0 z-30 w-52 max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl md:hidden ${menuUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
             >
-              {ev.visitReportId && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={busy}
-                  onClick={() => { closeMenu(); navigate(visitReportRemindLocation(ev)) }}
-                  className={menuItem}
-                >
-                  Open visit report
-                </button>
-              )}
-              <button
-                type="button"
-                role="menuitem"
-                disabled={busy}
-                onClick={() => { closeMenu(); setPickDate(true) }}
-                className={menuItem}
-              >
-                Postpone
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={busy}
-                title="Keep the reminder without a due date — it leaves this list but stays on record (on hold)"
-                onClick={() => { closeMenu(); resolve('hold') }}
-                className={menuItem}
-              >
-                No timeframe
-              </button>
-              <div className="my-1 border-t border-slate-100" />
-              <button
-                type="button"
-                role="menuitem"
-                disabled={busy}
-                onClick={() => {
-                  closeMenu()
-                  if (window.confirm('Delete this reminder?')) resolve('delete')
-                }}
-                className="flex min-h-9 w-full items-center px-3 text-left text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-              >
-                Delete
-              </button>
+              {actions.map((action) => (
+                <Fragment key={action.key}>
+                  {action.danger && <div className="my-1 border-t border-slate-100" />}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={busy}
+                    title={action.title}
+                    onClick={() => { closeMenu(); action.run() }}
+                    className={action.danger ? menuDanger : menuItem}
+                  >
+                    {action.label}
+                  </button>
+                </Fragment>
+              ))}
             </div>
           )}
         </div>
       </div>
-      {menuOpen && <div className="fixed inset-0 z-20" onClick={closeMenu} />}
+      {menuOpen && <div className="fixed inset-0 z-20 md:hidden" onClick={closeMenu} />}
       {pickDate && (
         <label className="mt-2.5 flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500">
           <span className="shrink-0">Postpone to</span>
