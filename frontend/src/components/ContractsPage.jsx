@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { Badge, Button, Card, Input, Select } from './ui'
 import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
+import { invalidateOpenOrders } from '../utils/openOrdersRefresh'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
 import TranscriptionToggle from './TranscriptionToggle'
@@ -133,6 +134,9 @@ export default function ContractsPage() {
     try {
       const { data } = await contractsAPI.patch(f.id, { closed: !f.closedAt }, unlock.token)
       setItems((prev) => prev.map((row) => (row.id === f.id ? { ...row, closedAt: data.closedAt } : row)))
+      // Follow-up may already be showing this contract. closedAt is what drops
+      // it from the yellow list; that screen has to fetch again to see it.
+      invalidateOpenOrders()
       setError('')
     } catch (e) {
       if (!handleAuthError(e)) setError(e.response?.data?.error || 'Failed to update')
