@@ -139,6 +139,15 @@ export const followUpsAPI = {
   // about a minute of GPU, hence the long timeout — bounded, so a wedged DGX
   // does not hold the dialog open forever.
   prefill: (fileIds, team, token) => api.post('/followups/prefill', { fileIds, team }, withUnlock(token, { timeout: 180000 })),
+  // Commercial contracts with no live follow-up. Same PIN as the files: the
+  // names are what the lock withholds.
+  openOrders: (token) => api.get('/followups/open-orders', withUnlock(token)),
+  // Proposed milestones. Cached summaries return at once; a contract the
+  // summary could not date spends a DGX read, hence the same long timeout as
+  // prefill. Apply is separate and does not call the model.
+  suggestTimeline: (fileIds, token) => api.post('/followups/timeline', { fileIds }, withUnlock(token, { timeout: 180000 })),
+  suggestRecordTimeline: (id, token) => api.post(`/followups/${id}/timeline`, {}, withUnlock(token, { timeout: 180000 })),
+  applyTimeline: (id, proposals, replace = false) => api.post(`/followups/${id}/timeline/apply`, { proposals, replace }),
 }
 
 export const agentsAPI = {

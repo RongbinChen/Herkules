@@ -358,6 +358,274 @@ function PrefillNote({ state, values, onUse }) {
   )
 }
 
+// Proposed milestones from the linked contracts. Nothing is written until Apply
+// (on a record) or until the create dialog is submitted with the box checked.
+// Rows that already have a date are shown struck as "kept" and the server
+// skips them unless Replace is checked.
+function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPlan, onApplied, onLock }) {
+  const [busy, setBusy] = useState(false)
+  const [proposals, setProposals] = useState(null)
+  const [sources, setSources] = useState([])
+  const [baseDate, setBaseDate] = useState(null)
+  const [error, setError] = useState('')
+  const [replace, setReplace] = useState(false)
+  const [include, setInclude] = useState(true)
+  const [applying, setApplying] = useState(false)
+  const [result, setResult] = useState(null)
+  const meta = useMemo(() => new Map((catalogue || []).map((c) => [c.kind, c])), [catalogue])
+  const key = (fileIds || []).slice().sort((a, b) => a - b).join(',')
+  const ready = Boolean(token) && (fileIds || []).length > 0
+
+  useEffect(() => {
+    setProposals(null)
+    setSources([])
+    setBaseDate(null)
+    setResult(null)
+    setError('')
+    onPlan?.([])
+  }, [key, followUpId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const load = async () => {
+    if (!ready) return
+    setBusy(true)
+    setError('')
+    setResult(null)
+    try {
+      const { data } = followUpId
+        ? await followUpsAPI.suggestRecordTimeline(followUpId, token)
+        : await followUpsAPI.suggestTimeline(fileIds, token)
+      const list = data.proposals || []
+      setProposals(list)
+      setSources(data.sources || [])
+      setBaseDate(data.baseDate || null)
+      onPlan?.(include ? list : [])
+    } catch (e) {
+      if (e.response?.status === 401) onLock?.()
+      setError(e.response?.status === 401
+        ? 'The contract session expired — enter the PIN again.'
+        : 'Could not read a timeline from the contracts.')
+      setProposals(null)
+      onPlan?.([])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const apply = async () => {
+    setApplying(true)
+    setError('')
+    try {
+      const { data } = await followUpsAPI.applyTimeline(followUpId, proposals || [], replace)
+      setResult(data)
+      await onApplied?.()
+    } catch (e) {
+      setError(e.response?.data?.error || 'Could not apply the timeline')
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const offline = sources.some((s) => s.reason === 'dgx-offline')
+  const unread = sources.filter((s) => s.reason === 'not-read')
+  const byExisting = new Map((existing || []).map((m) => [m.kind, m]))
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <Button size="sm" variant="secondary" disabled={!ready || busy} onClick={load}>
+          {busy ? 'Reading the contracts…' : 'Fill timeline from contract'}
+        </Button>
+        <p className="text-[11px] text-slate-500">
+          {busy
+            ? 'A contract nobody has summarised yet takes about a minute.'
+            : 'Suggests letter-of-credit, payment and delivery dates. Nothing is written until you apply.'}
+        </p>
+      </div>
+      {error && <p className="mt-2 text-[11px] text-rose-600">{error}</p>}
+      {proposals && (
+        <div className="mt-3">
+          {baseDate && (
+            <p className="text-[11px] text-slate-500">Dates are counted from the signed date {baseDate}.</p>
+          )}
+          {proposals.length === 0 ? (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {offline
+                ? 'DGX is offline, and the saved summary did not contain dates. Fill the timeline by hand.'
+                : 'No dates in these contracts could be turned into milestones. Fill the timeline by hand.'}
+            </p>
+          ) : (
+            <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto">
+              {proposals.map((p) => {
+                const item = meta.get(p.kind)
+                const row = byExisting.get(p.kind)
+                const filled = Boolean(row && (row.dueDate || row.doneAt))
+                const skip = Boolean(followUpId) && filled && !replace
+                return (
+                  <li key={p.kind} className={`rounded-xl border px-3 py-2 ${skip ? 'border-slate-100 bg-white/60' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+                      <span className={`text-sm font-medium ${skip ? 'text-slate-400' : 'text-slate-800'}`}>{item?.en || p.kind}</span>
+                      {item?.zh && <span className="text-[11px] text-slate-300">{item.zh}</span>}
+                      {p.docType && <Badge tone={docTypeMeta(p.docType).tone}>{docTypeMeta(p.docType).short}</Badge>}
+                      <span className={`text-xs font-semibold tabular-nums sm:ml-auto ${p.dueDate ? 'text-slate-700' : 'text-slate-400'}`}>
+                        {p.dueDate || 'No date'}
+                      </span>
+                      {p.done && <span className="text-[10px] font-semibold text-emerald-600">Will mark done</span>}
+                      {skip && <span className="text-[10px] font-semibold text-slate-400">Kept — already filled</span>}
+                    </div>
+                    {p.notes && <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{p.notes}</p>}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {proposals.length > 0 && (
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              {followUpId ? (
+                <>
+                  <label className="flex items-center gap-2 text-[11px] text-slate-600">
+                    <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600" />
+                    Replace dates already filled
+                  </label>
+                  <Button size="sm" disabled={applying} onClick={apply}>
+                    {applying ? 'Applying…' : replace ? 'Replace timeline' : 'Apply to empty milestones'}
+                  </Button>
+                </>
+              ) : (
+                <label className="flex items-center gap-2 text-[11px] text-slate-600">
+                  <input type="checkbox" checked={include}
+                    onChange={(e) => {
+                      setInclude(e.target.checked)
+                      onPlan?.(e.target.checked ? proposals : [])
+                    }}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600" />
+                  Apply these dates when creating
+                </label>
+              )}
+            </div>
+          )}
+          {offline && proposals.length > 0 && (
+            <p className="mt-2 text-[11px] text-amber-700">DGX is offline. These dates come from the saved summary only.</p>
+          )}
+          {!offline && unread.length > 0 && (
+            <p className="mt-2 text-[11px] text-slate-400">{unread.length} file(s) are still being transcribed.</p>
+          )}
+          {result && (
+            <p className="mt-2 text-[11px] text-emerald-700">
+              Applied {result.applied?.length || 0}.
+              {result.skipped?.length > 0 ? ` Skipped ${result.skipped.length} that already had a date.` : ''}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Commercial contracts (and a technical agreement filed with them) that no
+// live follow-up is tracking. The names stay behind the team PIN.
+function OpenOrders({ onCreate }) {
+  const { user } = useAuth()
+  const { unlock, team, setTeam, doUnlock, busy, error: pinError, configured, lock } = useContractUnlock(
+    user?.team === 'WRC' ? 'WRC' : 'HRC',
+  )
+  const [pin, setPin] = useState('')
+  const [orders, setOrders] = useState(null)
+  const [error, setError] = useState('')
+  const token = unlock?.token || null
+
+  useEffect(() => {
+    if (!token) { setOrders(null); return }
+    let ignore = false
+    setError('')
+    followUpsAPI.openOrders(token)
+      .then(({ data }) => { if (!ignore) setOrders(data.orders || []) })
+      .catch((e) => {
+        if (ignore) return
+        if (e.response?.status === 401) { lock(); setError('') }
+        else { setError('Could not list contracts without a follow-up.'); setOrders(null) }
+      })
+    return () => { ignore = true }
+  }, [token, lock])
+
+  return (
+    <section className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <h2 className="text-sm font-bold text-slate-800">Contracts without a follow-up</h2>
+        {orders && <span className="text-[11px] font-semibold text-amber-700">{orders.length}</span>}
+      </div>
+      <p className="mt-0.5 text-[11px] text-slate-500">
+        Commercial contracts already on file that are not linked to a live or completed follow-up.
+      </p>
+
+      {!unlock ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="inline-block w-24">
+            <Select value={team} onChange={(e) => setTeam(e.target.value)} className="bg-white py-1 text-xs">
+              {['WRC', 'HRC'].map((t) => (
+                <option key={t} value={t} disabled={Array.isArray(configured) && !configured.includes(t)}>{t}</option>
+              ))}
+            </Select>
+          </span>
+          <span className="inline-block w-32">
+            <Input type="password" value={pin} placeholder="Team PIN" className="bg-white py-1 text-xs"
+              onChange={(e) => setPin(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doUnlock(pin) } }} />
+          </span>
+          <Button size="sm" variant="secondary" disabled={busy || !pin.trim()} onClick={() => doUnlock(pin)}>
+            {busy ? 'Unlocking…' : 'Unlock'}
+          </Button>
+          {pinError && <span className="text-[11px] text-rose-600">{pinError}</span>}
+        </div>
+      ) : error ? (
+        <p className="mt-3 text-[11px] text-rose-600">{error}</p>
+      ) : orders === null ? (
+        <p className="mt-3 text-[11px] text-slate-400">Looking through {unlock.team} contracts…</p>
+      ) : orders.length === 0 ? (
+        <p className="mt-3 text-[11px] text-slate-500">Every readable {unlock.team} commercial contract already has a follow-up.</p>
+      ) : (
+        <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+          {orders.map((order) => (
+            <li key={order.fileIds.join('-')} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-slate-800">{order.title}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                    {order.customerName && <span>{order.customerName}</span>}
+                    {order.orderNo && <span>#{order.orderNo}</span>}
+                    {order.komNo && order.komNo !== order.orderNo && <span>Kom. {order.komNo}</span>}
+                    {order.signedDate && <span>Signed {order.signedDate}</span>}
+                    <span className="rounded border border-slate-200 px-1 py-px text-[10px] font-semibold text-slate-500">{order.team}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {order.files.map((f) => (
+                      <span key={f.id} className="inline-flex max-w-full items-center gap-1">
+                        <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+                        <span className="max-w-[14rem] truncate text-[10px] text-slate-500" title={f.filename}>{displayFilename(f.filename)}</span>
+                      </span>
+                    ))}
+                  </div>
+                  {order.files.some((f) => !f.summarised) && (
+                    <p className="mt-1 text-[10px] text-slate-400">Not summarised yet — creating the follow-up will read it.</p>
+                  )}
+                  {order.alsoOpen?.length > 0 && (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      This customer already has a live follow-up ({order.alsoOpen.map((f) => f.title).join(', ')}). Create another only if this contract is a different order.
+                    </p>
+                  )}
+                </div>
+                <Button size="sm" className="w-full shrink-0 sm:w-auto" onClick={() => onCreate(order)}>
+                  Create follow-up
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 // ── Contract picker ──────────────────────────────────────────────────────────
 // Contract files live behind the contracts module's team PIN. This is a link
 // into that module, not a second way in: the same unlock, the same team scope,
@@ -494,7 +762,7 @@ function ContractPicker({ customerId, selected, onChange, note }) {
 // ── Linked contracts on the detail page ──────────────────────────────────────
 // Locked, this says how many are attached and nothing else: the count is
 // ordinary project data, the filenames are not.
-function LinkedContracts({ f, onChanged, onPatch }) {
+function LinkedContracts({ f, catalogue, onChanged, onPatch }) {
   const { user } = useAuth()
   const { unlock, team, setTeam, doUnlock, busy, error, configured, lock } = useContractUnlock(
     user?.team === 'WRC' ? 'WRC' : 'HRC',
@@ -634,6 +902,17 @@ function LinkedContracts({ f, onChanged, onPatch }) {
           )}
         </ul>
       )}
+      {unlock && !editing && f.canManage && (files?.length ?? 0) > 0 && (
+        <TimelineSuggest
+          token={unlock.token}
+          fileIds={(files || []).map((x) => x.id)}
+          followUpId={f.id}
+          catalogue={catalogue}
+          existing={f.milestones}
+          onApplied={onChanged}
+          onLock={lock}
+        />
+      )}
     </div>
   )
 }
@@ -743,13 +1022,14 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 
       {/* Contracts — placed above the timeline because it is where the
           timeline's dates come from, not an appendix to them. */}
-      <LinkedContracts f={f} onChanged={refresh} onPatch={patch} />
+      <LinkedContracts f={f} catalogue={catalogue} onChanged={refresh} onPatch={patch} />
 
       {/* Milestones */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-bold text-slate-800">Milestones</h3>
         <p className="mt-0.5 text-[11px] text-slate-400">
-          A milestone only reminds once it has a date. Mail goes out on each of its lead days,
+          A milestone only reminds once it has a date. Use “Fill timeline from contract”
+          above to suggest them, or type a date here. Mail goes out on each of its lead days,
           then every 3 days once overdue, until it is ticked off — to the owner,
           copied to Stefan Elze, blind copied to Rongbin Chen.
         </p>
@@ -843,17 +1123,25 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 }
 
 // ── New record modal ─────────────────────────────────────────────────────────
-function NewModal({ users, onClose, onCreated }) {
+function NewModal({ users, catalogue, seed, onClose, onCreated }) {
   const { user } = useAuth()
   // The team owns the record's contract value, so it is chosen up front rather
   // than inferred later. Defaults to the creator's own team; someone in neither
   // (team OTHER) starts on HRC and picks.
   const [form, setForm] = useState({
-    title: '', orderNo: '', customerId: '', customerName: '', machineType: '', contractValue: '',
-    ownerId: '', notes: '', team: ['WRC', 'HRC'].includes(user?.team) ? user.team : 'HRC',
+    title: seed?.title || '',
+    orderNo: seed?.orderNo || '',
+    customerId: seed?.customerId || '',
+    customerName: seed?.customerName || '',
+    machineType: seed?.machineType || '',
+    contractValue: '',
+    ownerId: '',
+    notes: '',
+    team: seed?.team || (['WRC', 'HRC'].includes(user?.team) ? user.team : 'HRC'),
   })
   const [customers, setCustomers] = useState([])
-  const [contractIds, setContractIds] = useState([])
+  const [contractIds, setContractIds] = useState(seed?.fileIds || [])
+  const [timelinePlan, setTimelinePlan] = useState([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   // Re-read on every render rather than held in state: the picker writes the
@@ -876,7 +1164,7 @@ function NewModal({ users, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-3 sm:p-6" onClick={onClose}>
-      <div className="my-6 w-full max-w-lg rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="my-6 w-full max-w-2xl rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-bold text-slate-800">New follow-up</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
@@ -969,7 +1257,17 @@ function NewModal({ users, onClose, onCreated }) {
             values={form}
             onUse={(field, value) => setForm((s) => ({ ...s, [field]: value }))}
           />
-          <p className="text-[11px] text-slate-400">Fill the milestone dates on the record itself, straight from the contracts — a date is what starts the reminders.</p>
+          {contractIds.length > 0 && (
+            <TimelineSuggest
+              token={unlockToken}
+              fileIds={contractIds}
+              catalogue={catalogue}
+              onPlan={setTimelinePlan}
+            />
+          )}
+          {contractIds.length === 0 && (
+            <p className="text-[11px] text-slate-400">Pick the commercial contract to suggest the execution dates. A date is what starts the reminders.</p>
+          )}
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
@@ -988,6 +1286,10 @@ function NewModal({ users, onClose, onCreated }) {
                   await followUpsAPI.linkContracts(data.id, contractIds, u.token)
                     .catch(() => window.alert('The record was created, but the contracts were not linked — attach them on the record itself.'))
                 }
+              }
+              if (timelinePlan.length) {
+                await followUpsAPI.applyTimeline(data.id, timelinePlan, false)
+                  .catch(() => window.alert('The record was created, but the milestone dates were not applied — use “Fill timeline from contract” on the record.'))
               }
               onCreated(data.id)
             } catch (e) { setErr(e.response?.data?.error || 'Could not create'); setSaving(false) }
@@ -1012,6 +1314,12 @@ export default function ProjectFollowUps() {
   const [qDebounced, setQDebounced] = useState('')
   const [mine, setMine] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
+  const [seed, setSeed] = useState(null)
+  // The create dialog and this list are on screen together, and each keeps its
+  // own copy of the contract unlock. Bumping the key when the dialog closes
+  // makes the list re-read the token the dialog just stored.
+  const [ordersKey, setOrdersKey] = useState(0)
+  const closeNew = () => { setNewOpen(false); setSeed(null); setOrdersKey((n) => n + 1) }
 
   useEffect(() => {
     followUpsAPI.catalogue().then((r) => setCatalogue(r.data)).catch(() => {})
@@ -1050,7 +1358,7 @@ export default function ProjectFollowUps() {
               className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
               Dashboard
             </button>
-            <Button onClick={() => setNewOpen(true)}>＋ New</Button>
+            <Button onClick={() => { setSeed(null); setNewOpen(true) }}>＋ New</Button>
           </div>
         </div>
 
@@ -1064,6 +1372,7 @@ export default function ProjectFollowUps() {
           />
         ) : (
           <>
+            <OpenOrders key={ordersKey} onCreate={(order) => { setSeed(order); setNewOpen(true) }} />
             <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-1.5">
                 <button onClick={() => setStatus('')}
@@ -1096,7 +1405,7 @@ export default function ProjectFollowUps() {
               <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
             ) : rows.length === 0 ? (
               <div className="py-16 text-center text-sm text-slate-400">
-                No follow-ups yet. Open one for a won order and put its letter-of-credit and payment dates in.
+                No follow-ups yet. Create one from a contract above, or open one for a won order and put its dates in.
               </div>
             ) : (
               <ul className="space-y-3">
@@ -1108,8 +1417,9 @@ export default function ProjectFollowUps() {
       </div>
 
       {newOpen && (
-        <NewModal users={users} onClose={() => setNewOpen(false)}
-          onCreated={(newId) => { setNewOpen(false); navigate(`/followups/${newId}`) }} />
+        <NewModal users={users} catalogue={catalogue} seed={seed}
+          onClose={closeNew}
+          onCreated={(newId) => { closeNew(); navigate(`/followups/${newId}`) }} />
       )}
     </div>
   )

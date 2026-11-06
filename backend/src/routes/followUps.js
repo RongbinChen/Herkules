@@ -15,6 +15,9 @@ import {
 } from '../services/followUps.js';
 import { milestoneReminderMail } from '../services/followUpMail.js';
 import { summariseContractFile, DgxOfflineError } from '../services/contractSummary.js';
+import { suggestTimelineForFiles } from '../services/contractTimeline.js';
+import { isIsoDate, planMilestoneApply, redactMoney } from '../services/contractTimelineFormat.js';
+import { selectOpenOrders } from '../services/openOrders.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -82,6 +85,48 @@ function nextMilestone(f) {
 
 // ── The milestone catalogue, so the client never hardcodes the enum ──────────
 router.get('/catalogue', (_req, res) => res.json(MILESTONES));
+
+// ── Contracts that look like an order and have no live follow-up ─────────────
+// Registered before /:id, or "open-orders" is parsed as a follow-up id.
+// Filenames and contract numbers sit behind the same team PIN as the files
+// themselves. The contract value is not on this payload at all — it belongs
+// on the follow-up, where the team check already strips it.
+router.get('/open-orders', requireUnlock, async (req, res) => {
+  try {
+    const files = await prisma.contractFile.findMany({
+      where: { team: req.contractTeam, docType: { in: ['COMMERCIAL', 'TECHNICAL'] } },
+      select: {
+        id: true, filename: true, docType: true, note: true, customerId: true,
+        ocrStatus: true, summary: true, team: true,
+        customer: { select: { name: true } },
+        followUps: { select: { id: true, status: true, orderNo: true, title: true, customerId: true } },
+      },
+    });
+    const customerIds = [...new Set(files.map((f) => f.customerId))];
+    const followUps = customerIds.length
+      ? await prisma.projectFollowUp.findMany({
+        where: { customerId: { in: customerIds }, status: { in: ['ACTIVE', 'ON_HOLD', 'COMPLETED'] } },
+        select: { id: true, title: true, orderNo: true, customerId: true, status: true },
+      })
+      : [];
+    const orders = selectOpenOrders(files.map((f) => ({
+      id: f.id,
+      filename: f.filename,
+      docType: f.docType,
+      note: f.note,
+      customerId: f.customerId,
+      customerName: f.customer?.name || '',
+      ocrStatus: f.ocrStatus,
+      summary: f.summary,
+      team: f.team,
+      linkedFollowUps: f.followUps,
+    })), followUps);
+    res.json({ orders });
+  } catch (error) {
+    console.error('Error listing open orders:', error);
+    res.status(500).json({ error: 'Failed to list open orders' });
+  }
+});
 
 // ── List ─────────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -511,6 +556,119 @@ router.post('/prefill', requireUnlock, async (req, res) => {
   } catch (error) {
     console.error('Error prefilling from contracts:', error);
     res.status(500).json({ error: 'Failed to read the contracts' });
+  }
+});
+
+// ── Suggested milestones from the linked contracts ───────────────────────────
+// A proposal, not a write. The create dialog has no follow-up id yet, so it
+// posts the file ids; the record posts its own id and the server reads the
+// files linked under this unlock. Apply is a separate call and only fills
+// milestones that do not already have a date, unless replace is explicit.
+function sanitizeProposals(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw.slice(0, 24)) {
+    const kind = String(p?.kind || '');
+    if (!MILESTONE_KINDS.has(kind)) continue;
+    const dueDate = isIsoDate(p?.dueDate) ? p.dueDate : null;
+    const notes = p?.notes ? redactMoney(String(p.notes)).replace(/\s+/g, ' ').trim().slice(0, 240) : '';
+    const label = p?.label ? String(p.label).replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+    out.push({
+      kind,
+      dueDate,
+      notes: notes || null,
+      label: label || null,
+      // Only the signature may arrive already done. A payment in the past is
+      // overdue until someone confirms the money landed.
+      done: p?.done === true && kind === 'CONTRACT_SIGNED',
+    });
+  }
+  return out;
+}
+
+async function respondTimeline(req, res, fileIds) {
+  const result = await suggestTimelineForFiles({
+    fileIds,
+    team: req.contractTeam,
+    today: chinaDay(),
+    refresh: req.body?.refresh === true,
+  });
+  res.json(result);
+}
+
+router.post('/timeline', requireUnlock, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.fileIds) ? req.body.fileIds : [];
+    await respondTimeline(req, res, ids);
+  } catch (error) {
+    console.error('Error suggesting timeline:', error);
+    res.status(500).json({ error: 'Failed to read the contracts' });
+  }
+});
+
+router.post('/:id/timeline', requireUnlock, async (req, res) => {
+  try {
+    const f = await prisma.projectFollowUp.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: {
+        id: true,
+        contractFiles: { where: { team: req.contractTeam }, select: { id: true } },
+      },
+    });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    await respondTimeline(req, res, f.contractFiles.map((c) => c.id));
+  } catch (error) {
+    console.error('Error suggesting timeline:', error);
+    res.status(500).json({ error: 'Failed to read the contracts' });
+  }
+});
+
+router.post('/:id/timeline/apply', async (req, res) => {
+  try {
+    const followUpId = parseInt(req.params.id);
+    const f = await prisma.projectFollowUp.findUnique({
+      where: { id: followUpId },
+      include: { milestones: true },
+    });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
+
+    const proposals = sanitizeProposals(req.body?.proposals);
+    const actions = planMilestoneApply(f.milestones, proposals, { replace: req.body?.replace === true });
+    const applied = [];
+    const skipped = [];
+    for (const action of actions) {
+      if (action.action === 'skip') {
+        skipped.push({ kind: action.kind, reason: action.reason });
+        continue;
+      }
+      const data = {};
+      if (action.data.dueDate) {
+        data.dueDate = new Date(`${action.data.dueDate}T00:00:00.000Z`);
+        data.lastRemindedOn = null;
+      }
+      if (action.data.label) data.label = action.data.label;
+      if (action.data.notes) data.notes = action.data.notes;
+      if (action.data.done) data.doneAt = new Date();
+      if (action.action === 'create') {
+        await prisma.followUpMilestone.create({
+          data: {
+            followUpId,
+            kind: action.kind,
+            remindDaysBefore: MILESTONE_BY_KIND.get(action.kind)?.lead ?? [14, 7, 1],
+            ...data,
+          },
+        });
+      } else {
+        const existing = f.milestones.find((m) => m.kind === action.kind);
+        await prisma.followUpMilestone.update({ where: { id: existing.id }, data });
+      }
+      applied.push({ kind: action.kind, action: action.action });
+    }
+    res.json({ applied, skipped });
+  } catch (error) {
+    console.error('Error applying timeline:', error);
+    res.status(500).json({ error: 'Failed to apply the timeline' });
   }
 });
 
