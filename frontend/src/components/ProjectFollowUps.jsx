@@ -18,6 +18,7 @@ import { format } from 'date-fns'
 import { followUpsAPI, usersAPI, customersAPI, contractsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import useContractUnlock from '../hooks/useContractUnlock'
+import { watchOpenOrdersRefresh } from '../utils/openOrdersRefresh'
 import { docTypeMeta, displayFilename } from '../constants/contract'
 import { Button, Input, Select, Textarea, Badge } from './ui'
 
@@ -527,6 +528,10 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
 // on the Contracts page, is execution finished and stays off this list.
 // The names stay behind the team PIN. The status tabs below are a different
 // list: they filter ProjectFollowUp rows that already exist.
+//
+// Fetched when this section mounts (every visit to the list), and again when
+// the user comes back to the tab or a contract is marked closed / reopened.
+// The unlock token does not change for those, so it cannot be the only trigger.
 function OpenOrders({ onCreate }) {
   const { user } = useAuth()
   const { unlock, team, setTeam, doUnlock, busy, error: pinError, configured, lock } = useContractUnlock(
@@ -538,17 +543,51 @@ function OpenOrders({ onCreate }) {
   const token = unlock?.token || null
 
   useEffect(() => {
-    if (!token) { setOrders(null); return }
+    if (!token) { setOrders(null); return undefined }
     let ignore = false
+    let seen = false
+    let req = 0
+    let timer = 0
     setError('')
-    followUpsAPI.openOrders(token)
-      .then(({ data }) => { if (!ignore) setOrders(data.orders || []) })
-      .catch((e) => {
-        if (ignore) return
-        if (e.response?.status === 401) { lock(); setError('') }
-        else { setError('Could not list contracts without a follow-up.'); setOrders(null) }
-      })
-    return () => { ignore = true }
+
+    const load = () => {
+      const mine = ++req
+      followUpsAPI.openOrders(token)
+        .then(({ data }) => {
+          if (ignore || mine !== req) return
+          seen = true
+          setError('')
+          setOrders(data.orders || [])
+        })
+        .catch((e) => {
+          if (ignore || mine !== req) return
+          if (e.response?.status === 401) { lock(); setError(''); return }
+          // A refresh that fails leaves the list already on screen. Wiping it
+          // would hide every candidate because one request blipped.
+          if (seen) return
+          setError('Could not list contracts without a follow-up.')
+          setOrders(null)
+        })
+    }
+
+    // Focus and visibility often arrive together when the tab is shown again.
+    const schedule = () => {
+      if (ignore) return
+      clearTimeout(timer)
+      timer = setTimeout(() => { if (!ignore) load() }, 50)
+    }
+
+    load()
+    const unwatch = watchOpenOrdersRefresh((reason) => {
+      if (ignore) return
+      if (reason === 'invalidate' || reason === 'storage') load()
+      else schedule()
+    })
+    return () => {
+      ignore = true
+      clearTimeout(timer)
+      unwatch()
+    }
   }, [token, lock])
 
   return (
