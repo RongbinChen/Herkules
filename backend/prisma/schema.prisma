@@ -759,6 +759,12 @@ model ContractFile {
   timeline   Json?
   timelineAt DateTime?
 
+  // Set when someone marks this file finished on the Contracts page. Null means
+  // they have not. This is not HotProject.closedAt — that timestamp is when a
+  // deal was won, which is when a follow-up should start, not when execution
+  // ended. Nullable so adding the column does not rewrite existing rows.
+  closedAt   DateTime?
+
   @@index([customerId])
   @@index([team])
   @@index([ocrStatus])

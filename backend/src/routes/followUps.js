@@ -91,13 +91,16 @@ router.get('/catalogue', (_req, res) => res.json(MILESTONES));
 // Filenames and contract numbers sit behind the same team PIN as the files
 // themselves. The contract value is not on this payload at all — it belongs
 // on the follow-up, where the team check already strips it.
+// FAC rows are loaded only so a final-acceptance certificate can retire the
+// matching commercial order. closedAt does the same when someone marked the
+// commercial finished on the Contracts page.
 router.get('/open-orders', requireUnlock, async (req, res) => {
   try {
     const files = await prisma.contractFile.findMany({
-      where: { team: req.contractTeam, docType: { in: ['COMMERCIAL', 'TECHNICAL'] } },
+      where: { team: req.contractTeam, docType: { in: ['COMMERCIAL', 'TECHNICAL', 'FAC'] } },
       select: {
         id: true, filename: true, docType: true, note: true, customerId: true,
-        ocrStatus: true, summary: true, team: true,
+        ocrStatus: true, summary: true, team: true, closedAt: true,
         customer: { select: { name: true } },
         followUps: { select: { id: true, status: true, orderNo: true, title: true, customerId: true } },
       },
@@ -119,6 +122,7 @@ router.get('/open-orders', requireUnlock, async (req, res) => {
       ocrStatus: f.ocrStatus,
       summary: f.summary,
       team: f.team,
+      closedAt: f.closedAt,
       linkedFollowUps: f.followUps,
     })), followUps);
     res.json({ orders });

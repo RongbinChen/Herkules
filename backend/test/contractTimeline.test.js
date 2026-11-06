@@ -272,6 +272,153 @@ test('open orders are readable commercial contracts with no live or completed fo
   assert.equal(orders.some((o) => o.fileIds.includes(5)), false);
 });
 
+test('a matching FAC or a closed commercial is finished and stays off the list', () => {
+  const summary = (obj) => ({ fields: fields(obj) });
+  const row = (over) => ({
+    filename: `f${over.id}.pdf`,
+    note: null,
+    ocrStatus: 'DONE',
+    team: 'WRC',
+    summary: null,
+    linkedFollowUps: [],
+    closedAt: null,
+    ...over,
+  });
+  const files = [
+    row({
+      id: 1, docType: 'COMMERCIAL', customerId: 1, customerName: 'Anshan',
+      summary: summary({ contractNo: 'GD-WS-01-2512', signedDate: '2024-06-01' }),
+    }),
+    row({
+      id: 2, docType: 'FAC', customerId: 1, customerName: 'Anshan',
+      summary: summary({ contractNo: 'GD-WS-01-2512' }),
+    }),
+    row({
+      id: 3, docType: 'COMMERCIAL', customerId: 1, customerName: 'Anshan',
+      note: 'Kom. No.: 30-4410',
+      summary: summary({ contractNo: 'OPEN-4410', signedDate: '1 March 2026' }),
+    }),
+    row({
+      id: 4, docType: 'TECHNICAL', customerId: 1, customerName: 'Anshan',
+      summary: summary({ contractNo: 'OPEN-4410', machine: 'WS 450' }),
+    }),
+    row({
+      id: 5, docType: 'FAC', customerId: 2, customerName: 'Other Mill',
+      summary: summary({ contractNo: 'SOME-OTHER-ORDER' }),
+    }),
+    row({
+      id: 6, docType: 'COMMERCIAL', customerId: 2, customerName: 'Other Mill',
+      summary: summary({ contractNo: 'KEEP-ME', signedDate: '2025-01-15' }),
+    }),
+    row({
+      id: 7, docType: 'COMMERCIAL', customerId: 3, customerName: 'Marked',
+      summary: summary({ contractNo: 'DONE-1', signedDate: '2023-05-01' }),
+      closedAt: '2026-10-01T00:00:00.000Z',
+    }),
+    row({
+      id: 8, docType: 'TECHNICAL', customerId: 3, customerName: 'Marked',
+      summary: summary({ contractNo: 'DONE-1', machine: 'ProfiGrind' }),
+    }),
+    row({
+      id: 9, docType: 'COMMERCIAL', customerId: 4, customerName: 'Unread but open',
+      ocrStatus: 'DONE', summary: null,
+    }),
+    row({
+      id: 10, docType: 'COMMERCIAL', customerId: 5, customerName: 'Closed before summary',
+      ocrStatus: 'DONE', summary: null, closedAt: new Date('2026-09-01'),
+    }),
+    row({
+      id: 11, docType: 'COMMERCIAL', customerId: 6, customerName: 'Same number, other mill',
+      summary: summary({ contractNo: 'GD-WS-01-2512', signedDate: '2022-02-02' }),
+    }),
+    row({
+      id: 12, docType: 'COMMERCIAL', customerId: 1, customerName: 'Anshan',
+      summary: summary({ contractNo: 'OPEN-4410' }),
+    }),
+    row({
+      id: 13, docType: 'FAC', customerId: 1, customerName: 'Anshan', filename: 'fac-note.pdf',
+      ocrStatus: 'PENDING', summary: null, note: 'Kom. No.: 30-8800',
+    }),
+    row({
+      id: 14, docType: 'COMMERCIAL', customerId: 1, customerName: 'Anshan',
+      summary: summary({ komNo: '30-8800', signedDate: '2021-01-01' }),
+    }),
+    row({
+      id: 15, docType: 'COMMERCIAL', customerId: 7, customerName: 'Queued',
+      ocrStatus: 'PENDING', summary: null, closedAt: '2026-08-01T00:00:00.000Z',
+      note: 'Kom. No.: 30-1500',
+    }),
+    row({
+      id: 16, docType: 'TECHNICAL', customerId: 7, customerName: 'Queued',
+      summary: summary({ contractNo: '30-1500', machine: 'WS 180' }),
+    }),
+    row({
+      id: 17, docType: 'COMMERCIAL', customerId: 3, customerName: 'Marked',
+      summary: summary({ contractNo: 'DONE-1', signedDate: '2023-05-01' }),
+    }),
+  ];
+  const orders = selectOpenOrders(files, []);
+  const ids = orders.map((o) => o.fileIds.slice().sort((a, b) => a - b).join(','));
+  assert.deepEqual(ids.sort(), ['11', '3,4,12', '6', '9']);
+  assert.equal(orders.some((o) => o.fileIds.includes(1)), false);
+  assert.equal(orders.some((o) => o.fileIds.includes(7)), false);
+  assert.equal(orders.some((o) => o.fileIds.includes(8)), false);
+  assert.equal(orders.some((o) => o.fileIds.includes(10)), false);
+  assert.equal(orders.some((o) => o.fileIds.includes(14)), false);
+  assert.equal(orders.some((o) => o.fileIds.includes(16)), false);
+  assert.equal(orders.some((o) => o.fileIds.includes(17)), false);
+  const stillOpen = orders.find((o) => o.fileIds.includes(3));
+  assert.equal(stillOpen.machineType, 'WS 450');
+  assert.equal(stillOpen.files.some((f) => !f.summarised), false);
+  const notSummarised = orders.find((o) => o.fileIds.includes(9));
+  assert.equal(notSummarised.files[0].summarised, false);
+});
+
+test('open orders sort by signed date descending, undated last', () => {
+  const summary = (obj) => ({ fields: fields(obj) });
+  const row = (over) => ({
+    filename: `f${over.id}.pdf`,
+    docType: 'COMMERCIAL',
+    note: null,
+    ocrStatus: 'DONE',
+    team: 'HRC',
+    linkedFollowUps: [],
+    closedAt: null,
+    ...over,
+  });
+  const files = [
+    row({
+      id: 30, customerId: 1, customerName: 'Older',
+      summary: summary({ contractNo: 'A', signedDate: '2020-01-01' }),
+    }),
+    row({
+      id: 10, customerId: 2, customerName: 'Newer',
+      summary: summary({ contractNo: 'B', signedDate: '15 March 2026' }),
+    }),
+    row({
+      id: 40, customerId: 3, customerName: 'Mango',
+      summary: summary({ contractNo: 'C', signedDate: 'March 2026' }),
+    }),
+    row({
+      id: 21, customerId: 4, customerName: 'Apple',
+      summary: summary({ contractNo: 'D' }),
+    }),
+    row({
+      id: 20, customerId: 4, customerName: 'Apple',
+      summary: summary({ contractNo: 'E' }),
+    }),
+    row({
+      id: 50, customerId: 5, customerName: 'Newer',
+      summary: summary({ contractNo: 'F', signedDate: '2026-03-15' }),
+    }),
+  ];
+  const orders = selectOpenOrders(files, []);
+  assert.deepEqual(orders.map((o) => o.fileIds[0]), [10, 50, 30, 20, 21, 40]);
+  assert.deepEqual(orders.map((o) => o.signedDate), [
+    '2026-03-15', '2026-03-15', '2020-01-01', null, null, null,
+  ]);
+});
+
 test('timeline kinds stay aligned with the catalogue and the schema', () => {
   const follow = readFileSync(new URL('../src/services/followUps.js', import.meta.url), 'utf8');
   const catalogue = [...follow.matchAll(/kind:\s*'([A-Z_]+)'/g)].map((m) => m[1]);
@@ -290,4 +437,11 @@ test('open-orders is registered before the :id route', () => {
   assert.ok(openAt !== -1 && openAt < idAt);
   assert.match(src, /suggestTimelineForFiles/);
   assert.match(src, /planMilestoneApply/);
+  assert.match(src, /'COMMERCIAL', 'TECHNICAL', 'FAC'/);
+  assert.match(src, /closedAt: true/);
+  assert.match(src, /closedAt: f\.closedAt/);
+
+  const contracts = readFileSync(new URL('../src/routes/contracts.js', import.meta.url), 'utf8');
+  assert.match(contracts, /closed:\s*z\.boolean\(\)/);
+  assert.match(contracts, /closedAt:\s*true/);
 });

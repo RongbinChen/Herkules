@@ -6,6 +6,12 @@
 // number or Kom. No. on the same customer. CANCELLED does not cover — the
 // order was dropped from the list and may need opening again. Completed does
 // cover: the work was tracked, it is not "open".
+//
+// An order is also finished, and stays off this list, in two other cases.
+// The same customer already has an FAC file whose contract number or Kom. No.
+// matches (orderIdsMatch / identityOf). Or the commercial file itself has
+// closedAt set — someone marked it finished on the Contracts page. Hot Project
+// closedAt is not consulted: that date is when the deal was won.
 import { komFromNote } from './contractSummaryFormat.js';
 import { parseDate } from './contractTimelineFormat.js';
 
@@ -122,12 +128,17 @@ function buildOrder(files, followUps) {
   };
 }
 
+function hasSignedDate(order) {
+  return typeof order.signedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(order.signedDate);
+}
+
 /**
  * files: contract rows already limited to one team. Each needs
  * { id, filename, docType, note, customerId, customerName, ocrStatus, summary, team,
- *   linkedFollowUps: [{ status }] }.
+ *   closedAt, linkedFollowUps: [{ status }] }.
  * followUps: ACTIVE / ON_HOLD / COMPLETED follow-ups for those customers.
- * Returns orders with no contract value and no page text.
+ * Returns orders with no contract value and no page text, newest signed date
+ * first. Orders with no signed day sort last, by customer name then file id.
  */
 export function selectOpenOrders(files, followUps) {
   const readable = (files || []).filter((f) => (
@@ -137,42 +148,69 @@ export function selectOpenOrders(files, followUps) {
   ));
   const commercial = readable.filter((f) => f.docType === 'COMMERCIAL');
   const technical = readable.filter((f) => f.docType === 'TECHNICAL');
-  const customersWithCommercial = new Set(commercial.map((f) => f.customerId));
+  // An FAC closes the matching order whether or not it has been transcribed:
+  // the contract number or Kom. No. may already be on the note. A commercial
+  // marked closed does too, even while it is still queued for OCR — otherwise
+  // its technical agreement would resurface as a new open order.
+  const facFiles = (files || []).filter((f) => f && f.docType === 'FAC');
+  const closedCommercials = (files || []).filter((f) => f && f.docType === 'COMMERCIAL' && f.closedAt);
+  const customersWithCommercial = new Set([
+    ...commercial.map((f) => f.customerId),
+    ...closedCommercials.map((f) => f.customerId),
+  ]);
 
   const groups = new Map();
   for (const f of commercial) {
-    if (isCovered(f, followUps)) continue;
+    if (f.closedAt || isCovered(f, followUps)) continue;
     const key = groupKey(f);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(f);
   }
 
-  for (const t of technical) {
-    if (isCovered(t, followUps)) continue;
-    const ids = identityOf(t);
-    const key = groupKey(t);
-    if (groups.has(key)) { groups.get(key).push(t); continue; }
+  // Technical agreements join the commercial they belong to. An FAC, and a
+  // commercial someone has marked closed, join the same way and then retire
+  // that order — they never become a candidate of their own. A closed
+  // commercial still counts above, so its technical agreement does not surface
+  // as a new order once the commercial is gone.
+  function placeCompanion(file, { canStandAlone }) {
+    if (canStandAlone && isCovered(file, followUps)) return;
+    const ids = identityOf(file);
+    const key = groupKey(file);
+    if (groups.has(key)) { groups.get(key).push(file); return; }
     const owned = [...groups.entries()].find(([, list]) => (
-      list[0].customerId === t.customerId
+      list[0].customerId === file.customerId
       && ids.length > 0
       && list.some((f) => identityOf(f).some((a) => ids.some((b) => orderIdsMatch(a, b))))
     ));
-    if (owned) { owned[1].push(t); continue; }
-    const custGroups = [...groups.values()].filter((list) => list[0].customerId === t.customerId);
-    if (!ids.length && custGroups.length === 1) { custGroups[0].push(t); continue; }
-    if (!customersWithCommercial.has(t.customerId)) {
+    if (owned) { owned[1].push(file); return; }
+    const custGroups = [...groups.values()].filter((list) => list[0].customerId === file.customerId);
+    if (!ids.length && custGroups.length === 1) {
+      if (canStandAlone) custGroups[0].push(file);
+      return;
+    }
+    if (canStandAlone && !customersWithCommercial.has(file.customerId)) {
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(t);
+      groups.get(key).push(file);
     }
   }
 
+  for (const t of technical) placeCompanion(t, { canStandAlone: true });
+  for (const f of closedCommercials) placeCompanion(f, { canStandAlone: false });
+  for (const fac of facFiles) placeCompanion(fac, { canStandAlone: false });
+
   const orders = [...groups.values()]
-    .filter((list) => list.length)
+    .filter((list) => list.length && !list.some((f) => (
+      f.docType === 'FAC' || (f.docType === 'COMMERCIAL' && f.closedAt)
+    )))
     .map((list) => buildOrder(list, followUps));
-  orders.sort((a, b) => (
-    String(a.customerName).localeCompare(String(b.customerName))
-    || String(a.orderNo || '').localeCompare(String(b.orderNo || ''))
-    || a.fileIds[0] - b.fileIds[0]
-  ));
+  orders.sort((a, b) => {
+    const aDated = hasSignedDate(a);
+    const bDated = hasSignedDate(b);
+    if (aDated !== bDated) return aDated ? -1 : 1;
+    if (aDated && a.signedDate !== b.signedDate) return a.signedDate < b.signedDate ? 1 : -1;
+    const byName = String(a.customerName).localeCompare(String(b.customerName));
+    if (byName) return byName;
+    return (a.fileIds[0] || 0) - (b.fileIds[0] || 0);
+  });
   return orders.slice(0, 100);
 }
