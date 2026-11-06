@@ -200,6 +200,7 @@ router.get('/pin-status', authenticateToken, async (req, res) => {
 
 const FILE_SELECT = {
   id: true, docType: true, filename: true, mimeType: true, size: true, note: true, createdAt: true,
+  closedAt: true,
   // Whether the file has been read yet. Surfaced so the UI can say "still
   // being read" instead of letting the assistant answer from nothing and look
   // like it is wrong about the contract.
@@ -365,13 +366,20 @@ router.get('/customers', authenticateToken, requireUnlock, async (req, res) => {
   }
 });
 
-// Fix a wrong category or note. Picking the wrong type on upload is a certainty,
-// and without this the only remedy is delete-and-reupload, which throws away the
-// upload record and timestamp.
+// Fix a wrong category or note, or mark the file's order finished. Picking the
+// wrong type on upload is a certainty, and without this the only remedy is
+// delete-and-reupload, which throws away the upload record and timestamp.
+// `closed` is separate from that edit: anyone holding the team PIN may say the
+// order is finished or reopen it. The uploader-or-admin rule stays on the file
+// itself.
 const patchSchema = z.object({
   docType: docTypeSchema.optional(),
   note: z.string().trim().max(500).nullable().optional(),
-}).refine((v) => v.docType !== undefined || v.note !== undefined, { message: 'Nothing to update' });
+  closed: z.boolean().optional(),
+}).refine(
+  (v) => v.docType !== undefined || v.note !== undefined || v.closed !== undefined,
+  { message: 'Nothing to update' },
+);
 
 router.patch('/files/:id', authenticateToken, requireUnlock, async (req, res) => {
   const parsed = patchSchema.safeParse(req.body);
@@ -383,12 +391,17 @@ router.patch('/files/:id', authenticateToken, requireUnlock, async (req, res) =>
     // 404 rather than 403 across teams, matching download and delete: whether a
     // given id exists is itself something the other team should not learn.
     if (!file || file.team !== req.contractTeam) return res.status(404).json({ error: 'Not found' });
-    if (req.user.isAdmin !== true && file.uploadedById !== req.user.userId) {
+    const editsMeta = parsed.data.docType !== undefined || parsed.data.note !== undefined;
+    if (editsMeta && req.user.isAdmin !== true && file.uploadedById !== req.user.userId) {
       return res.status(403).json({ error: 'Only the uploader or an admin can edit this file' });
     }
     const data = {};
     if (parsed.data.docType !== undefined) data.docType = parsed.data.docType;
     if (parsed.data.note !== undefined) data.note = parsed.data.note || null;
+    // Keep the original timestamp when it is marked closed again, so the date
+    // stays "when it was closed" rather than "when the button was last pressed".
+    if (parsed.data.closed === true) data.closedAt = file.closedAt || new Date();
+    if (parsed.data.closed === false) data.closedAt = null;
     const updated = await prisma.contractFile.update({ where: { id: file.id }, data, select: FILE_SELECT });
     res.json(updated);
   } catch (error) {

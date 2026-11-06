@@ -37,6 +37,7 @@ export default function ContractsPage() {
   // Prefer the customer picked from a group header; fall back to the URL filter.
   const [uploadCustomer, setUploadCustomer] = useState(null)
   const [editing, setEditing] = useState(null) // the file being re-categorised
+  const [closingId, setClosingId] = useState(null)
   // Grouping is a view over the rows already loaded, not a server query. With a
   // customer filter active there is only ever one group, so it turns itself off.
   const [grouped, setGrouped] = useState(true)
@@ -127,6 +128,19 @@ export default function ContractsPage() {
     }
   }
 
+  async function toggleClosed(f) {
+    setClosingId(f.id)
+    try {
+      const { data } = await contractsAPI.patch(f.id, { closed: !f.closedAt }, unlock.token)
+      setItems((prev) => prev.map((row) => (row.id === f.id ? { ...row, closedAt: data.closedAt } : row)))
+      setError('')
+    } catch (e) {
+      if (!handleAuthError(e)) setError(e.response?.data?.error || 'Failed to update')
+    } finally {
+      setClosingId(null)
+    }
+  }
+
   async function doDelete(f) {
     if (!window.confirm(`Delete “${f.filename}”? This cannot be undone.`)) return
     try {
@@ -195,6 +209,9 @@ export default function ContractsPage() {
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <Badge tone={docTypeMeta(f.docType).tone}>{docTypeMeta(f.docType).short}</Badge>
+            {f.closedAt && (
+              <Badge tone="slate" title={`Marked closed ${format(new Date(f.closedAt), 'yyyy-MM-dd')}`}>Closed</Badge>
+            )}
             {/* Only shown while a file is unreadable — a green tick on every
                 row once the backlog clears would be noise. */}
             {ocrNeedsBadge(f.ocrStatus) && (
@@ -250,6 +267,18 @@ export default function ContractsPage() {
               {openSummary.has(f.id) ? 'Hide' : 'Summary'}
               {f.summaryAt && !openSummary.has(f.id) && <span className="ml-1 text-emerald-500">•</span>}
             </button>
+            {f.docType === 'COMMERCIAL' && (
+              <button
+                onClick={() => toggleClosed(f)}
+                disabled={closingId === f.id}
+                title={f.closedAt
+                  ? 'Put this contract back on the follow-up candidate list'
+                  : 'Execution is finished — hide it from Contracts without a follow-up'}
+                className="font-semibold text-slate-500 transition hover:text-brand-600 disabled:opacity-40"
+              >
+                {f.closedAt ? 'Reopen' : 'Mark closed'}
+              </button>
+            )}
             {canEdit(f) && (
               <>
                 <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="font-semibold text-slate-500 transition hover:text-brand-600">Edit</button>

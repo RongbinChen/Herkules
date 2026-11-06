@@ -523,7 +523,10 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
 }
 
 // Commercial contracts (and a technical agreement filed with them) that no
-// live follow-up is tracking. The names stay behind the team PIN.
+// live follow-up is tracking. A matching FAC, or a commercial marked closed
+// on the Contracts page, is execution finished and stays off this list.
+// The names stay behind the team PIN. The status tabs below are a different
+// list: they filter ProjectFollowUp rows that already exist.
 function OpenOrders({ onCreate }) {
   const { user } = useAuth()
   const { unlock, team, setTeam, doUnlock, busy, error: pinError, configured, lock } = useContractUnlock(
@@ -555,7 +558,8 @@ function OpenOrders({ onCreate }) {
         {orders && <span className="text-[11px] font-semibold text-amber-700">{orders.length}</span>}
       </div>
       <p className="mt-0.5 text-[11px] text-slate-500">
-        Commercial contracts already on file that are not linked to a live or completed follow-up.
+        Commercial contracts still in execution that are not linked to a live or completed follow-up.
+        A matching FAC, or a contract marked closed on Contracts, stays off this list.
       </p>
 
       {!unlock ? (
@@ -582,7 +586,7 @@ function OpenOrders({ onCreate }) {
       ) : orders === null ? (
         <p className="mt-3 text-[11px] text-slate-400">Looking through {unlock.team} contracts…</p>
       ) : orders.length === 0 ? (
-        <p className="mt-3 text-[11px] text-slate-500">Every readable {unlock.team} commercial contract already has a follow-up.</p>
+        <p className="mt-3 text-[11px] text-slate-500">Every readable {unlock.team} commercial contract is already followed up or finished.</p>
       ) : (
         <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
           {orders.map((order) => (
