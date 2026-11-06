@@ -750,6 +750,15 @@ model ContractFile {
   summary   Json?
   summaryAt DateTime?
 
+  // Suggested execution timeline (payment / L/C / delivery / warranty), cached
+  // the same way as the key-terms summary: producing it is a DGX read, and the
+  // answer does not change unless the file does. Nullable — "never asked" is
+  // not the same as "asked and the contract names no dates". The follow-up
+  // module reads this to propose milestones; it does not write them until a
+  // person applies the proposal.
+  timeline   Json?
+  timelineAt DateTime?
+
   @@index([customerId])
   @@index([team])
   @@index([ocrStatus])
