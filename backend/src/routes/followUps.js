@@ -9,6 +9,8 @@ import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireUnlock } from './contracts.js';
+import { readContractUnlock } from '../services/contractUnlock.js';
+import { maySuggestContractValue, presentContractValue, viewerMaySeeValue } from '../services/followUpValue.js';
 import {
   MILESTONES, MILESTONE_BY_KIND, MILESTONE_KINDS, chinaDay, reminderDue,
   reminderRecipients,
@@ -26,32 +28,24 @@ router.use(authenticateToken);
 const canManage = (f, user) =>
   user.isAdmin || f.ownerId === user.userId || f.createdById === user.userId;
 
-// The contract value is commercial in confidence: the team running the order,
-// and admins. Everyone else gets a record with that one field removed — not
-// hidden by the client, absent from the payload, because a field the browser
-// was told to hide is a field anyone can read.
+// The contract value is commercial in confidence. Membership is the first
+// gate: the team running the order, and admins. Everyone else gets a record
+// with that one field removed — not hidden by the client, absent from the
+// payload, because a field the browser was told to hide is a field anyone
+// can read. Membership is not the last gate. The same team PIN that unlocks
+// contract files has to be entered as well, including by a teammate and by
+// an admin. A locked payload may say that a value exists, so the page can
+// offer the PIN, and it does not include the number or the currency text.
 //
 // Team membership, not a list of names: people move between teams and join the
 // company, and a name list would be wrong the first time either happens.
 // req.user carries no team (the JWT predates the field), so it is read once per
-// request from the user row.
-const TEAMS_MATCH = (userTeam, projectTeam) => userTeam === projectTeam;
-
+// request from the user row. The unlock header is read the same way: null
+// means the price stays locked, not that the follow-up itself is withheld.
 async function valueViewer(user) {
   if (user.isAdmin) return { isAdmin: true, team: null };
   const row = await prisma.user.findUnique({ where: { id: user.userId }, select: { team: true } });
   return { isAdmin: false, team: row?.team ?? null };
-}
-
-const canSeeValue = (viewer, projectTeam) => viewer.isAdmin || TEAMS_MATCH(viewer.team, projectTeam);
-
-// Returns the record as this viewer may see it. `contractValueHidden` is set
-// rather than left silent so the UI can say "restricted" instead of "empty" —
-// the two mean very different things to someone chasing a number.
-function redactValue(row, viewer) {
-  if (canSeeValue(viewer, row.team)) return row;
-  const { contractValue, ...rest } = row;
-  return { ...rest, contractValue: null, contractValueHidden: true };
 }
 
 const FULL_INCLUDE = {
@@ -91,7 +85,7 @@ router.get('/catalogue', (_req, res) => res.json(MILESTONES));
 // Registered before /:id, or "open-orders" is parsed as a follow-up id.
 // Filenames and contract numbers sit behind the same team PIN as the files
 // themselves. The contract value is not on this payload at all — it belongs
-// on the follow-up, where the team check already strips it.
+// on the follow-up, and even there the team PIN withholds it until unlock.
 // FAC rows are loaded only so a final-acceptance certificate can retire the
 // matching commercial order. closedAt does the same when someone marked the
 // commercial finished on the Contracts page.
@@ -163,12 +157,13 @@ router.get('/', async (req, res) => {
       },
     });
     const viewer = await valueViewer(req.user);
+    const unlockTeam = readContractUnlock(req);
     const today = chinaDay();
     const decorated = rows.map((f) => {
       const next = nextMilestone(f);
       const open = f.milestones.filter((m) => !m.doneAt && m.dueDate);
       return {
-        ...redactValue(f, viewer),
+        ...presentContractValue(f, viewer, unlockTeam),
         next: next && { ...next, meta: MILESTONE_BY_KIND.get(next.kind) || null },
         // Anything already past its date and not ticked off. This is the number
         // the list sorts on — an order with a slipped date outranks one that is
@@ -194,10 +189,10 @@ router.get('/', async (req, res) => {
 
 // ── Dashboard strip ──────────────────────────────────────────────────────────
 // Registered before /:id so "dashboard" is not parsed as a follow-up id.
-// Slim on purpose. The list payload is every live order, including the
-// contract value for anyone on that team, and its milestones name no owner.
-// The home page needs a date, a name, and who watches the next node — not
-// the money, and not the contract files the team PIN exists to withhold.
+// Slim on purpose. Dates and names only. The contract value stays behind
+// the team PIN on the record itself, and it is not selected here at all.
+// Milestones on this payload name their owner. Contract filenames stay
+// behind the same PIN and are not loaded.
 router.get('/dashboard', async (req, res) => {
   try {
     const rows = await prisma.projectFollowUp.findMany({
@@ -245,8 +240,9 @@ router.get('/:id', async (req, res) => {
     });
     if (!f) return res.status(404).json({ error: 'Not found' });
     const viewer = await valueViewer(req.user);
+    const unlockTeam = readContractUnlock(req);
     res.json({
-      ...redactValue(f, viewer),
+      ...presentContractValue(f, viewer, unlockTeam),
       milestones: f.milestones.map((m) => ({ ...m, meta: MILESTONE_BY_KIND.get(m.kind) || null })),
       canManage: canManage(f, req.user),
     });
@@ -282,7 +278,11 @@ router.post('/', async (req, res) => {
         createdById: req.user.userId,
       },
     });
-    res.status(201).json(f);
+    // The body just supplied the price, and the response still does not echo
+    // it unless this request already holds that team's PIN. The form the
+    // person typed into is the only copy they have until they unlock.
+    const viewer = await valueViewer(req.user);
+    res.status(201).json(presentContractValue(f, viewer, readContractUnlock(req)));
   } catch (error) {
     console.error('Error creating follow-up:', error);
     res.status(500).json({ error: 'Failed to create follow-up' });
@@ -298,9 +298,13 @@ router.put('/:id', async (req, res) => {
     const b = req.body || {};
     // Someone who cannot read the value cannot write it either — otherwise the
     // field is protected against reading and wide open to being overwritten
-    // blind, which is worse than not protecting it at all.
+    // blind, which is worse than not protecting it at all. Reading takes the
+    // team PIN as well as membership, so a write does too. A status or owner
+    // change does not send this field.
     const viewer = await valueViewer(req.user);
-    const mayWriteValue = canSeeValue(viewer, b.team ?? existing.team);
+    const unlockTeam = readContractUnlock(req);
+    const targetTeam = ['WRC', 'HRC'].includes(b.team) ? b.team : existing.team;
+    const mayWriteValue = viewerMaySeeValue(viewer, targetTeam) && unlockTeam === targetTeam;
     const f = await prisma.projectFollowUp.update({
       where: { id: existing.id },
       data: {
@@ -316,7 +320,7 @@ router.put('/:id', async (req, res) => {
         ...(b.notes !== undefined ? { notes: b.notes || null } : {}),
       },
     });
-    res.json(redactValue(f, viewer));
+    res.json(presentContractValue(f, viewer, unlockTeam));
   } catch (error) {
     console.error('Error updating follow-up:', error);
     res.status(500).json({ error: 'Failed to update follow-up' });
@@ -422,7 +426,10 @@ router.post('/:id/milestones/:kind/notify', async (req, res) => {
       include: {
         owner: { select: { id: true, name: true, email: true } },
         followUp: {
-          include: {
+          // Scalars are named on purpose. A bare include would hand the mailer
+          // the contract value, and this reminder is not a place it belongs.
+          select: {
+            id: true, title: true, orderNo: true, ownerId: true, createdById: true,
             owner: { select: { id: true, name: true, email: true } },
             customer: { select: { name: true } },
           },
@@ -595,10 +602,12 @@ router.post('/prefill', requireUnlock, async (req, res) => {
     // The value is confidential on the record, so it is confidential as a
     // suggestion too — otherwise the read that fills the field is a way to
     // learn the number without being allowed to see it. `team` is the team the
-    // record will be (or already is) filed under; the client sends it.
+    // record will be (or already is) filed under; the client sends it. The
+    // unlock token's team has to be that same team: this route is already
+    // behind the PIN, and the PIN that was entered is the one that counts.
     const viewer = await valueViewer(req.user);
     const forTeam = ['WRC', 'HRC'].includes(req.body?.team) ? req.body.team : viewer.team;
-    const mayValue = canSeeValue(viewer, forTeam);
+    const mayValue = maySuggestContractValue(viewer, forTeam, req.contractTeam);
 
     const suggestions = {};
     for (const [formField, prefs] of Object.entries(SUGGEST_FROM)) {

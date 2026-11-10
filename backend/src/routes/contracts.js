@@ -17,6 +17,7 @@ import path from 'path';
 import { z } from 'zod';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { readContractUnlock } from '../services/contractUnlock.js';
 import { wakeDgx } from '../services/dgxWake.js';
 import { answerContractQuestion, DgxOfflineError } from '../services/contractQa.js';
 import { embedPagesForFile } from '../services/contractEmbeddings.js';
@@ -128,23 +129,14 @@ router.post('/unlock', authenticateToken, async (req, res) => {
 // Requires a valid unlock token and pins req.contractTeam to the team it covers.
 // Exported so other modules that surface contract files (project follow-up)
 // gate them on exactly this check rather than reimplementing it — a second
-// copy of a security rule is a second place for it to drift.
+// copy of a security rule is a second place for it to drift. The check itself
+// lives in readContractUnlock, which a follow-up also uses when it must stay
+// readable and only withhold the price.
 export function requireUnlock(req, res, next) {
-  const raw = req.headers['x-contract-token'];
-  if (!raw) return res.status(401).json({ error: 'locked' });
-  try {
-    const payload = jwt.verify(String(raw), process.env.JWT_SECRET);
-    if (payload.scope !== 'contract' || !TEAMS.has(payload.team)) {
-      return res.status(401).json({ error: 'locked' });
-    }
-    // The unlock is tied to the account that performed it, so a token cannot be
-    // passed to a colleague who never entered the PIN.
-    if (payload.userId !== req.user.userId) return res.status(401).json({ error: 'locked' });
-    req.contractTeam = payload.team;
-    next();
-  } catch {
-    res.status(401).json({ error: 'locked' });
-  }
+  const team = readContractUnlock(req);
+  if (!team) return res.status(401).json({ error: 'locked' });
+  req.contractTeam = team;
+  next();
 }
 
 // ── Admin: set or change a team's PIN ─────────────────────────────────────────

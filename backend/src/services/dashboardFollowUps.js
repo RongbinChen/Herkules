@@ -8,8 +8,8 @@
 // the milestone rows, this strip picks them up with no further change.
 //
 // Visibility matches the follow-up list: any signed-in user may see the
-// order and its dates. The contract value is never copied onto this payload,
-// even for someone who would be allowed to see it on the record itself.
+// order and its dates. The contract value is never copied onto this payload.
+// On the record it stays behind the team PIN; here it is omitted entirely.
 // Contract filenames stay behind the team PIN and are not loaded here.
 
 export const DASHBOARD_FOLLOWUP_LIMIT = 8;
