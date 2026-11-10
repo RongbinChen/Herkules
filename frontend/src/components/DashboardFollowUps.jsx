@@ -1,21 +1,72 @@
 import { Link } from 'react-router-dom'
 
-// One live order on the home page. The follow-up record is one click away;
-// this row is only the next thing to watch, plus the other open dates.
-// Desktop keeps the due date on the title line. On a phone the date sits
-// with the badge, and the name gets the full width so it cannot be pushed
-// out of the row.
+// What the home-page row is allowed to lead with. The stored title is often
+// "customer — order number", and joining that to the customer name printed
+// the customer twice and pushed the order number off the line. The serial is
+// the name of the machine. Without one, the customer (once) or the order
+// number still identifies the row. A title that only repeats those is dropped.
+function titleEchoes(title, customer, orderNo) {
+  if (!title) return true
+  if (customer && title === customer) return true
+  if (customer && title.startsWith(customer) && /^[\s·—–\-|]/.test(title.slice(customer.length))) return true
+  if (orderNo && title.includes(orderNo)) return true
+  return false
+}
+
+export function followUpStripIdentity(item) {
+  const serial = String(item?.machineSerial ?? '').trim()
+  const customer = String(item?.customerName ?? '').trim()
+  const orderNo = String(item?.orderNo ?? '').trim()
+  const title = String(item?.title ?? '').trim()
+  const orderLabel = orderNo ? `#${orderNo}` : ''
+
+  let primary = 'Order'
+  let hint = ''
+  if (serial) {
+    primary = serial
+    hint = customer || orderLabel
+  } else if (customer) {
+    primary = customer
+    hint = orderLabel
+  } else if (orderLabel) {
+    primary = orderLabel
+  } else if (title) {
+    primary = title
+  }
+
+  const tooltip = []
+  const push = (part) => {
+    if (part && !tooltip.includes(part)) tooltip.push(part)
+  }
+  if (serial) push(`Serial ${serial}`)
+  else push(primary)
+  push(customer)
+  push(orderLabel)
+  if (!titleEchoes(title, customer, orderNo)) push(title)
+
+  return { serial, primary, hint, tooltip: tooltip.join(' · ') }
+}
+
+// One live order on the home page. The follow-up record is one click away.
+// The row leads with the machine serial (or a short fallback), then the next
+// action, then the overdue milestones when there are any. Upcoming dates that
+// are not late stay off this strip. Desktop keeps the next due date on the
+// title line. On a phone the date sits with the badge, and the name gets the
+// full width so it cannot be pushed out of the row.
 export function FollowUpStatusRow({ item }) {
   const next = item.next
   const badge = badgeFor(item)
-  const identity = item.customerName || item.title || 'Order'
-  const secondary = item.customerName && item.title && item.customerName !== item.title ? item.title : ''
-  const identityTitle = [identity, secondary, item.orderNo ? `#${item.orderNo}` : ''].filter(Boolean).join(' · ')
+  const identity = followUpStripIdentity(item)
   const actionTitle = next
     ? [next.label, next.zh, next.dueDate, next.cue, next.ownerName].filter(Boolean).join(' · ')
     : 'No open date'
   const owner = next?.ownerName || item.ownerName || 'Unassigned'
-  const others = (item.dates || []).slice(1)
+  // The earliest late milestone is already the next action. Listing it again
+  // under the date chip repeated the same fact. The list is the other ones.
+  const overdue = (Array.isArray(item.overdue) ? item.overdue : []).filter((d) => (
+    !(next && d.kind === next.kind && d.dueDate === next.dueDate)
+  ))
+  const moreOverdue = Number(item.moreOverdue) || 0
 
   return (
     <li>
@@ -36,9 +87,21 @@ export function FollowUpStatusRow({ item }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
-            <span className="min-w-0 flex-1 basis-full text-sm font-medium text-slate-700 line-clamp-2 sm:basis-0 sm:line-clamp-1" title={identityTitle}>
-              {identity}
-              {secondary && <span className="font-normal text-slate-500"> · {secondary}</span>}
+            <span className="min-w-0 flex-1 text-sm leading-snug text-slate-800" title={identity.tooltip}>
+              {identity.serial ? (
+                <span className="flex min-w-0 items-baseline gap-x-1.5">
+                  <span className="shrink-0 whitespace-nowrap font-semibold text-slate-900">
+                    <span className="mr-1.5 align-middle text-[10px] font-bold uppercase tracking-wider text-slate-400">Serial</span>
+                    {identity.serial}
+                  </span>
+                  {identity.hint && <span className="min-w-0 truncate text-xs font-normal text-slate-400">· {identity.hint}</span>}
+                </span>
+              ) : (
+                <span className="font-medium">
+                  {identity.primary}
+                  {identity.hint && <span className="text-xs font-normal text-slate-400"> · {identity.hint}</span>}
+                </span>
+              )}
             </span>
             {next?.dueDate && (
               <span className={`hidden max-w-full rounded px-1.5 py-0.5 text-[11px] font-bold sm:inline sm:shrink-0 ${toneCls(next.tone)}`}>
@@ -47,29 +110,32 @@ export function FollowUpStatusRow({ item }) {
               </span>
             )}
           </span>
-          {/* Wrap, rather than one truncated line: on a phone the owner was
-              the piece that disappeared, and the owner is the point of the row. */}
-          <span className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs text-slate-500" title={actionTitle}>
-            {item.orderNo && <span className="max-w-full truncate">#{item.orderNo}</span>}
-            {item.orderNo && <span aria-hidden="true">·</span>}
-            {item.status === 'ON_HOLD' && <span>On hold</span>}
-            {item.status === 'ON_HOLD' && <span aria-hidden="true">·</span>}
-            <span className="min-w-0 max-w-full">{next ? next.label : 'No open date'}</span>
-            <span aria-hidden="true">·</span>
-            <span className="max-w-full truncate">{owner}</span>
+          {/* Wrap, rather than one truncated line, so the action and the
+              person chasing it both stay on a phone. */}
+          <span className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs" title={actionTitle}>
+            {item.status === 'ON_HOLD' && <span className="font-semibold text-amber-700">On hold</span>}
+            {item.status === 'ON_HOLD' && <span aria-hidden="true" className="text-slate-300">·</span>}
+            <span className="min-w-0 font-medium text-slate-800">{next ? next.label : 'No open date'}</span>
+            {next?.zh && <span className="text-[11px] text-slate-400">{next.zh}</span>}
+            <span aria-hidden="true" className="text-slate-300">·</span>
+            <span className="max-w-full truncate text-slate-500">{owner}</span>
           </span>
-          {others.length > 0 && (
-            <span className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-4 text-slate-500">
-              {others.map((d) => (
+          {(overdue.length > 0 || moreOverdue > 0) && (
+            <span className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-4">
+              <span className="font-semibold text-rose-600">Also overdue</span>
+              {overdue.map((d, index) => (
                 <span
-                  key={`${d.kind}-${d.dueDate}`}
-                  className={d.tone === 'overdue' || d.tone === 'today' ? 'font-medium text-rose-600' : ''}
-                  title={[d.label, d.zh, d.dueDate, d.cue].filter(Boolean).join(' · ')}
+                  key={`${d.kind}-${d.dueDate}-${index}`}
+                  className="font-medium text-rose-700"
+                  title={[d.label, d.zh, d.dueDate, d.cue, d.ownerName].filter(Boolean).join(' · ')}
                 >
-                  {d.short} {d.dueDate.slice(5)}
+                  {d.short} <time dateTime={d.dueDate}>{String(d.dueDate).slice(5)}</time>
+                  {d.cue && <span className="font-normal text-rose-600"> {d.cue}</span>}
                 </span>
               ))}
-              {item.moreDates > 0 && <span className="text-slate-400">+{item.moreDates}</span>}
+              {moreOverdue > 0 && (
+                <span className="font-medium text-rose-500" title={`${moreOverdue} more overdue`}>+{moreOverdue}</span>
+              )}
             </span>
           )}
         </span>

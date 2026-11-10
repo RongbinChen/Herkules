@@ -11,6 +11,13 @@
 // order and its dates. The contract value is never copied onto this payload.
 // On the record it stays behind the team PIN; here it is omitted entirely.
 // Contract filenames stay behind the team PIN and are not loaded here.
+//
+// The machine serial is ordinary order data, like the model, and is the name
+// the home-page row leads with. `overdue` lists open milestones already past
+// their China day so that row can say what is late. It does not change which
+// follow-ups are selected.
+
+import { optionalText } from './followUpFields.js';
 
 export const DASHBOARD_FOLLOWUP_LIMIT = 8;
 // A machine-tool order is still "recently signed" through manufacture and
@@ -21,6 +28,9 @@ export const SIGNED_WINDOW_MONTHS = 18;
 // signature itself is older than the window above.
 export const ACTION_WINDOW_DAYS = 60;
 const DATE_CAP = 4;
+// How many late milestones a row lists before "+N". The mixed `dates` window
+// stays as it was; this list is only the overdue ones, earliest first.
+export const OVERDUE_LIST_CAP = 4;
 
 const SHORT_LABEL = {
   CONTRACT_SIGNED: 'Signed',
@@ -101,9 +111,8 @@ function included(row, today) {
   return openDated(row, today).some((m) => m.delta <= ACTION_WINDOW_DAYS);
 }
 
-function present(row, today) {
-  const open = openDated(row, today);
-  const dates = open.slice(0, DATE_CAP).map((m) => ({
+function presentDate(m, row) {
+  return {
     kind: m.kind,
     label: m.label || m.en || m.kind,
     zh: m.zh || null,
@@ -111,16 +120,26 @@ function present(row, today) {
     dueDate: m.day,
     ownerName: personName(m, row),
     ...cueFor(m.delta),
-  }));
+  };
+}
+
+function present(row, today) {
+  const open = openDated(row, today);
+  const dates = open.slice(0, DATE_CAP).map((m) => presentDate(m, row));
+  const late = open.filter((m) => m.delta < 0);
+  const overdue = late.slice(0, OVERDUE_LIST_CAP).map((m) => presentDate(m, row));
   return {
     id: row.id,
     title: row.title || '',
     orderNo: row.orderNo || null,
+    machineSerial: optionalText(row.machineSerial),
     status: row.status,
     customerName: row.customer?.name || row.customerName || null,
     ownerName: row.owner?.name || null,
     signedOn: signedOn(row),
-    overdueCount: open.filter((m) => m.delta < 0).length,
+    overdueCount: late.length,
+    overdue,
+    moreOverdue: Math.max(0, late.length - overdue.length),
     next: dates[0] || null,
     dates,
     moreDates: Math.max(0, open.length - dates.length),

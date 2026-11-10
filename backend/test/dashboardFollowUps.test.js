@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ACTION_WINDOW_DAYS,
   DASHBOARD_FOLLOWUP_LIMIT,
+  OVERDUE_LIST_CAP,
   SIGNED_WINDOW_MONTHS,
   addMonths,
   daysBetween,
@@ -17,6 +19,7 @@ function row(partial) {
     id: partial.id,
     title: partial.title || `Order ${partial.id}`,
     orderNo: partial.orderNo ?? `NO-${partial.id}`,
+    machineSerial: partial.machineSerial,
     status: partial.status || 'ACTIVE',
     createdAt: partial.createdAt || '2026-01-01T00:00:00.000Z',
     customer: partial.customer === undefined ? { name: `Customer ${partial.id}` } : partial.customer,
@@ -193,6 +196,12 @@ test('sorts overdue first, then soonest due, then most recently signed', () => {
   assert.equal(chase.dates[1].short, 'Down payment');
   assert.equal(chase.dates[1].dueDate, '2026-11-18');
   assert.equal(chase.dates.some((d) => d.kind === 'CONTRACT_SIGNED'), false);
+  assert.equal(chase.machineSerial, null);
+  assert.equal(chase.overdue.length, 1);
+  assert.equal(chase.overdue[0].kind, 'LC_OPEN_DEADLINE');
+  assert.equal(chase.overdue[0].tone, 'overdue');
+  assert.equal(chase.moreOverdue, 0);
+  assert.equal(chase.overdue.some((d) => d.kind === 'PAYMENT_DOWN'), false);
 
   assert.equal(items[2].signedOn, '2026-11-02');
   assert.equal(items[2].next.cue, 'Today');
@@ -260,5 +269,91 @@ test('the strip never carries contract value, notes, or milestone essays', () =>
   assert.equal(dumped.includes('contractValue'), false);
   assert.equal(items[0].next.label, 'Buyer opens L/C');
   assert.equal(items[0].next.short, 'L/C open');
-  assert.equal(Object.keys(items[0]).sort().join(','), 'customerName,dates,id,moreDates,next,orderNo,overdueCount,ownerName,signedOn,status,title');
+  assert.equal(items[0].machineSerial, null);
+  assert.deepEqual(items[0].overdue, []);
+  assert.equal(items[0].moreOverdue, 0);
+  assert.equal(Object.keys(items[0]).sort().join(','), 'customerName,dates,id,machineSerial,moreDates,moreOverdue,next,orderNo,overdue,overdueCount,ownerName,signedOn,status,title');
+});
+
+test('a machine serial does not pull a quiet order onto the strip', () => {
+  const { items, total } = selectDashboardFollowUps([
+    row({
+      id: 6,
+      machineSerial: '5.1022',
+      title: 'Old quiet order',
+      milestones: [signed('2020-01-15'), milestone({ id: 61, kind: 'WARRANTY_EXPIRY', dueDate: '2027-08-01', en: 'Warranty expires' })],
+    }),
+  ], { today: TODAY });
+  assert.equal(total, 0);
+  assert.deepEqual(items, []);
+});
+
+test('dashboard rows carry the machine serial and list only overdue milestones', () => {
+  const { items } = selectDashboardFollowUps([
+    row({
+      id: 21,
+      machineSerial: '  5.1022  ',
+      title: 'Shenyang Fortune Precision Equipment Co., Ltd. — GRG-FCJM-202608A',
+      orderNo: 'GRG-FCJM-202608A',
+      customer: { name: 'Shenyang Fortune Precision Equipment Co., Ltd.' },
+      contractValue: 'EUR 4,000,000',
+      notes: 'do not copy the account 9988',
+      milestones: [
+        signed('2026-08-01'),
+        milestone({ id: 1, kind: 'DRAWING_APPROVAL', dueDate: '2026-09-01', en: 'Drawings / spec approved', zh: '图纸/技术协议确认' }),
+        milestone({ id: 2, kind: 'FAT', dueDate: '2026-09-15', en: 'FAT (factory acceptance)', zh: 'FAT 出厂验收' }),
+        milestone({ id: 3, kind: 'LC_RECEIVED', dueDate: '2026-10-01', en: 'L/C received & checked', zh: '信用证收到并审核' }),
+        milestone({ id: 4, kind: 'PAYMENT_DOWN', dueDate: '2026-10-20', en: 'Down payment received', zh: '预付款到账', notes: '20% of EUR 4,000,000' }),
+        milestone({ id: 5, kind: 'LC_OPEN_DEADLINE', dueDate: '2026-11-01', en: 'L/C to be opened by', zh: '信用证开证截止', owner: { id: 8, name: 'Becky Chen' } }),
+        milestone({ id: 6, kind: 'PAYMENT_SHIPMENT', dueDate: '2027-01-30', en: 'Shipment payment received', zh: '发货款到账' }),
+        milestone({ id: 7, kind: 'SHIPMENT', dueDate: '2027-01-30', en: 'Shipment / customs', zh: '装运 / 到港清关' }),
+      ],
+    }),
+    row({
+      id: 22,
+      machineSerial: '   ',
+      customer: { name: 'COSCO' },
+      milestones: [
+        signed('2026-10-01'),
+        milestone({ id: 8, kind: 'FAC', dueDate: '2026-12-01', en: 'FAC (final acceptance)', zh: 'FAC 终验收' }),
+      ],
+    }),
+  ], { today: TODAY });
+
+  const late = items[0];
+  assert.equal(late.machineSerial, '5.1022');
+  assert.equal(late.customerName, 'Shenyang Fortune Precision Equipment Co., Ltd.');
+  assert.equal(late.overdueCount, 5);
+  assert.equal(OVERDUE_LIST_CAP, 4);
+  assert.equal(late.overdue.length, OVERDUE_LIST_CAP);
+  assert.equal(late.moreOverdue, 1);
+  assert.deepEqual(late.overdue.map((d) => d.kind), ['DRAWING_APPROVAL', 'FAT', 'LC_RECEIVED', 'PAYMENT_DOWN']);
+  assert.equal(late.overdue.every((d) => d.tone === 'overdue'), true);
+  assert.equal(late.overdue[0].short, 'Drawings');
+  assert.equal(late.overdue[0].zh, '图纸/技术协议确认');
+  assert.equal(late.overdue.some((d) => d.kind === 'SHIPMENT' || d.kind === 'PAYMENT_SHIPMENT' || d.kind === 'CONTRACT_SIGNED'), false);
+  assert.equal(late.next.kind, 'DRAWING_APPROVAL');
+  assert.equal(late.next.dueDate, '2026-09-01');
+  // The mixed window is unchanged: four earliest open dates, plus a count.
+  assert.equal(late.dates.length, 4);
+  assert.equal(late.moreDates, 3);
+  const dumped = JSON.stringify(items);
+  assert.equal(dumped.includes('4,000,000'), false);
+  assert.equal(dumped.includes('9988'), false);
+  assert.equal(dumped.includes('contractValue'), false);
+  assert.equal(dumped.includes('notes'), false);
+
+  assert.equal(items[1].machineSerial, null);
+  assert.deepEqual(items[1].overdue, []);
+  assert.equal(items[1].moreOverdue, 0);
+  assert.equal(items[1].next.kind, 'FAC');
+  assert.equal(items[1].next.tone, 'later');
+});
+
+test('the dashboard query returns machineSerial and still omits the contract value', () => {
+  const route = readFileSync(new URL('../src/routes/followUps.js', import.meta.url), 'utf8');
+  const dash = route.slice(route.indexOf("router.get('/dashboard'"), route.indexOf("router.get('/:id'"));
+  assert.match(dash, /machineSerial:\s*true/);
+  assert.doesNotMatch(dash, /contractValue/);
+  assert.doesNotMatch(dash, /notes:\s*true/);
 });
