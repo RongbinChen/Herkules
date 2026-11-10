@@ -168,6 +168,11 @@ model ProjectFollowUp {
   // record: the owner changes, and this decides who may see the contract value.
   team          UserTeam            @default(HRC)
   machineType   String?
+  // The machine's own serial, typed on this follow-up. Optional: an older
+  // order, or one whose plate number is not known yet, still saves. Nullable
+  // with no default, so adding the column leaves existing rows null instead
+  // of rewriting them.
+  machineSerial String?
   // Commercial in confidence: readable only by that team and by admins, and
   // stripped from the payload for everyone else rather than hidden in the UI.
   contractValue String? // free text — the currency varies by contract

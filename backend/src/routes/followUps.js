@@ -21,6 +21,7 @@ import { suggestTimelineForFiles, shiftFollowUpMilestones, storedDeliveryChoice 
 import { isIsoDate, milestoneDay, planMilestoneApply, redactMoney } from '../services/contractTimelineFormat.js';
 import { selectOpenOrders } from '../services/openOrders.js';
 import { selectDashboardFollowUps } from '../services/dashboardFollowUps.js';
+import { followUpCreateData, followUpUpdateData } from '../services/followUpFields.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -141,6 +142,7 @@ router.get('/', async (req, res) => {
         OR: [
           { title: { contains: q, mode: 'insensitive' } },
           { orderNo: { contains: q, mode: 'insensitive' } },
+          { machineSerial: { contains: q, mode: 'insensitive' } },
           { notes: { contains: q, mode: 'insensitive' } },
           { customer: { name: { contains: q, mode: 'insensitive' } } },
           { contacts: { some: { name: { contains: q, mode: 'insensitive' } } } },
@@ -257,26 +259,9 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body || {};
     if (!String(b.title || '').trim()) return res.status(400).json({ error: 'title is required' });
-    // Whose order this is decides who may read its value, so it is answered at
-    // creation. The creator's own team is the default; someone filed under
-    // OTHER (they belong to neither) must choose, and the client offers both.
     const creator = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { team: true } });
-    const team = ['WRC', 'HRC'].includes(b.team)
-      ? b.team
-      : (['WRC', 'HRC'].includes(creator?.team) ? creator.team : 'HRC');
     const f = await prisma.projectFollowUp.create({
-      data: {
-        title: String(b.title).trim(),
-        team,
-        orderNo: b.orderNo || null,
-        customerId: b.customerId ? parseInt(b.customerId) : null,
-        hotProjectId: b.hotProjectId ? parseInt(b.hotProjectId) : null,
-        ownerId: b.ownerId ? parseInt(b.ownerId) : req.user.userId,
-        machineType: b.machineType || null,
-        contractValue: b.contractValue || null,
-        notes: b.notes || null,
-        createdById: req.user.userId,
-      },
+      data: followUpCreateData(b, { userId: req.user.userId, creatorTeam: creator?.team }),
     });
     // The body just supplied the price, and the response still does not echo
     // it unless this request already holds that team's PIN. The form the
@@ -307,18 +292,7 @@ router.put('/:id', async (req, res) => {
     const mayWriteValue = viewerMaySeeValue(viewer, targetTeam) && unlockTeam === targetTeam;
     const f = await prisma.projectFollowUp.update({
       where: { id: existing.id },
-      data: {
-        ...(b.title !== undefined ? { title: String(b.title).trim() } : {}),
-        ...(['WRC', 'HRC'].includes(b.team) ? { team: b.team } : {}),
-        ...(b.orderNo !== undefined ? { orderNo: b.orderNo || null } : {}),
-        ...(b.customerId !== undefined ? { customerId: b.customerId ? parseInt(b.customerId) : null } : {}),
-        ...(b.hotProjectId !== undefined ? { hotProjectId: b.hotProjectId ? parseInt(b.hotProjectId) : null } : {}),
-        ...(b.ownerId !== undefined ? { ownerId: b.ownerId ? parseInt(b.ownerId) : null } : {}),
-        ...(b.status !== undefined ? { status: b.status } : {}),
-        ...(b.machineType !== undefined ? { machineType: b.machineType || null } : {}),
-        ...(b.contractValue !== undefined && mayWriteValue ? { contractValue: b.contractValue || null } : {}),
-        ...(b.notes !== undefined ? { notes: b.notes || null } : {}),
-      },
+      data: followUpUpdateData(b, { mayWriteValue }),
     });
     res.json(presentContractValue(f, viewer, unlockTeam));
   } catch (error) {
