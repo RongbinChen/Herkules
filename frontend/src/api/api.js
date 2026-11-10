@@ -114,6 +114,9 @@ export const hotProjectsAPI = {
 
 export const followUpsAPI = {
   catalogue: () => api.get('/followups/catalogue'),
+  // Compact execution strip for the dashboard. Dates already stored on the
+  // follow-up; no contract value and no contract filenames.
+  dashboard: () => api.get('/followups/dashboard'),
   list: (params = {}) => api.get('/followups', { params }),
   get: (id) => api.get(`/followups/${id}`),
   create: (data) => api.post('/followups', data),
