@@ -136,7 +136,9 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
           checked={Boolean(m?.doneAt)}
           disabled={!canManage || !m?.dueDate || busy}
           onChange={(e) => save({ done: e.target.checked })}
-          title={m?.dueDate ? 'Ticking it off stops the reminders' : 'Set a date first'}
+          title={item.kind === 'PAYMENT_DOWN'
+            ? (m?.doneAt ? 'Down payment confirmed' : 'Confirm when the down payment has actually arrived. The date alone is only the contract’s expectation.')
+            : (m?.dueDate ? 'Ticking it off stops the reminders' : 'Set a date first')}
           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 disabled:opacity-40"
         />
         <span className={`text-sm ${m?.doneAt ? 'text-slate-400 line-through' : 'font-medium text-slate-700'}`}>
@@ -368,6 +370,7 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
   const [proposals, setProposals] = useState(null)
   const [sources, setSources] = useState([])
   const [baseDate, setBaseDate] = useState(null)
+  const [delivery, setDelivery] = useState(null)
   const [error, setError] = useState('')
   const [replace, setReplace] = useState(false)
   const [include, setInclude] = useState(true)
@@ -381,25 +384,28 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
     setProposals(null)
     setSources([])
     setBaseDate(null)
+    setDelivery(null)
     setResult(null)
     setError('')
     onPlan?.([])
   }, [key, followUpId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const load = async () => {
+  const load = async (deliveryStart) => {
     if (!ready) return
     setBusy(true)
     setError('')
     setResult(null)
     try {
       const { data } = followUpId
-        ? await followUpsAPI.suggestRecordTimeline(followUpId, token)
-        : await followUpsAPI.suggestTimeline(fileIds, token)
+        ? await followUpsAPI.suggestRecordTimeline(followUpId, token, deliveryStart)
+        : await followUpsAPI.suggestTimeline(fileIds, token, deliveryStart)
       const list = data.proposals || []
       setProposals(list)
       setSources(data.sources || [])
       setBaseDate(data.baseDate || null)
+      setDelivery(data.deliveryStart || null)
       onPlan?.(include ? list : [])
+      if (deliveryStart && followUpId) await onApplied?.()
     } catch (e) {
       if (e.response?.status === 401) onLock?.()
       setError(e.response?.status === 401
@@ -433,7 +439,7 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <Button size="sm" variant="secondary" disabled={!ready || busy} onClick={load}>
+        <Button size="sm" variant="secondary" disabled={!ready || busy} onClick={() => load()}>
           {busy ? 'Reading the contracts…' : 'Fill timeline from contract'}
         </Button>
         <p className="text-[11px] text-slate-500">
@@ -446,7 +452,39 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
       {proposals && (
         <div className="mt-3">
           {baseDate && (
-            <p className="text-[11px] text-slate-500">Dates are counted from the signed date {baseDate}.</p>
+            <p className="mt-2 text-[11px] text-slate-500">Signed date {baseDate}.</p>
+          )}
+          {delivery?.rule === 'SIGNED' && (
+            <p className="mt-1 text-[11px] text-slate-600">
+              This contract counts delivery from the signing date.
+              {delivery.source === 'manual' ? ' Using the basis you chose.' : ''}
+            </p>
+          )}
+          {delivery?.rule === 'PAYMENT_DOWN' && (
+            <p className="mt-1 text-[11px] text-slate-600">
+              This contract counts delivery from receipt of the down payment. Later dates move when you confirm that receipt.
+              {delivery.source === 'manual' ? ' Using the basis you chose.' : ''}
+            </p>
+          )}
+          {delivery?.ambiguous && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-[11px] text-amber-900">
+                This contract does not say whether delivery time starts at signing or when the down payment arrives.
+                Choose a basis to calculate those dates. Until then they stay blank for you to type.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => load('SIGNED')}>From signing</Button>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => load('PAYMENT_DOWN')}>From down payment</Button>
+              </div>
+            </div>
+          )}
+          {delivery?.rule && delivery.source === 'manual' && !delivery.ambiguous && (
+            <div className="mt-1">
+              <button type="button" disabled={busy} onClick={() => load(delivery.rule === 'SIGNED' ? 'PAYMENT_DOWN' : 'SIGNED')}
+                className="text-[11px] font-semibold text-slate-400 hover:text-brand-600">
+                Count delivery from {delivery.rule === 'SIGNED' ? 'the down payment' : 'signing'} instead
+              </button>
+            </div>
           )}
           {proposals.length === 0 ? (
             <p className="mt-1 text-[11px] text-slate-500">
@@ -471,6 +509,12 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
                         {p.dueDate || 'No date'}
                       </span>
                       {p.done && <span className="text-[10px] font-semibold text-emerald-600">Will mark done</span>}
+                      {p.confirmReceipt && (
+                        <span className="text-[10px] font-semibold text-amber-700">Theoretical — confirm receipt</span>
+                      )}
+                      {p.needsStart && (
+                        <span className="text-[10px] font-semibold text-amber-700">Needs a delivery basis</span>
+                      )}
                       {skip && <span className="text-[10px] font-semibold text-slate-400">Kept — already filled</span>}
                     </div>
                     {p.notes && <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{p.notes}</p>}
