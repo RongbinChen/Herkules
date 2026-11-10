@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { contractsAPI } from '../api/api'
-import { Button, Select, Textarea } from './ui'
+import { Button, Input, Select, Textarea } from './ui'
 import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER } from '../constants/contract'
 import CustomerPicker from './CustomerPicker'
 import FileDropZone from './FileDropZone'
@@ -14,18 +14,22 @@ import FileDropZone from './FileDropZone'
 // contracts are the bulk of it. (The card defaults to OTHER precisely because it
 // has no confirm step — see CustomerContracts.)
 //
-// A batch shares one customer, one category and one note, because that is how
-// contract files actually arrive: a folder of scans for the same deal. Anything
-// that needs a different category is a second trip through the dialog, or a
-// PATCH from the list afterwards.
+// A batch shares one customer, one machine serial, one category and one note,
+// because that is how contract files actually arrive: a folder of scans for the
+// same machine. Anything that needs a different serial or category is a second
+// trip through the dialog, or a PATCH from the list afterwards. The serial is
+// optional — a file with none stays in that customer's No serial group.
 const MAX_BATCH = 20
 
 // Same file twice — dropped, then picked again — must not upload twice. Name,
 // size and mtime is as close to identity as the browser will give us.
 const fileKey = (f) => `${f.name}|${f.size}|${f.lastModified}`
 
-export default function ContractUploadModal({ token, team, initialCustomer = null, onClose, onUploaded }) {
+export default function ContractUploadModal({ token, team, initialCustomer = null, initialSerial = '', onClose, onUploaded }) {
   const [customer, setCustomer] = useState(initialCustomer)
+  // Prefilled when "Add file" was opened from a customer + serial group. A
+  // group that has no serial yet passes '' so the field stays empty and editable.
+  const [serial, setSerial] = useState(initialSerial || '')
   const [docType, setDocType] = useState('COMMERCIAL')
   const [note, setNote] = useState('')
   const [files, setFiles] = useState([])
@@ -68,6 +72,7 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
       setProgress({ index: i + 1, total: files.length, pct: 0 })
       const fd = new FormData()
       fd.append('docType', docType)
+      if (serial.trim()) fd.append('machineSerial', serial.trim())
       if (note.trim()) fd.append('note', note.trim())
       fd.append('file', f)
       try {
@@ -114,10 +119,26 @@ export default function ContractUploadModal({ token, team, initialCustomer = nul
         <label className="block text-xs font-semibold text-slate-600">
           Customer <span className="text-rose-500">*</span>
           <div className="mt-1">
-            <CustomerPicker value={customer} onChange={setCustomer} autoFocus />
+            {/* Autofocus only when the customer is still empty. A prefilled
+                customer (Add file on a group) would open the match list on
+                mount and cover the serial field underneath it. */}
+            <CustomerPicker value={customer} onChange={setCustomer} autoFocus={!customer} />
           </div>
         </label>
         <p className="mt-1 text-[11px] text-slate-400">Not in the list? Type the name and pick “+ Create” from the dropdown.</p>
+
+        <label className="mt-4 block text-xs font-semibold text-slate-600">
+          Machine serial / 机床序列号
+          <Input
+            value={serial}
+            onChange={(e) => setSerial(e.target.value)}
+            placeholder="5.1022"
+            maxLength={40}
+            autoComplete="off"
+            className="mt-1"
+          />
+        </label>
+        <p className="mt-1 text-[11px] text-slate-400">Optional. The same customer with another serial is a separate group. Leave blank if you don't have one yet.</p>
 
         <label className="mt-4 block text-xs font-semibold text-slate-600">
           Document type

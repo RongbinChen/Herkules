@@ -23,6 +23,7 @@ import { embedPagesForFile } from '../services/contractEmbeddings.js';
 import { summariseContractFile } from '../services/contractSummary.js';
 import { sendMail } from '../services/mailer.js';
 import { renderEmail } from '../services/emailTemplate.js';
+import { contractFileSearchOr, normalizeMachineSerial } from '../services/machineSerial.js';
 
 const router = express.Router();
 
@@ -200,6 +201,7 @@ router.get('/pin-status', authenticateToken, async (req, res) => {
 
 const FILE_SELECT = {
   id: true, docType: true, filename: true, mimeType: true, size: true, note: true, createdAt: true,
+  machineSerial: true,
   closedAt: true,
   // Whether the file has been read yet. Surfaced so the UI can say "still
   // being read" instead of letting the assistant answer from nothing and look
@@ -240,6 +242,14 @@ router.post('/customer/:customerId', authenticateToken, requireUnlock, (req, res
         fs.unlink(path.join(STORAGE_ROOT, req.file.filename), () => {});
         return res.status(404).json({ error: 'Customer not found' });
       }
+      // Blank is a valid upload — the file lands in the customer's No serial
+      // group. A value that is not a serial is refused, and the bytes just
+      // written are dropped with it, so a bad field never becomes a stored one.
+      const serial = normalizeMachineSerial(req.body?.machineSerial);
+      if (!serial.ok) {
+        fs.unlink(path.join(STORAGE_ROOT, req.file.filename), () => {});
+        return res.status(400).json({ error: serial.error });
+      }
       const saved = await prisma.contractFile.create({
         data: {
           customerId,
@@ -256,6 +266,7 @@ router.post('/customer/:customerId', authenticateToken, requireUnlock, (req, res
           // is not.
           docType: docTypeSchema.catch('OTHER').parse(req.body?.docType),
           note: (req.body?.note || '').trim().slice(0, 500) || null,
+          machineSerial: serial.value,
           uploadedById: req.user.userId,
         },
         select: FILE_SELECT,
@@ -299,13 +310,7 @@ router.get('/files', authenticateToken, requireUnlock, async (req, res) => {
       team: req.contractTeam,
       ...(docType ? { docType } : {}),
       ...(customerId ? { customerId } : {}),
-      ...(q ? {
-        OR: [
-          { filename: { contains: q, mode: 'insensitive' } },
-          { note: { contains: q, mode: 'insensitive' } },
-          { customer: { name: { contains: q, mode: 'insensitive' } } },
-        ],
-      } : {}),
+      ...(q ? { OR: contractFileSearchOr(q) } : {}),
     };
     const [items, total] = await prisma.$transaction([
       prisma.contractFile.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset, select: LIST_SELECT }),
@@ -366,18 +371,19 @@ router.get('/customers', authenticateToken, requireUnlock, async (req, res) => {
   }
 });
 
-// Fix a wrong category or note, or mark the file's order finished. Picking the
-// wrong type on upload is a certainty, and without this the only remedy is
-// delete-and-reupload, which throws away the upload record and timestamp.
-// `closed` is separate from that edit: anyone holding the team PIN may say the
-// order is finished or reopen it. The uploader-or-admin rule stays on the file
-// itself.
+// Fix a wrong category, note or machine serial, or mark the file's order
+// finished. Picking the wrong type on upload is a certainty, and without this
+// the only remedy is delete-and-reupload, which throws away the upload record
+// and timestamp. `closed` is separate from that edit: anyone holding the team
+// PIN may say the order is finished or reopen it. The uploader-or-admin rule
+// stays on the file itself, and the serial is part of that metadata.
 const patchSchema = z.object({
   docType: docTypeSchema.optional(),
   note: z.string().trim().max(500).nullable().optional(),
+  machineSerial: z.union([z.string().max(200), z.null()]).optional(),
   closed: z.boolean().optional(),
 }).refine(
-  (v) => v.docType !== undefined || v.note !== undefined || v.closed !== undefined,
+  (v) => v.docType !== undefined || v.note !== undefined || v.machineSerial !== undefined || v.closed !== undefined,
   { message: 'Nothing to update' },
 );
 
@@ -391,13 +397,20 @@ router.patch('/files/:id', authenticateToken, requireUnlock, async (req, res) =>
     // 404 rather than 403 across teams, matching download and delete: whether a
     // given id exists is itself something the other team should not learn.
     if (!file || file.team !== req.contractTeam) return res.status(404).json({ error: 'Not found' });
-    const editsMeta = parsed.data.docType !== undefined || parsed.data.note !== undefined;
+    const editsMeta = parsed.data.docType !== undefined
+      || parsed.data.note !== undefined
+      || parsed.data.machineSerial !== undefined;
     if (editsMeta && req.user.isAdmin !== true && file.uploadedById !== req.user.userId) {
       return res.status(403).json({ error: 'Only the uploader or an admin can edit this file' });
     }
     const data = {};
     if (parsed.data.docType !== undefined) data.docType = parsed.data.docType;
     if (parsed.data.note !== undefined) data.note = parsed.data.note || null;
+    if (parsed.data.machineSerial !== undefined) {
+      const serial = normalizeMachineSerial(parsed.data.machineSerial);
+      if (!serial.ok) return res.status(400).json({ error: serial.error });
+      data.machineSerial = serial.value;
+    }
     // Keep the original timestamp when it is marked closed again, so the date
     // stays "when it was closed" rather than "when the button was last pressed".
     if (parsed.data.closed === true) data.closedAt = file.closedAt || new Date();

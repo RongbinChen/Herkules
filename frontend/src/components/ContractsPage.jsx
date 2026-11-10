@@ -7,6 +7,7 @@ import { Badge, Button, Card, Input, Select } from './ui'
 import { CONTRACT_DOC_TYPES, DOC_TYPE_ORDER, displayFilename, docTypeMeta, ocrMeta, ocrNeedsBadge } from '../constants/contract'
 import useContractUnlock from '../hooks/useContractUnlock'
 import { invalidateOpenOrders } from '../utils/openOrdersRefresh'
+import { contractGroupTitle, groupContractFiles } from '../utils/contractGroups'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
 import TranscriptionToggle from './TranscriptionToggle'
@@ -37,10 +38,14 @@ export default function ContractsPage() {
   const [uploadOpen, setUploadOpen] = useState(false)
   // Prefer the customer picked from a group header; fall back to the URL filter.
   const [uploadCustomer, setUploadCustomer] = useState(null)
-  const [editing, setEditing] = useState(null) // the file being re-categorised
+  // Serial from that same header. '' when the group has none yet — the field
+  // stays blank and the person can still type one.
+  const [uploadSerial, setUploadSerial] = useState('')
+  const [editing, setEditing] = useState(null) // the file being re-categorised, including its serial
   const [closingId, setClosingId] = useState(null)
-  // Grouping is a view over the rows already loaded, not a server query. With a
-  // customer filter active there is only ever one group, so it turns itself off.
+  // Grouping is a view over the rows already loaded, not a server query. A group
+  // is customer + machine serial, including when a customer filter is on —
+  // one customer can have several machines.
   const [grouped, setGrouped] = useState(true)
   const [collapsed, setCollapsed] = useState(() => new Set())
   // Which rows have their key-terms panel open. Opening one is what spends the
@@ -120,7 +125,11 @@ export default function ContractsPage() {
 
   async function saveEdit() {
     try {
-      await contractsAPI.patch(editing.id, { docType: editing.docType, note: editing.note || null }, unlock.token)
+      await contractsAPI.patch(editing.id, {
+        docType: editing.docType,
+        note: editing.note || null,
+        machineSerial: editing.machineSerial.trim() || null,
+      }, unlock.token)
       setEditing(null)
       await load(false)
       await loadSummary()
@@ -159,34 +168,19 @@ export default function ContractsPage() {
   const canEdit = (f) => isAdmin || f.uploadedBy?.id === user?.id
 
   // Groups cover the rows fetched so far; "Load more" grows the existing groups
-  // rather than opening a second block for a customer that already has one.
+  // rather than opening a second block for a machine that already has one.
+  // A group is one customer plus one machine serial. Files with no serial stay
+  // in their own group under that customer.
   //
   // Customers are ordered by their most recent file, not by name — whoever we
-  // last filed something for sits at the top. Sorted explicitly rather than
-  // leaning on the server's createdAt-desc order, so the view keeps its meaning
-  // if that ever changes. Since "Load more" only ever appends older rows, no
-  // group's newest date can move, and the order on screen never reshuffles.
-  const groups = useMemo(() => {
-    const byCustomer = new Map()
-    for (const f of items) {
-      const id = f.customer?.id ?? 0
-      if (!byCustomer.has(id)) byCustomer.set(id, { id, name: f.customer?.name || 'Unknown customer', files: [], newest: 0 })
-      const g = byCustomer.get(id)
-      g.files.push(f)
-      g.newest = Math.max(g.newest, new Date(f.createdAt).getTime() || 0)
-    }
-    // Inside a group, "Other" sinks to the bottom: it is the catch-all, and a
-    // loose scan or a cover letter sitting above the signed contract makes the
-    // group read as though that were the newest thing that mattered. Everything
-    // else keeps the server's newest-first order — sort is stable, so this only
-    // moves the Other rows down, it does not regroup the rest by type.
-    for (const g of byCustomer.values()) {
-      g.files.sort((a, b) => (a.docType === 'OTHER' ? 1 : 0) - (b.docType === 'OTHER' ? 1 : 0))
-    }
-    return [...byCustomer.values()].sort((a, b) => b.newest - a.newest)
-  }, [items])
+  // last filed something for sits at the top, and that customer's machines sit
+  // together. Since "Load more" only ever appends older rows, no group's newest
+  // date can move, and the order on screen never reshuffles.
+  const groups = useMemo(() => groupContractFiles(items), [items])
 
-  const showGrouped = grouped && !customerId
+  // A customer filter used to hide grouping, because one customer was one group.
+  // One customer can now have several machines, so the groups stay.
+  const showGrouped = grouped
 
   const toggleGroup = (id) => setCollapsed((prev) => {
     const next = new Set(prev)
@@ -240,6 +234,7 @@ export default function ContractsPage() {
               className="mt-0.5 block max-w-full truncate pl-3 text-left text-xs font-medium text-slate-500 transition hover:text-brand-600"
             >
               {f.customer?.name}
+              {f.machineSerial ? ` · ${f.machineSerial}` : ''}
             </button>
           )}
           {/* The lines under the title are indented a notch. Flush against the
@@ -285,7 +280,7 @@ export default function ContractsPage() {
             )}
             {canEdit(f) && (
               <>
-                <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '' })} className="font-semibold text-slate-500 transition hover:text-brand-600">Edit</button>
+                <button onClick={() => setEditing({ id: f.id, docType: f.docType, note: f.note || '', machineSerial: f.machineSerial || '' })} className="font-semibold text-slate-500 transition hover:text-brand-600">Edit</button>
                 <button onClick={() => doDelete(f)} className="font-semibold text-slate-500 transition hover:text-rose-500">Delete</button>
               </>
             )}
@@ -369,6 +364,7 @@ export default function ContractsPage() {
             {isOcrOwner && <TranscriptionToggle />}
             <Button size="sm" onClick={() => {
               setUploadCustomer(customerId && customerName ? { id: Number(customerId), name: customerName } : null)
+              setUploadSerial('')
               setUploadOpen(true)
             }}>＋ Upload</Button>
             <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
@@ -438,7 +434,7 @@ export default function ContractsPage() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search file name, note or customer…"
+            placeholder="Search file name, note, serial or customer…"
             className="max-w-sm"
           />
           {customerId && (
@@ -448,14 +444,13 @@ export default function ContractsPage() {
             </span>
           )}
           <span className="text-xs text-slate-400">{total} file{total === 1 ? '' : 's'}</span>
-          {!customerId && (
-            <button
-              onClick={() => setGrouped((v) => !v)}
-              className="ml-auto rounded-full px-3 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
-            >
-              {grouped ? '☰ Flat list' : '▤ Group by customer'}
-            </button>
-          )}
+          <button
+            onClick={() => setGrouped((v) => !v)}
+            title={grouped ? 'Show every file on its own' : 'Group by customer and machine serial'}
+            className="ml-auto rounded-full px-3 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
+          >
+            {grouped ? '☰ Flat list' : '▤ Group by serial'}
+          </button>
         </div>
 
         {items.length === 0 ? (
@@ -465,50 +460,63 @@ export default function ContractsPage() {
         ) : showGrouped ? (
           <div className="space-y-4">
             {groups.map((g) => {
-              const isCollapsed = collapsed.has(g.id)
+              const isCollapsed = collapsed.has(g.key)
+              const title = contractGroupTitle(g)
               return (
-                /* One box per customer, not one per file. Rows carrying their
-                   own border made every group look the same as the last, which
-                   is the thing that made the boundaries hard to find. */
-                <section key={g.id} className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
+                /* One box per customer + serial, not one per file. Rows carrying
+                   their own border made every group look the same as the last,
+                   which is the thing that made the boundaries hard to find. */
+                <section key={g.key} className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
                   {/* The header collapses; opening the customer is the small
                       arrow on the right. Putting the navigation on the name
                       would send people to another page on the click they meant
                       as "fold this away". */}
                   <div className={`flex items-center gap-2 bg-slate-100 px-3 py-2 ${isCollapsed ? '' : 'border-b border-slate-200'}`}>
                     <button
-                      onClick={() => toggleGroup(g.id)}
+                      onClick={() => toggleGroup(g.key)}
                       aria-expanded={!isCollapsed}
+                      title={title}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left transition hover:opacity-70"
                     >
                       <span className="text-xs text-slate-400">{isCollapsed ? '▸' : '▾'}</span>
                       <span className="min-w-0 truncate text-sm font-bold text-slate-800">{g.name}</span>
+                      {g.serialLabel && (
+                        <span
+                          className={`shrink-0 text-sm ${g.serial ? 'font-bold text-slate-700' : 'font-semibold text-slate-400'}`}
+                          title={g.serial ? g.serial : '无序列号'}
+                        >
+                          · {g.serialLabel}
+                        </span>
+                      )}
                       <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                         {g.files.length}
                       </span>
                     </button>
-                    {g.id ? (
+                    {g.customerId ? (
                       <button
                         type="button"
                         onClick={() => {
-                          setUploadCustomer({ id: g.id, name: g.name })
+                          setUploadCustomer({ id: g.customerId, name: g.name })
+                          setUploadSerial(g.serial || '')
                           setUploadOpen(true)
                         }}
-                        title={`Add file for ${g.name}`}
-                        aria-label={`Add file for ${g.name}`}
+                        title={`Add file for ${title}`}
+                        aria-label={`Add file for ${title}`}
                         className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:border-brand-300 hover:text-brand-700"
                       >
                         ＋ Add file
                       </button>
                     ) : null}
-                    <button
-                      onClick={() => navigate(`/customers/${g.id}`)}
-                      title={`Open ${g.name}`}
-                      aria-label={`Open ${g.name}`}
-                      className="shrink-0 text-xs font-semibold text-slate-400 transition hover:text-brand-600"
-                    >
-                      ↗
-                    </button>
+                    {g.customerId ? (
+                      <button
+                        onClick={() => navigate(`/customers/${g.customerId}`)}
+                        title={`Open ${g.name}`}
+                        aria-label={`Open ${g.name}`}
+                        className="shrink-0 text-xs font-semibold text-slate-400 transition hover:text-brand-600"
+                      >
+                        ↗
+                      </button>
+                    ) : null}
                   </div>
                   {!isCollapsed && (
                     <ul className="divide-y divide-slate-100">
@@ -542,7 +550,8 @@ export default function ContractsPage() {
           token={unlock.token}
           team={unlock.team}
           initialCustomer={uploadCustomer || (customerId && customerName ? { id: Number(customerId), name: customerName } : null)}
-          onClose={() => { setUploadOpen(false); setUploadCustomer(null) }}
+          initialSerial={uploadSerial}
+          onClose={() => { setUploadOpen(false); setUploadCustomer(null); setUploadSerial('') }}
           onUploaded={() => { load(false); loadSummary() }}
         />
       )}
@@ -550,10 +559,21 @@ export default function ContractsPage() {
       {editing && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4" onClick={() => setEditing(null)}>
           <div onClick={(e) => e.stopPropagation()} className="my-16 w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-            <h3 className="mb-3 text-base font-bold text-slate-900">Change type / note</h3>
+            <h3 className="mb-3 text-base font-bold text-slate-900">Edit file</h3>
             <Select value={editing.docType} onChange={(e) => setEditing((s) => ({ ...s, docType: e.target.value }))}>
               {DOC_TYPE_ORDER.map((k) => <option key={k} value={k}>{CONTRACT_DOC_TYPES[k].label}</option>)}
             </Select>
+            <label className="mt-3 block text-xs font-semibold text-slate-600">
+              Machine serial / 机床序列号
+              <Input
+                value={editing.machineSerial}
+                onChange={(e) => setEditing((s) => ({ ...s, machineSerial: e.target.value }))}
+                placeholder="5.1022"
+                maxLength={40}
+                autoComplete="off"
+                className="mt-1"
+              />
+            </label>
             <Input value={editing.note} onChange={(e) => setEditing((s) => ({ ...s, note: e.target.value }))} placeholder="Note" maxLength={500} className="mt-2" />
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setEditing(null)}>Cancel</Button>

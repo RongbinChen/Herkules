@@ -717,6 +717,13 @@ model ContractFile {
   mimeType     String?
   size         Int
   note         String?
+  // Which machine this file belongs to, e.g. "5.1022". One customer often has
+  // several machines in execution, and the Contracts list groups by customer
+  // plus this serial so a second project does not land in the first one's
+  // pile. Null means nobody entered one — those files stay visible in a
+  // "No serial" group and are never assigned a made-up number. Nullable, with
+  // no default, so adding the column does not rewrite existing rows.
+  machineSerial String?
   uploadedById Int?
   uploadedBy   User?           @relation("ContractUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   followUps    ProjectFollowUp[] @relation("FollowUpContracts")
