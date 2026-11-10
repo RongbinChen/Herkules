@@ -203,6 +203,8 @@ router.get('/dashboard', async (req, res) => {
         id: true,
         title: true,
         orderNo: true,
+        // Ordinary order data. The contract value is not selected.
+        machineSerial: true,
         status: true,
         createdAt: true,
         owner: { select: { id: true, name: true } },
