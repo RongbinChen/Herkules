@@ -1228,8 +1228,8 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
         <p className="mt-0.5 text-[11px] text-slate-400">
           A milestone only reminds once it has a date. Use “Fill timeline from contract”
           above to suggest them, or type a date here. Mail goes out on each of its lead days,
-          then every 3 days once overdue, until it is ticked off — to the owner,
-          copied to Stefan Elze, blind copied to Rongbin Chen.
+          then every 3 days once overdue, until it is ticked off — to the owner
+          and blind copied to Rongbin Chen.
         </p>
         <div className="mt-3 space-y-4">
           {GROUPS.map((g) => {

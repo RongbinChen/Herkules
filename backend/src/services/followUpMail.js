@@ -24,8 +24,11 @@ function subjectLine({ followUp, name, due }) {
   return `[Herkules 项目跟进] ${followUp.title} — ${name}（${tag}）`;
 }
 
-export async function milestoneReminderMail({ to, cc, bcc, milestone, followUp, meta, due }) {
-  if (!to) return false;
+// Wording for one reminder. `due` is a real China-calendar standing
+// (milestoneStanding): overdue, due today, or due in N days. N is that
+// standing's delta — this does not substitute zero when the sweep would
+// have stayed quiet.
+export function milestoneReminderParts({ milestone, followUp, meta, due }) {
   const nameZh = milestone.label || meta?.zh || milestone.kind;
   const nameEn = milestone.label || meta?.en || milestone.kind;
 
@@ -44,32 +47,46 @@ export async function milestoneReminderMail({ to, cc, bcc, milestone, followUp, 
       zh: `该节点原定 ${fmt(milestone.dueDate)}，已逾期 ${-due.delta} 天。`,
     }
     : due.urgency === 'today'
-      ? { en: `This milestone is due today.`, zh: '该节点今天到期。' }
+      ? { en: 'This milestone is due today.', zh: '该节点今天到期。' }
       : {
         en: `This milestone is due in ${due.delta} day(s), on ${fmt(milestone.dueDate)}.`,
         zh: `该节点还有 ${due.delta} 天到期（${fmt(milestone.dueDate)}）。`,
       };
 
+  return {
+    subject: subjectLine({ followUp, name: nameZh, due }),
+    // An overdue date is the one case where the mail should look different
+    // from every other notification in the inbox.
+    tone: due.urgency === 'overdue' ? 'alert' : 'info',
+    title: {
+      en: `${nameEn} — ${followUp.title}`,
+      zh: `${nameZh} — ${followUp.title}`,
+    },
+    intro,
+    facts,
+    action: {
+      label: { en: 'Open in Herkules CRM', zh: '在系统中查看' },
+      url: `https://www.herkulesgroup-china.com/followups/${followUp.id}`,
+    },
+    note: NOTE,
+  };
+}
+
+export async function milestoneReminderMail({ to, cc, bcc, milestone, followUp, meta, due }) {
+  if (!to) return false;
   try {
+    const parts = milestoneReminderParts({ milestone, followUp, meta, due });
     const mail = renderEmail({
-      // An overdue date is the one case where the mail should look different
-      // from every other notification in the inbox.
-      tone: due.urgency === 'overdue' ? 'alert' : 'info',
-      title: {
-        en: `${nameEn} — ${followUp.title}`,
-        zh: `${nameZh} — ${followUp.title}`,
-      },
-      intro,
-      facts,
-      action: {
-        label: { en: 'Open in Herkules CRM', zh: '在系统中查看' },
-        url: `https://www.herkulesgroup-china.com/followups/${followUp.id}`,
-      },
-      note: NOTE,
+      tone: parts.tone,
+      title: parts.title,
+      intro: parts.intro,
+      facts: parts.facts,
+      action: parts.action,
+      note: parts.note,
     });
     return await sendMail({
       to, cc, bcc,
-      subject: subjectLine({ followUp, name: nameZh, due }),
+      subject: parts.subject,
       text: mail.text,
       html: mail.html,
     });
