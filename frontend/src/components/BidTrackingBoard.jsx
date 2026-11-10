@@ -135,7 +135,7 @@ function TrackingEditor({ thread, onSaved }) {
   );
 }
 
-function ThreadCard({ thread, onSaved, onCustomer }) {
+export function ThreadCard({ thread, onSaved, onCustomer }) {
   const [showEdit, setShowEdit] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
 
@@ -167,7 +167,12 @@ function ThreadCard({ thread, onSaved, onCustomer }) {
               </span>
             )}
           </div>
-          <span className="text-[11px] text-slate-400">Updated {fmtDate(thread.lastUpdate)}</span>
+          {/* Latest official notice. Hidden when the thread has no publication date. */}
+          {thread.lastPublished && (
+            <span className="text-[11px] text-slate-400" title="Publication date of the latest notice">
+              Published {fmtDate(thread.lastPublished)}
+            </span>
+          )}
         </div>
 
         {/* Linked customers (cross-reference) */}

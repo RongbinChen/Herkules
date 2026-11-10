@@ -40,6 +40,7 @@ const KIND_SET = new Set(TIMELINE_KINDS);
 // tokens; the prose parser maps "signing", "验收证书", "装运" onto the same set.
 const BASES = new Set([
   'SIGNED', 'EFFECTIVE', 'SHIPMENT', 'FAT', 'FAC', 'INSTALLATION', 'PAYMENT_DOWN', 'LC_OPEN',
+  'LC_RECEIVED',
 ]);
 
 const BASE_TO_KIND = {
@@ -51,15 +52,40 @@ const BASE_TO_KIND = {
   INSTALLATION: 'INSTALLATION',
   PAYMENT_DOWN: 'PAYMENT_DOWN',
   LC_OPEN: 'LC_OPEN_DEADLINE',
+  LC_RECEIVED: 'LC_RECEIVED',
   CONTRACT_SIGNED: 'CONTRACT_SIGNED',
   CONTRACT_EFFECTIVE: 'CONTRACT_EFFECTIVE',
   LC_OPEN_DEADLINE: 'LC_OPEN_DEADLINE',
 };
 
+// Letter-of-credit dates are commercial terms. A technical agreement describes
+// the machine; it does not say when the credit must arrive or the last day it
+// may be shipped against. Kept out of a technical file's ask, and dropped if a
+// cached answer still contains them.
+export const COMMERCIAL_LC_KINDS = new Set([
+  'LC_OPEN_DEADLINE', 'LC_RECEIVED', 'LC_LATEST_SHIPMENT', 'LC_PRESENTATION',
+]);
+
+// These two are only useful when the commercial text states a real number or a
+// calendar date. A line that says "within N days" is the model leaving the
+// blank in, not a clause, and the milestone row already accepts a typed date.
+const LC_NEEDS_CONCRETE = new Set(['LC_RECEIVED', 'LC_LATEST_SHIPMENT']);
+
+// 交货期起算 is not one company-wide rule. A commercial contract either counts
+// delivery from the signing date or from receipt of the down payment (often by
+// saying the contract becomes effective at that receipt). Anything else is
+// not a start we are allowed to guess.
+export const DELIVERY_STARTS = new Set(['SIGNED', 'PAYMENT_DOWN']);
+
 // Bumped when the line format or the prose reader changes what a stored answer
 // means. A mismatch re-asks (or re-reads the stored raw, when the prompt is
 // unchanged). See contractTimeline.js.
-export const TIMELINE_VERSION = 1;
+// Bumped when the reader learns a new base (LC_RECEIVED). A stored answer is
+// re-parsed from its raw text and not re-asked. The prompt version stays put
+// on purpose: letter-of-credit lines cached from a technical file are dropped
+// when the timeline is assembled, so re-asking every contract would spend the
+// GPU to learn dates the commercial text already holds. See contractTimeline.js.
+export const TIMELINE_VERSION = 2;
 export const TIMELINE_PROMPT_VERSION = 1;
 
 const MONTHS = {
@@ -75,10 +101,14 @@ const BASE_RULES = [
   ['FAC', /signing the acceptance|acceptance certificate|签署验收|验收证书|终验收|最终验收|final acceptance|(?<!factory\s)\bacceptance\b|(?<!出厂)验收合格|验收后|验收时|验收款|\bfac\b/gi],
   ['FAT', /factory acceptance|\bfat\b|出厂验收|预验收/gi],
   ['INSTALLATION', /commissioning|installation|安装调试|安装|调试/gi],
+  // Receipt of the credit, before the generic "shipment" / "装运" rule, so
+  // "90 days after the letter of credit is received" is not read as 90 days
+  // after shipment. Distance still decides; this order is only the tie-break.
+  ['LC_RECEIVED', /receipt of (?:the )?(?:l\/?c|letter of credit)|(?:l\/?c|letter of credit) (?:is |was |being )?received|信用证收到|收到信用证|信用证送达|信用证到达/gi],
   ['SHIPMENT', /shipping documents|bill of lading|\bb\/?l\b|shipment|delivery|装运|发货|交货|到港/gi],
   ['PAYMENT_DOWN', /down payment|prepayment|advance payment|\badvance\b|\bdeposit\b|预付款|定金|订金|首付/gi],
   ['EFFECTIVE', /effectiveness|\beffective\b|生效/gi],
-  ['LC_OPEN', /开证|开立/gi],
+  ['LC_OPEN', /开证|开立|opening deadline|opening of the (?:l\/?c|letter of credit)|(?:l\/?c|letter of credit) (?:is |was )?opened/gi],
   // "signing the acceptance" is excluded — see FAC. 签署验收 likewise.
   ['SIGNED', /signing(?!\s+the\s+acceptance)|signature|(?<![a-z])signed\b|合同签订|签订|签署(?!验收)/gi],
 ];
@@ -415,15 +445,68 @@ function clausesFromPayment(text) {
   return out;
 }
 
+// A length with no clock ("delivery within 12 months"). parseRelative refuses
+// that, because a payment with no base must not be invented as "on signing".
+// Delivery is the one milestone whose missing clock is a question for the
+// reader rather than a clause to drop: the length is real, the start is not.
+function parseDuration(text) {
+  const re = /(\d+)\s*(?:working\s+|calendar\s+)?(days?|weeks?|months?|years?|个?月|日|天)/gi;
+  const m = re.exec(text);
+  if (!m) return null;
+  const word = m[2].toLowerCase();
+  let n = Number(m[1]);
+  let unit = 'days';
+  if (/year/.test(word)) { unit = 'months'; n *= 12; }
+  else if (/month|月/.test(word)) unit = 'months';
+  else if (/week/.test(word)) { unit = 'days'; n *= 7; }
+  if (!n) return null;
+  return { n, unit, dir: directionNear(text, m.index) };
+}
+
 function clausesFromDelivery(text) {
   if (blankValue(text)) return [];
   // The first sentence that is actually about delivery. A leading "FAT 14 days
   // before shipment" is a different milestone and must not become the shipment
   // date, nor hide the delivery sentence that follows it.
+  //
+  // The clock has to be one this contract actually names. Signing, receipt of
+  // the down payment, and effectiveness (which itself resolves to one of those
+  // two, or stays open) are delivery-start rules. "After FAT" or a bare
+  // "12 months" is not one of them — keep the length, leave the start blank,
+  // and let the person choose. Guessing "from the signature" is how every
+  // order was silently given the same 交货期起算.
   for (const part of splitSentences(text)) {
+    // 最晚装运期 is the letter-of-credit milestone, not the delivery period.
+    // Leaving it here would turn "90 days after the credit is received" into
+    // an unknown 交货期起算 and ask the reader to invent one.
+    if (/latest (?:date of )?shipment|最晚装运/i.test(part)) continue;
     const timing = parseTiming(part);
-    if (!timing || circular('SHIPMENT', timing)) continue;
-    return [{ kind: 'SHIPMENT', ...spreadTiming(timing), notes: clipNote(text) }];
+    if (timing?.absolute) {
+      return [{ kind: 'SHIPMENT', absolute: timing.absolute, notes: clipNote(text) }];
+    }
+    if (timing && !circular('SHIPMENT', timing)) {
+      const base = timing.offset?.base || timing.anchor || null;
+      if (base === 'SIGNED' || base === 'PAYMENT_DOWN' || base === 'EFFECTIVE') {
+        return [{ kind: 'SHIPMENT', ...spreadTiming(timing), notes: clipNote(text) }];
+      }
+      if (timing.offset) {
+        return [{
+          kind: 'SHIPMENT',
+          offset: { ...timing.offset, base: null },
+          unresolvedStart: true,
+          notes: clipNote(text),
+        }];
+      }
+    }
+    if (!/deliver|shipment|交货|装运|发货/i.test(part)) continue;
+    const dur = parseDuration(part);
+    if (!dur) continue;
+    return [{
+      kind: 'SHIPMENT',
+      offset: { ...dur, base: null },
+      unresolvedStart: true,
+      notes: clipNote(text),
+    }];
   }
   return [];
 }
@@ -442,7 +525,10 @@ function segmentContaining(text, re) {
 }
 
 function effectiveClause(blob) {
-  if (/effective\s+(?:upon|on|after)\s+(?:the\s+)?(?:receipt\s+of\s+)?(?:the\s+)?(?:down payment|advance|deposit)|预付款(?:到账|支付).{0,8}生效|自预付款.{0,12}生效|定金到账/i.test(blob)) {
+  // "when the down payment arrives" is how these contracts say it, not only
+  // "upon receipt of the down payment". Both mean the delivery period that is
+  // counted from effectiveness starts when the money is in.
+  if (/effective\s+(?:upon|on|after|when)\s+(?:the\s+)?(?:receipt\s+of\s+)?(?:the\s+)?(?:down payment|advance|deposit)|预付款(?:到账|支付).{0,12}生效|自预付款.{0,16}生效|定金到账后生效|定金到账/i.test(blob)) {
     return { kind: 'CONTRACT_EFFECTIVE', anchor: 'PAYMENT_DOWN', notes: clipNote('Effective when the down payment is received') };
   }
   if (/effective\s+(?:upon|on|from)\s+(?:the\s+)?sign|自签订之日起生效|签订后生效|签署之日生效/i.test(blob)) {
@@ -457,8 +543,8 @@ const EXTRA_RULES = [
   ['FAT', /\bfat\b|factory acceptance|出厂验收/i],
   ['INSTALLATION', /installation|commissioning|安装调试/i],
   ['LC_PRESENTATION', /document presentation|presentation of documents|presented within|交单/i],
-  ['LC_LATEST_SHIPMENT', /latest shipment|最晚装运/i],
-  ['LC_RECEIVED', /l\/?c received|lc received|信用证收到|收到信用证/i],
+  ['LC_LATEST_SHIPMENT', /latest (?:date of )?shipment|最晚装运/i],
+  ['LC_RECEIVED', /l\/?c (?:is |was |be |been |shall be |must be |to be )?received|letter of credit (?:is |was |shall be |must be |to be )?received|信用证收到|收到信用证|信用证(?:送达|到达)/i],
 ];
 
 function extraClauses(blob) {
@@ -499,13 +585,26 @@ export function mergeClauses(clauses) {
     const sb = specificity(c);
     let winner = prev;
     let loser = c;
-    if (sb > sa) { winner = c; loser = prev; }
+    // The delivery period is a commercial term. A technical agreement can still
+    // supply installation, FAT and a shipment date of its own when the
+    // commercial contract is silent — but it must not outrank a commercial
+    // delivery clause just because the technical file stated a calendar day.
+    const commercialShipment = (a, b) => a?.kind === 'SHIPMENT'
+      && a.docType === 'COMMERCIAL'
+      && b?.docType !== 'COMMERCIAL'
+      && (a.absolute || a.offset || a.anchor || a.unresolvedStart);
+    if (commercialShipment(c, prev)) { winner = c; loser = prev; }
+    else if (commercialShipment(prev, c)) { winner = prev; loser = c; }
+    else if (sb > sa) { winner = c; loser = prev; }
     else if (sb === sa) {
       const prevCom = prev.docType === 'COMMERCIAL' ? 1 : 0;
       const nextCom = c.docType === 'COMMERCIAL' ? 1 : 0;
       if (nextCom > prevCom) { winner = c; loser = prev; }
     }
-    byKind.set(c.kind, { ...winner, notes: joinNotes(winner.notes, loser.notes) });
+    const notes = winner.kind === 'SHIPMENT' && winner.docType !== loser.docType
+      ? winner.notes
+      : joinNotes(winner.notes, loser.notes);
+    byKind.set(c.kind, { ...winner, notes });
   }
   return [...byKind.values()];
 }
@@ -596,12 +695,25 @@ export function parseTimelineAnswer(text) {
   return mergeClauses(clauses);
 }
 
-export function timelinePrompt() {
+export function timelineKindsFor(docType) {
+  if (docType === 'COMMERCIAL') return TIMELINE_KINDS;
+  return TIMELINE_KINDS.filter((k) => !COMMERCIAL_LC_KINDS.has(k));
+}
+
+export function timelinePrompt(docType) {
+  const kinds = timelineKindsFor(docType);
+  const commercial = docType === 'COMMERCIAL';
+  const extra = commercial
+    ? `- LC_RECEIVED and LC_LATEST_SHIPMENT only when the pages state a real number of days or a calendar date. If the number is not written, omit the line. Never write the letter N in place of a number.
+- When the latest shipment is counted from arrival of the letter of credit, BASE is LC_RECEIVED.
+- SHIPMENT (delivery time) uses the base the sentence names. "After signing" / 签订后 is SIGNED. "After receipt of the down payment" / 预付款到账后 is PAYMENT_DOWN. "After the contract becomes effective" is EFFECTIVE. If the sentence gives a length but does not say which of those it is counted from, WHEN is — and the note quotes the length. Do not assume signing.`
+    : `- Do not extract letter-of-credit milestones (opening, receipt, latest shipment, presentation). Those belong to the commercial contract. Omit the line even if a page mentions shipment or payment in passing.
+- Delivery, installation, FAT, FAC, drawings and warranty still belong here when this document states them.`;
   return `Extract the execution milestones this contract actually states. One line per milestone, nothing else:
 
 KIND | WHEN | note
 
-KIND is one of: ${TIMELINE_KINDS.join(', ')}
+KIND is one of: ${kinds.join(', ')}
 
 WHEN is one of:
 - a calendar date as YYYY-MM-DD
@@ -609,14 +721,15 @@ WHEN is one of:
 - "on BASE"
 - — when the contract names the milestone but gives no time
 
-BASE is one of: SIGNED, EFFECTIVE, SHIPMENT, FAT, FAC, INSTALLATION, PAYMENT_DOWN, LC_OPEN
+BASE is one of: SIGNED, EFFECTIVE, SHIPMENT, FAT, FAC, INSTALLATION, PAYMENT_DOWN, LC_OPEN${commercial ? ', LC_RECEIVED' : ''}
 
 Rules:
 - Only include a milestone the pages state. Do not invent dates or milestones.
-- SIGNED is the date the contract was signed. EFFECTIVE is when it takes effect (often when the down payment arrives).
+- SIGNED is the date the contract was signed. EFFECTIVE is when it takes effect (often when the down payment arrives, sometimes on signing — copy which one the pages say).
 - "within N days of signing" is "N days after SIGNED". "within N days before shipment" is "N days before SHIPMENT".
 - The note is one short English clause (under 140 characters) quoting the timing. Do not include the contract price or any currency amount.
-- If the pages are silent on a milestone, omit the line.`;
+- If the pages are silent on a milestone, omit the line.
+${extra}`;
 }
 
 export function pickTimelinePages(pages) {
@@ -679,6 +792,9 @@ export function resolveTimeline(clauses, { today } = {}) {
     const dueDate = dates.get(c.kind) || null;
     // The signature date is a fact that already happened. Leaving it open
     // would put every new follow-up at the top of the list as overdue.
+    // A down-payment date the contract states ("within 10 days of signing")
+    // is only the expectation. It is not marked received: the money is
+    // confirmed by the person, on the milestone, when it arrives.
     const done = c.kind === 'CONTRACT_SIGNED' && Boolean(dueDate) && Boolean(today) && dueDate < today;
     return {
       kind: c.kind,
@@ -686,6 +802,8 @@ export function resolveTimeline(clauses, { today } = {}) {
       label: c.label || null,
       notes: c.notes || null,
       done,
+      confirmReceipt: c.kind === 'PAYMENT_DOWN' && Boolean(dueDate),
+      needsStart: Boolean(c.unresolvedStart) && !dueDate,
       docType: c.docType || null,
       fileId: c.fileId || null,
       filename: c.filename || null,
@@ -697,6 +815,229 @@ const KIND_ORDER = new Map(TIMELINE_KINDS.map((k, i) => [k, i]));
 
 export function orderProposals(proposals) {
   return [...(proposals || [])].sort((a, b) => (KIND_ORDER.get(a.kind) ?? 99) - (KIND_ORDER.get(b.kind) ?? 99));
+}
+
+// A real number of days or a calendar date. An anchor that copies another
+// milestone ("on opening") is not a date the text stated.
+export function hasConcreteTiming(clause) {
+  if (!clause) return false;
+  if (clause.absolute && isIsoDate(clause.absolute)) return true;
+  const n = clause.offset?.n;
+  return Boolean(clause.offset?.base) && Number.isInteger(n) && n > 0;
+}
+
+export function clausesForDocument(clauses, docType) {
+  // No document type means a bare parser fixture, which has no file to
+  // mis-attribute. A real file that is not the commercial contract cannot
+  // contribute letter-of-credit milestones.
+  const commercial = !docType || docType === 'COMMERCIAL';
+  return (clauses || []).filter((c) => {
+    if (!c?.kind) return false;
+    if (!commercial && COMMERCIAL_LC_KINDS.has(c.kind)) return false;
+    if (LC_NEEDS_CONCRETE.has(c.kind) && !hasConcreteTiming(c)) return false;
+    return true;
+  });
+}
+
+const LC_PAGE_RULES = [
+  ['LC_LATEST_SHIPMENT', /latest (?:date of )?shipment|最晚装运/i],
+  ['LC_RECEIVED', /l\/?c (?:is |was |be |been |shall be |must be |to be )?received|letter of credit (?:is |was |shall be |must be |to be )?received|信用证收到|收到信用证|信用证(?:送达|到达)/i],
+];
+
+// Commercial page text, not the one-line summary. The summary is told to
+// condense payment to "20% advance / 70% by letter of credit", which drops
+// "received within 15 days of opening" and the latest shipment date. Only a
+// sentence that carries a real number or a calendar date is kept.
+export function lcClausesFromText(text) {
+  if (!text) return [];
+  const out = [];
+  for (const [kind, re] of LC_PAGE_RULES) {
+    for (const part of splitSentences(text)) {
+      if (!re.test(part)) {
+        re.lastIndex = 0;
+        continue;
+      }
+      re.lastIndex = 0;
+      const timing = parseTiming(part);
+      if (!timing || circular(kind, timing)) continue;
+      const clause = { kind, ...spreadTiming(timing), notes: clipNote(part) };
+      if (!hasConcreteTiming(clause)) continue;
+      out.push(clause);
+      break;
+    }
+  }
+  return out;
+}
+
+// What this commercial contract uses as 交货期起算.
+//
+// Read from the delivery clause the commercial file actually produced:
+//   - base SIGNED            → counted from the signing date
+//   - base PAYMENT_DOWN      → counted from receipt of the down payment
+//   - base EFFECTIVE, and effectiveness is itself "when the down payment
+//     arrives" or "on signing" → that same rule
+//   - a calendar date        → no start rule is needed; the day is written
+//   - a length with no clock, effectiveness that the text does not define,
+//     or any other base      → ambiguous. Do not pick signing as a default.
+//
+// `clauses` must already be the commercial file's clauses. A technical
+// agreement's delivery sentence is a different document and is not a vote.
+export function detectDeliveryStart(clauses) {
+  const list = clauses || [];
+  const shipment = list.find((c) => c.kind === 'SHIPMENT');
+  const effective = list.find((c) => c.kind === 'CONTRACT_EFFECTIVE');
+  if (!shipment) return { rule: null, evidence: null, ambiguous: false };
+  if (shipment.absolute && !shipment.offset && !shipment.anchor) {
+    return { rule: null, evidence: shipment.notes || null, ambiguous: false };
+  }
+  const base = shipment.offset?.base || shipment.anchor || null;
+  const evidence = shipment.notes || effective?.notes || null;
+  if (base === 'SIGNED') return { rule: 'SIGNED', evidence, ambiguous: false };
+  if (base === 'PAYMENT_DOWN') return { rule: 'PAYMENT_DOWN', evidence, ambiguous: false };
+  if (base === 'EFFECTIVE') {
+    const eff = effective?.offset?.base || effective?.anchor || null;
+    if (eff === 'PAYMENT_DOWN') {
+      return { rule: 'PAYMENT_DOWN', evidence: effective?.notes || evidence, ambiguous: false };
+    }
+    if (eff === 'SIGNED') {
+      return { rule: 'SIGNED', evidence: effective?.notes || evidence, ambiguous: false };
+    }
+    return { rule: null, evidence, ambiguous: true };
+  }
+  if (shipment.unresolvedStart || shipment.offset || shipment.anchor) {
+    return { rule: null, evidence, ambiguous: true };
+  }
+  return { rule: null, evidence: null, ambiguous: false };
+}
+
+// A person's choice, used only when the contract did not name a start (or
+// they are correcting a reading). It does not rewrite a calendar date the
+// contract printed. An explicit SIGNED / PAYMENT_DOWN base is replaced only
+// because `source` is `manual` — the caller must not pass that for a rule
+// the text already stated, or a correct reading would be overwritten on
+// every pass. Callers pass `manual` for a stored or just-made choice.
+export function normalizeDeliveryClauses(clauses, { rule, source } = {}) {
+  if (source !== 'manual') return clauses || [];
+  if (rule !== 'SIGNED' && rule !== 'PAYMENT_DOWN') return clauses || [];
+  return (clauses || []).map((c) => {
+    if (c.kind !== 'SHIPMENT' || c.absolute || !c.offset) return c;
+    const { anchor, ...rest } = c;
+    return {
+      ...rest,
+      unresolvedStart: false,
+      offset: { ...c.offset, base: rule },
+    };
+  });
+}
+
+export function milestoneDay(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const day = value.slice(0, 10);
+    return isIsoDate(day) ? day : null;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+// `signedDate` and `paymentDate` are facts already on the follow-up. They
+// replace the contractual expectation for that one milestone so everything
+// counted from it moves with the confirmation. Passing neither leaves the
+// clause's own timing, which is the theoretical date from the text.
+export function projectTimeline(clauses, {
+  signedDate, paymentDate, deliveryStart, deliveryStartSource, today,
+} = {}) {
+  const normalized = normalizeDeliveryClauses(clauses, {
+    rule: deliveryStart || null,
+    source: deliveryStartSource || null,
+  });
+  const anchored = normalized.map((c) => {
+    if (c.kind === 'CONTRACT_SIGNED' && signedDate) {
+      const { offset, anchor, ...rest } = c;
+      return { ...rest, absolute: signedDate };
+    }
+    if (c.kind === 'PAYMENT_DOWN' && paymentDate) {
+      const { offset, anchor, unresolvedStart, ...rest } = c;
+      return { ...rest, absolute: paymentDate };
+    }
+    return c;
+  });
+  return resolveTimeline(anchored, { today });
+}
+
+export function assembleProposals(groups, { today, deliveryStart } = {}) {
+  const collected = [];
+  for (const g of groups || []) {
+    const docType = g?.docType || null;
+    for (const c of clausesForDocument(g?.clauses, docType)) {
+      collected.push({
+        ...c,
+        docType: c.docType || docType,
+        fileId: g.fileId ?? c.fileId ?? null,
+        filename: g.filename || c.filename || null,
+      });
+    }
+  }
+  const merged = mergeClauses(collected);
+  const detected = detectDeliveryStart(merged.filter((c) => c.docType === 'COMMERCIAL'));
+  const manual = deliveryStart === 'SIGNED' || deliveryStart === 'PAYMENT_DOWN' ? deliveryStart : null;
+  // Rewriting when the text already named this rule would flatten
+  // "12 months after effectiveness, and effectiveness is the down payment"
+  // into "12 months after the down payment", dropping any gap between the
+  // two. A choice only replaces the base when it differs from the reading.
+  const normalized = manual && manual !== detected.rule
+    ? normalizeDeliveryClauses(merged, { rule: manual, source: 'manual' })
+    : merged;
+  const proposals = redactProposalNotes(orderProposals(resolveTimeline(normalized, { today })))
+    .map(({ filename, ...rest }) => rest);
+  return {
+    proposals,
+    deliveryStart: {
+      rule: manual || detected.rule || null,
+      detected: detected.rule,
+      source: manual ? 'manual' : (detected.rule ? 'contract' : null),
+      ambiguous: Boolean(detected.ambiguous) && !manual,
+      evidence: detected.evidence || null,
+    },
+  };
+}
+
+// What should move when an anchor moves. A milestone the person has ticked
+// off, or whose date no longer matches the previous calculation, is left
+// where they put it. A blank row that is already on the record is filled
+// when the new calculation has a day. Rows that were never applied stay
+// unapplied — the suggestion list is what the person applies.
+// The anchor that just changed is not written again.
+export function planAnchorShift({ clauses, existing, movedKind, before, after }) {
+  const prev = projectTimeline(clauses, before || {});
+  const next = projectTimeline(clauses, after || {});
+  const prevBy = new Map(prev.map((p) => [p.kind, p]));
+  const updates = [];
+  for (const item of next) {
+    if (item.kind === movedKind || item.kind === 'CONTRACT_SIGNED') continue;
+    if (item.kind === 'PAYMENT_DOWN' && movedKind === 'PAYMENT_DOWN') continue;
+    const row = (existing || []).find((m) => m.kind === item.kind);
+    if (row?.doneAt) continue;
+    // Confirming the signature may slide a down payment that is still the
+    // contractual "N days after signing". A receipt already ticked, or a
+    // date the person typed over the formula, does not slide.
+    if (item.kind === 'PAYMENT_DOWN' && movedKind !== 'CONTRACT_SIGNED') continue;
+    const prevDate = prevBy.get(item.kind)?.dueDate || null;
+    const nextDate = item.dueDate || null;
+    const stored = row ? milestoneDay(row.dueDate) : null;
+    if (!row) continue;
+    if (stored && stored !== prevDate) continue;
+    if (stored === nextDate) continue;
+    updates.push({
+      kind: item.kind,
+      id: row.id,
+      action: 'update',
+      dueDate: nextDate,
+    });
+  }
+  return updates;
 }
 
 // What apply should do. A milestone that already has a date or is ticked off

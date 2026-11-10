@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  TIMELINE_KINDS, addDays, addMonths, isIsoDate, parseDate, parseTimelineAnswer,
-  parseTiming, planMilestoneApply, redactMoney,   redactProposalNotes, resolveTimeline, timelineFromSummary,
+  TIMELINE_KINDS, addDays, addMonths, assembleProposals, detectDeliveryStart,
+  hasConcreteTiming, isIsoDate, lcClausesFromText, parseDate, parseTimelineAnswer,
+  parseTiming, planAnchorShift, planMilestoneApply, projectTimeline, redactMoney,
+  redactProposalNotes, resolveTimeline, timelineFromSummary, timelineKindsFor, timelinePrompt,
 } from '../src/services/contractTimelineFormat.js';
 import { orderIdsMatch, selectOpenOrders } from '../src/services/openOrders.js';
 
@@ -437,6 +439,7 @@ test('open-orders is registered before the :id route', () => {
   assert.ok(openAt !== -1 && openAt < idAt);
   assert.match(src, /suggestTimelineForFiles/);
   assert.match(src, /planMilestoneApply/);
+  assert.match(src, /shiftFollowUpMilestones/);
   assert.match(src, /'COMMERCIAL', 'TECHNICAL', 'FAC'/);
   assert.match(src, /closedAt: true/);
   assert.match(src, /closedAt: f\.closedAt/);
@@ -445,3 +448,271 @@ test('open-orders is registered before the :id route', () => {
   assert.match(contracts, /closed:\s*z\.boolean\(\)/);
   assert.match(contracts, /closedAt:\s*true/);
 });
+
+test('a past down-payment expectation is not marked received', () => {
+  const proposals = resolveTimeline(timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: 'The Buyer shall pay the down payment within 10 days after the signature date.',
+  })), { today: '2026-11-10' });
+  const got = byKind(proposals);
+  assert.equal(got.PAYMENT_DOWN.dueDate, '2026-10-26');
+  assert.equal(got.PAYMENT_DOWN.done, false);
+  assert.equal(got.PAYMENT_DOWN.confirmReceipt, true);
+  const actions = planMilestoneApply([], [{
+    kind: 'PAYMENT_DOWN', dueDate: '2026-10-26', notes: 'within 10 days', done: true,
+  }]);
+  assert.equal(actions[0].action, 'create');
+  assert.equal(actions[0].data.done, undefined);
+  assert.equal(actions[0].data.dueDate, '2026-10-26');
+});
+
+test('letter-of-credit receipt and latest shipment come only from a commercial file, and only with a real number', () => {
+  const commercial = timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: 'Down payment within 10 days after the signature date / Not later than 30 days after the signature date, the Buyer shall open an irrevocable letter of credit.',
+    delivery: 'Delivery time of the first lot is 3 months FOB after receipt of the down payment. The letter of credit shall be received within 15 days of the opening deadline. The latest shipment date is 90 days after the letter of credit is received.',
+  }));
+  const technical = [
+    { kind: 'LC_RECEIVED', notes: 'The letter of credit must be received within N days of the opening deadline.' },
+    { kind: 'LC_LATEST_SHIPMENT', notes: 'The latest shipment date is N days after the letter of credit is received.' },
+    { kind: 'INSTALLATION', offset: { n: 30, unit: 'days', dir: 'after', base: 'SHIPMENT' }, notes: 'Installation within 30 days of arrival' },
+    { kind: 'SHIPMENT', absolute: '2027-06-01', notes: 'Technical protocol shipment 1 June 2027' },
+  ];
+  const { proposals, deliveryStart } = assembleProposals([
+    { docType: 'COMMERCIAL', fileId: 1, clauses: commercial },
+    { docType: 'TECHNICAL', fileId: 2, clauses: technical },
+  ], { today: '2026-11-10' });
+  const got = byKind(proposals);
+
+  assert.equal(got.LC_OPEN_DEADLINE.docType, 'COMMERCIAL');
+  assert.equal(got.LC_OPEN_DEADLINE.dueDate, '2026-11-15');
+  assert.equal(got.LC_RECEIVED.docType, 'COMMERCIAL');
+  assert.equal(got.LC_RECEIVED.dueDate, '2026-11-30');
+  assert.equal(got.LC_LATEST_SHIPMENT.docType, 'COMMERCIAL');
+  assert.equal(got.LC_LATEST_SHIPMENT.dueDate, '2027-02-28');
+  assert.equal(got.INSTALLATION.docType, 'TECHNICAL');
+  assert.equal(got.SHIPMENT.docType, 'COMMERCIAL');
+  assert.equal(got.SHIPMENT.dueDate, '2027-01-26');
+  assert.equal(deliveryStart.rule, 'PAYMENT_DOWN');
+  assert.doesNotMatch(got.LC_RECEIVED.notes, /\bN days\b/);
+  assert.doesNotMatch(got.LC_LATEST_SHIPMENT.notes, /\bN days\b/);
+
+  const technicalOnly = assembleProposals([
+    { docType: 'TECHNICAL', fileId: 2, clauses: technical },
+  ], { today: '2026-11-10' });
+  const tech = byKind(technicalOnly.proposals);
+  assert.equal(tech.LC_RECEIVED, undefined);
+  assert.equal(tech.LC_LATEST_SHIPMENT, undefined);
+  assert.equal(tech.INSTALLATION.docType, 'TECHNICAL');
+  assert.equal(tech.SHIPMENT.docType, 'TECHNICAL');
+  assert.equal(tech.SHIPMENT.dueDate, '2027-06-01');
+
+  const pages = lcClausesFromText([
+    'The letter of credit must be received within N days of the opening deadline.',
+    'The letter of credit shall be received within 15 days of the opening deadline.',
+    '最晚装运期为收到信用证后90日。',
+  ].join('\n'));
+  assert.equal(pages.length, 2);
+  assert.equal(pages.find((c) => c.kind === 'LC_RECEIVED').offset.n, 15);
+  assert.equal(pages.find((c) => c.kind === 'LC_RECEIVED').offset.base, 'LC_OPEN');
+  assert.equal(pages.find((c) => c.kind === 'LC_LATEST_SHIPMENT').offset.base, 'LC_RECEIVED');
+  assert.equal(hasConcreteTiming(pages[0]), true);
+});
+
+test('a technical prompt does not ask for letter-of-credit milestones', () => {
+  const technical = timelinePrompt('TECHNICAL');
+  const commercial = timelinePrompt('COMMERCIAL');
+  assert.deepEqual(timelineKindsFor('TECHNICAL').includes('LC_RECEIVED'), false);
+  assert.deepEqual(timelineKindsFor('TECHNICAL').includes('LC_LATEST_SHIPMENT'), false);
+  assert.equal(timelineKindsFor('TECHNICAL').includes('INSTALLATION'), true);
+  assert.match(technical, /Do not extract letter-of-credit/);
+  assert.doesNotMatch(technical, /LC_RECEIVED/);
+  assert.match(commercial, /LC_RECEIVED/);
+  assert.match(commercial, /LC_LATEST_SHIPMENT/);
+  assert.match(commercial, /Never write the letter N/);
+});
+
+test('delivery counted from the down payment follows that receipt, not the signature', () => {
+  const clauses = timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: 'Down payment within 10 days after the signature date / 70% against shipping documents / The Buyer shall open the L/C within 30 days of signing. The contract becomes effective when the down payment arrives.',
+    delivery: 'Delivery time of the first lot is 3 months FOB after receipt of the down payment.',
+  }));
+  const detected = detectDeliveryStart(clauses);
+  assert.equal(detected.rule, 'PAYMENT_DOWN');
+  assert.equal(detected.ambiguous, false);
+  assert.match(detected.evidence, /down payment/i);
+
+  const { proposals, deliveryStart } = assembleProposals([
+    { docType: 'COMMERCIAL', clauses },
+  ], { today: '2026-10-01' });
+  const got = byKind(proposals);
+  assert.equal(deliveryStart.rule, 'PAYMENT_DOWN');
+  assert.equal(deliveryStart.source, 'contract');
+  assert.equal(got.PAYMENT_DOWN.dueDate, '2026-10-26');
+  assert.equal(got.PAYMENT_DOWN.done, false);
+  assert.equal(got.CONTRACT_EFFECTIVE.dueDate, '2026-10-26');
+  assert.equal(got.SHIPMENT.dueDate, '2027-01-26');
+  assert.equal(got.PAYMENT_SHIPMENT.dueDate, '2027-01-26');
+  assert.equal(got.LC_OPEN_DEADLINE.dueDate, '2026-11-15');
+  assert.equal(got.LC_OPEN_DEADLINE.docType, 'COMMERCIAL');
+
+  const shifted = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 1, kind: 'PAYMENT_DOWN', dueDate: '2026-10-26', doneAt: null },
+      { id: 2, kind: 'SHIPMENT', dueDate: '2027-01-26', doneAt: null },
+      { id: 3, kind: 'PAYMENT_SHIPMENT', dueDate: '2027-01-26', doneAt: null },
+      { id: 4, kind: 'LC_OPEN_DEADLINE', dueDate: '2026-11-15', doneAt: null },
+    ],
+    movedKind: 'PAYMENT_DOWN',
+    before: { paymentDate: '2026-10-26' },
+    after: { paymentDate: '2026-11-05' },
+  });
+  const by = Object.fromEntries(shifted.map((s) => [s.kind, s]));
+  assert.equal(by.PAYMENT_DOWN, undefined);
+  assert.equal(by.SHIPMENT.dueDate, '2027-02-05');
+  assert.equal(by.PAYMENT_SHIPMENT.dueDate, '2027-02-05');
+  assert.equal(by.LC_OPEN_DEADLINE, undefined);
+});
+
+test('delivery counted from signing does not move when the down payment date moves', () => {
+  const clauses = timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: '20% advance within 10 days of signing / 70% on shipment. The Buyer shall open the L/C within 30 days of signing.',
+    delivery: '12 months after signing',
+  }));
+  const detected = detectDeliveryStart(clauses);
+  assert.equal(detected.rule, 'SIGNED');
+  assert.equal(detected.ambiguous, false);
+  const dated = byKind(projectTimeline(clauses, { today: '2026-10-01' }));
+  assert.equal(dated.SHIPMENT.dueDate, '2027-10-16');
+  assert.equal(dated.LC_OPEN_DEADLINE.dueDate, '2026-11-15');
+
+  const shifted = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 2, kind: 'SHIPMENT', dueDate: '2027-10-16', doneAt: null },
+      { id: 3, kind: 'PAYMENT_SHIPMENT', dueDate: '2027-10-16', doneAt: null },
+      { id: 4, kind: 'LC_OPEN_DEADLINE', dueDate: '2026-11-15', doneAt: null },
+      { id: 5, kind: 'SHIPMENT_HAND', dueDate: '2027-01-01', doneAt: null },
+    ],
+    movedKind: 'PAYMENT_DOWN',
+    before: { signedDate: '2026-10-16', paymentDate: '2026-10-26' },
+    after: { signedDate: '2026-10-16', paymentDate: '2026-12-01' },
+  });
+  assert.equal(shifted.find((s) => s.kind === 'SHIPMENT'), undefined);
+  assert.equal(shifted.find((s) => s.kind === 'LC_OPEN_DEADLINE'), undefined);
+});
+
+test('an unclear delivery start is not invented, and a chosen basis then dates it', () => {
+  const clauses = timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: 'Down payment within 10 days of signing.',
+    delivery: 'Delivery within 12 months.',
+  }));
+  const detected = detectDeliveryStart(clauses);
+  assert.equal(detected.rule, null);
+  assert.equal(detected.ambiguous, true);
+
+  const open = assembleProposals([{ docType: 'COMMERCIAL', clauses }], { today: '2026-10-01' });
+  assert.equal(open.deliveryStart.ambiguous, true);
+  assert.equal(open.deliveryStart.rule, null);
+  assert.equal(byKind(open.proposals).SHIPMENT.dueDate, null);
+  assert.equal(byKind(open.proposals).SHIPMENT.needsStart, true);
+  assert.equal(byKind(open.proposals).PAYMENT_DOWN.dueDate, '2026-10-26');
+
+  const fromSigning = assembleProposals(
+    [{ docType: 'COMMERCIAL', clauses }],
+    { today: '2026-10-01', deliveryStart: 'SIGNED' },
+  );
+  assert.equal(fromSigning.deliveryStart.rule, 'SIGNED');
+  assert.equal(fromSigning.deliveryStart.source, 'manual');
+  assert.equal(fromSigning.deliveryStart.ambiguous, false);
+  assert.equal(byKind(fromSigning.proposals).SHIPMENT.dueDate, '2027-10-16');
+
+  const fromPayment = assembleProposals(
+    [{ docType: 'COMMERCIAL', clauses }],
+    { today: '2026-10-01', deliveryStart: 'PAYMENT_DOWN' },
+  );
+  assert.equal(byKind(fromPayment.proposals).SHIPMENT.dueDate, '2027-10-26');
+
+  const shifted = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 2, kind: 'SHIPMENT', dueDate: null, doneAt: null },
+    ],
+    movedKind: 'DELIVERY_START',
+    before: {},
+    after: { deliveryStart: 'PAYMENT_DOWN', deliveryStartSource: 'manual', paymentDate: '2026-10-26' },
+  });
+  assert.equal(shifted.find((s) => s.kind === 'SHIPMENT').dueDate, '2027-10-26');
+  assert.equal(shifted.find((s) => s.kind === 'SHIPMENT').action, 'update');
+});
+
+test('effectiveness names the delivery start when the delivery clause says "after effective"', () => {
+  const onPayment = timelineFromSummary(fields({
+    signedDate: '1 March 2026',
+    payment: '预付款于合同签订后15日内支付。Effective upon receipt of the down payment.',
+    delivery: '12 months after effective',
+  }));
+  assert.equal(detectDeliveryStart(onPayment).rule, 'PAYMENT_DOWN');
+  assert.equal(byKind(resolveTimeline(onPayment)).SHIPMENT.dueDate, '2027-03-16');
+
+  const onSigning = timelineFromSummary(fields({
+    signedDate: '1 March 2026',
+    payment: 'The contract is effective on signing.',
+    delivery: '6 months after effective',
+  }));
+  assert.equal(detectDeliveryStart(onSigning).rule, 'SIGNED');
+  assert.equal(byKind(resolveTimeline(onSigning)).SHIPMENT.dueDate, '2026-09-01');
+
+  const unnamed = timelineFromSummary(fields({
+    signedDate: '1 March 2026',
+    delivery: '6 months after the contract becomes effective',
+  }));
+  assert.equal(detectDeliveryStart(unnamed).rule, null);
+  assert.equal(detectDeliveryStart(unnamed).ambiguous, true);
+  assert.equal(byKind(resolveTimeline(unnamed)).SHIPMENT.dueDate, null);
+});
+
+test('a hand-edited or finished date is not moved when the down payment confirmation moves', () => {
+  const clauses = timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: 'Down payment within 10 days of signing. 70% on shipment.',
+    delivery: '3 months after receipt of the down payment.',
+  }));
+  const shifted = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 2, kind: 'SHIPMENT', dueDate: '2028-01-01', doneAt: null },
+      { id: 3, kind: 'PAYMENT_SHIPMENT', dueDate: '2027-01-26', doneAt: new Date('2027-01-20') },
+    ],
+    movedKind: 'PAYMENT_DOWN',
+    before: { paymentDate: '2026-10-26' },
+    after: { paymentDate: '2026-11-20' },
+  });
+  assert.equal(shifted.length, 0);
+});
+
+test('correcting the signed date moves a down payment that is still the contractual formula', () => {
+  const clauses = timelineFromSummary(fields({
+    signedDate: '16 October 2026',
+    payment: 'Down payment within 10 days of signing.',
+    delivery: '12 months after signing',
+  }));
+  const shifted = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 1, kind: 'PAYMENT_DOWN', dueDate: '2026-10-26', doneAt: null },
+      { id: 2, kind: 'SHIPMENT', dueDate: '2027-10-16', doneAt: null },
+    ],
+    movedKind: 'CONTRACT_SIGNED',
+    before: { signedDate: '2026-10-16' },
+    after: { signedDate: '2026-10-20' },
+  });
+  const by = Object.fromEntries(shifted.map((s) => [s.kind, s]));
+  assert.equal(by.PAYMENT_DOWN.dueDate, '2026-10-30');
+  assert.equal(by.SHIPMENT.dueDate, '2027-10-20');
+});
+

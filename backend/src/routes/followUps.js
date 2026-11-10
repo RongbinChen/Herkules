@@ -15,8 +15,8 @@ import {
 } from '../services/followUps.js';
 import { milestoneReminderMail } from '../services/followUpMail.js';
 import { summariseContractFile, DgxOfflineError } from '../services/contractSummary.js';
-import { suggestTimelineForFiles } from '../services/contractTimeline.js';
-import { isIsoDate, planMilestoneApply, redactMoney } from '../services/contractTimelineFormat.js';
+import { suggestTimelineForFiles, shiftFollowUpMilestones, storedDeliveryChoice } from '../services/contractTimeline.js';
+import { isIsoDate, milestoneDay, planMilestoneApply, redactMoney } from '../services/contractTimelineFormat.js';
 import { selectOpenOrders } from '../services/openOrders.js';
 import { selectDashboardFollowUps } from '../services/dashboardFollowUps.js';
 
@@ -366,6 +366,7 @@ router.put('/:id/milestones/:kind', async (req, res) => {
     if (b.dueDate !== undefined || b.done === false) data.lastRemindedOn = null;
 
     const existing = await prisma.followUpMilestone.findFirst({ where: { followUpId, kind } });
+    const previousDue = existing?.dueDate || null;
     const row = existing
       ? await prisma.followUpMilestone.update({ where: { id: existing.id }, data })
       : await prisma.followUpMilestone.create({
@@ -376,7 +377,19 @@ router.put('/:id/milestones/:kind', async (req, res) => {
           ...data,
         },
       });
-    res.json({ ...row, meta: MILESTONE_BY_KIND.get(kind) || null });
+    // The date just saved is the anchor. Later milestones that this contract
+    // counts from it are moved in the same request; a tick without a new date
+    // is only the confirmation and does not recompute anything.
+    let shifted = [];
+    if ((kind === 'PAYMENT_DOWN' || kind === 'CONTRACT_SIGNED') && b.dueDate !== undefined
+      && milestoneDay(previousDue) !== milestoneDay(b.dueDate)) {
+      shifted = await shiftFollowUpMilestones(followUpId, {
+        movedKind: kind,
+        previousDue,
+        nextDue: b.dueDate,
+      });
+    }
+    res.json({ ...row, meta: MILESTONE_BY_KIND.get(kind) || null, shifted });
   } catch (error) {
     console.error('Error saving milestone:', error);
     res.status(500).json({ error: 'Failed to save milestone' });
@@ -635,13 +648,40 @@ function sanitizeProposals(raw) {
   return out;
 }
 
-async function respondTimeline(req, res, fileIds) {
+async function respondTimeline(req, res, fileIds, { followUpId = null } = {}) {
+  const requested = req.body?.deliveryStart;
+  const choice = requested === 'SIGNED' || requested === 'PAYMENT_DOWN' ? requested : null;
+  let previousDeliveryStart = null;
+  if (choice && followUpId) {
+    const linked = await prisma.projectFollowUp.findUnique({
+      where: { id: followUpId },
+      select: {
+        contractFiles: {
+          where: { team: req.contractTeam },
+          select: { docType: true, timeline: true },
+        },
+      },
+    });
+    previousDeliveryStart = storedDeliveryChoice(linked?.contractFiles || []);
+  }
   const result = await suggestTimelineForFiles({
     fileIds,
     team: req.contractTeam,
     today: chinaDay(),
     refresh: req.body?.refresh === true,
+    deliveryStart: choice,
+    rememberChoice: Boolean(choice),
   });
+  // Choosing the basis fills dates that are already on the record and were
+  // waiting on it. New kinds stay in the suggestion list until Apply.
+  // The down payment is not marked received by this.
+  if (choice && followUpId) {
+    result.shifted = await shiftFollowUpMilestones(followUpId, {
+      movedKind: 'DELIVERY_START',
+      previousDeliveryStart,
+      nextDeliveryStart: choice,
+    });
+  }
   res.json(result);
 }
 
@@ -665,7 +705,7 @@ router.post('/:id/timeline', requireUnlock, async (req, res) => {
       },
     });
     if (!f) return res.status(404).json({ error: 'Not found' });
-    await respondTimeline(req, res, f.contractFiles.map((c) => c.id));
+    await respondTimeline(req, res, f.contractFiles.map((c) => c.id), { followUpId: f.id });
   } catch (error) {
     console.error('Error suggesting timeline:', error);
     res.status(500).json({ error: 'Failed to read the contracts' });

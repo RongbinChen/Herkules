@@ -148,8 +148,16 @@ export const followUpsAPI = {
   // Proposed milestones. Cached summaries return at once; a contract the
   // summary could not date spends a DGX read, hence the same long timeout as
   // prefill. Apply is separate and does not call the model.
-  suggestTimeline: (fileIds, token) => api.post('/followups/timeline', { fileIds }, withUnlock(token, { timeout: 180000 })),
-  suggestRecordTimeline: (id, token) => api.post(`/followups/${id}/timeline`, {}, withUnlock(token, { timeout: 180000 })),
+  suggestTimeline: (fileIds, token, deliveryStart) => api.post(
+    '/followups/timeline',
+    { fileIds, ...(deliveryStart ? { deliveryStart } : {}) },
+    withUnlock(token, { timeout: 180000 }),
+  ),
+  suggestRecordTimeline: (id, token, deliveryStart) => api.post(
+    `/followups/${id}/timeline`,
+    deliveryStart ? { deliveryStart } : {},
+    withUnlock(token, { timeout: 180000 }),
+  ),
   applyTimeline: (id, proposals, replace = false) => api.post(`/followups/${id}/timeline/apply`, { proposals, replace }),
 }
 

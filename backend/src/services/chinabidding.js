@@ -7,6 +7,7 @@ import { renderEmail } from './emailTemplate.js';
 import { solveSession, SCRAPER_UA } from './browserSolver.js';
 import { normalizeCompany, matchCompanyProfile } from './companyName.js';
 import { findMatchingAnnouncementIds, filterThreadsByAnnouncementMatches } from './projectThreadSearch.js';
+import { lastPublishedAt, compareThreadsByLastPublished } from './projectThreadOrder.js';
 
 const BASE_URL = process.env.CHINABIDDING_BASE_URL || 'https://www.chinabidding.com/en';
 const CAS_LOGIN_URL = process.env.CHINABIDDING_CAS_LOGIN_URL || 'https://cas.ebnew.com/cas/login';
@@ -1248,8 +1249,10 @@ export async function getProjectThread(projectId) {
 
 // ── Project threads: lifecycle tracking (aggregate a real project's stages) ────
 // Groups every announcement by threadKey into one "project thread" and derives
-// the current lifecycle stage (furthest reached), winner, and timeline. Attaches
-// the team's manual BidTracking record and whether the user follows the thread.
+// the current lifecycle stage (furthest reached), winner, and timeline. The
+// thread date is the latest official notice publication (publishDate); the list
+// is newest publication first. Scraping a row or editing manual tracking does
+// not move a project. Attaches the team's BidTracking record and follow flag.
 const OUR_BID_STATUSES = ['WATCHING', 'PREPARING', 'SUBMITTED', 'SHORTLISTED', 'WON', 'LOST', 'ABANDONED'];
 
 export async function listProjectThreads(userId, { ourStatus = null, stage = null, q = null, myCustomers = false } = {}) {
@@ -1260,7 +1263,7 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
         id: true, projectName: true, projectCode: true, region: true, equipmentType: true,
         purchaser: true, winner: true, manufacturer: true, winningPrice: true, budget: true, deadline: true,
         infoClass: true, bidStage: true, status: true, sourceUrl: true, publishDate: true,
-        threadKey: true, updatedAt: true,
+        threadKey: true,
       },
     }),
     findMatchingAnnouncementIds(prisma, q),
@@ -1300,8 +1303,6 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
     if (!customersByKey.has(l.threadKey)) customersByKey.set(l.threadKey, []);
     customersByKey.get(l.threadKey).push(l.customer);
   }
-
-  const ms = (d) => (d ? new Date(d).getTime() : 0);
 
   // Same conservative rule as visit-report matching: a purchaser maps to a
   // Customer only on a UNIQUE contains-match of normalized names.
@@ -1348,6 +1349,11 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
     const inferred = nameMatch && !linked.some((c) => c.id === nameMatch.id)
       ? [{ id: nameMatch.id, name: nameMatch.name, inferred: true }]
       : [];
+    const announcements = anns.map((a) => ({
+      id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
+      publishDate: a.publishDate, sourceUrl: a.sourceUrl, round: roundOf(a.projectName),
+      winner: a.winner, manufacturer: a.manufacturer, winningPrice: a.winningPrice,
+    }));
     return {
       threadKey: key,
       projectName: rep.projectName,
@@ -1363,19 +1369,18 @@ export async function listProjectThreads(userId, { ourStatus = null, stage = nul
       manufacturer: winnerAnn?.manufacturer || null,
       winningPrice: winnerAnn?.winningPrice || null,
       firstPublish: anns[0].publishDate,
-      lastUpdate: anns.reduce((m, a) => (ms(a.updatedAt) > ms(m) ? a.updatedAt : m), anns[0].updatedAt),
+      // Null when no notice has a publication date. Do not fill this from updatedAt.
+      lastPublished: lastPublishedAt(announcements),
       following: anns.some((a) => followedIds.has(a.id)),
       tracking: trackingByKey.get(key) || null,
       customers: [...linked, ...inferred],
-      announcements: anns.map((a) => ({
-        id: a.id, infoClass: a.infoClass, bidStage: a.bidStage, status: a.status,
-        publishDate: a.publishDate, sourceUrl: a.sourceUrl, round: roundOf(a.projectName),
-        winner: a.winner, manufacturer: a.manufacturer, winningPrice: a.winningPrice,
-      })),
+      announcements,
     };
   });
 
-  threads.sort((a, b) => ms(b.lastUpdate) - ms(a.lastUpdate));
+  // Newest official notice first. No-date threads sink; same-day ties use
+  // tender round, then announcement id — not the scrape timestamp.
+  threads.sort(compareThreadsByLastPublished);
 
   if (stage) threads = threads.filter((t) => t.currentStage === stage);
   if (ourStatus) threads = threads.filter((t) => (t.tracking?.ourStatus || null) === ourStatus);
