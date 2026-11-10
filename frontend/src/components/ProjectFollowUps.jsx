@@ -22,6 +22,9 @@ import { watchOpenOrdersRefresh } from '../utils/openOrdersRefresh'
 import { docTypeMeta, displayFilename } from '../constants/contract'
 import { Button, Input, Select, Textarea, Badge } from './ui'
 
+// Re-exported so a render test wraps NewModal in this module's own context.
+export { AuthProvider } from '../context/AuthContext'
+
 const STATUSES = [
   { key: 'ACTIVE', label: 'Active', tone: 'emerald' },
   { key: 'ON_HOLD', label: 'On hold', tone: 'amber' },
@@ -47,6 +50,7 @@ const CONTACT_ROLES = ['Purchasing', 'Technical', 'Finance', 'Issuing bank', 'Fo
 // the picker offers first. The rest of the customer's file are one click away.
 const CONTRACT_PRIMARY = ['COMMERCIAL', 'TECHNICAL']
 const fmtKB = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
+const serialText = (value) => String(value ?? '').trim()
 
 const fmtDate = (d) => { try { return d ? format(new Date(d), 'yyyy-MM-dd') : '' } catch { return '' } }
 const todayCN = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date())
@@ -66,6 +70,20 @@ function dueTone(m) {
   return { cls: 'text-slate-500', text: `in ${d}d` }
 }
 
+// Machine model and serial are ordinary order data. The price is not drawn
+// here: ContractValueLabel waits for this team's PIN, and a locked or
+// restricted payload never becomes an amount just because the string is set.
+export function FollowUpFactLine({ f, unlocked = false, onRequestUnlock }) {
+  const serial = serialText(f.machineSerial)
+  return (
+    <>
+      {f.machineType && <span>🛠 {f.machineType}</span>}
+      {serial && <span title="Machine serial">Serial {serial}</span>}
+      <ContractValueLabel followUp={f} unlocked={unlocked} onRequestUnlock={onRequestUnlock} />
+    </>
+  )
+}
+
 // ── List ─────────────────────────────────────────────────────────────────────
 export function FollowUpRow({ f, onOpen }) {
   const next = f.next
@@ -83,6 +101,7 @@ export function FollowUpRow({ f, onOpen }) {
         )}
         <span className="font-semibold text-slate-800">{f.title}</span>
         {f.orderNo && <span className="text-xs text-slate-400">#{f.orderNo}</span>}
+        {serialText(f.machineSerial) && <span className="text-xs text-slate-400" title="Machine serial">Serial {serialText(f.machineSerial)}</span>}
         {f.status !== 'ACTIVE' && <Badge tone="slate">{STATUS_LABEL[f.status]}</Badge>}
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-3 text-[11px] text-slate-400">
@@ -1173,11 +1192,10 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
           {f.hotProject && (
             <button onClick={() => navigate('/hotprojects')} className="text-brand-600 hover:underline">🔥 From Hot Projects ↗</button>
           )}
-          {f.machineType && <span>🛠 {f.machineType}</span>}
           {/* Restricted, locked and empty are three different facts. The
               amount is drawn only from an unlocked payload. */}
-          <ContractValueLabel
-            followUp={f}
+          <FollowUpFactLine
+            f={f}
             unlocked={Boolean(unlock?.token) && unlock.team === f.team}
             onRequestUnlock={revealValue}
           />
@@ -1303,7 +1321,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
 }
 
 // ── New record modal ─────────────────────────────────────────────────────────
-function NewModal({ users, catalogue, seed, onClose, onCreated }) {
+export function NewModal({ users, catalogue, seed, onClose, onCreated }) {
   const { user } = useAuth()
   // The team owns the record's contract value, so it is chosen up front rather
   // than inferred later. Defaults to the creator's own team; someone in neither
@@ -1314,6 +1332,7 @@ function NewModal({ users, catalogue, seed, onClose, onCreated }) {
     customerId: seed?.customerId || '',
     customerName: seed?.customerName || '',
     machineType: seed?.machineType || '',
+    machineSerial: '',
     contractValue: '',
     ownerId: '',
     notes: '',
@@ -1422,6 +1441,10 @@ function NewModal({ users, catalogue, seed, onClose, onCreated }) {
             <label className="block text-xs font-semibold text-slate-600">
               Machine model
               <Input value={form.machineType} onChange={set('machineType')} className="mt-1" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-600">
+              Machine serial
+              <Input value={form.machineSerial} onChange={set('machineSerial')} placeholder="Optional" className="mt-1" />
             </label>
             <label className="block text-xs font-semibold text-slate-600">
               Contract value
@@ -1572,7 +1595,7 @@ export default function ProjectFollowUps() {
                   className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${mine ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                   Mine
                 </button>
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search project / order no. / customer / contact"
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search project / order no. / serial / customer / contact"
                   className="w-56 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs" />
               </div>
             </div>
