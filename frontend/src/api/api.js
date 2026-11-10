@@ -118,9 +118,11 @@ export const followUpsAPI = {
   // follow-up; no contract value and no contract filenames.
   dashboard: () => api.get('/followups/dashboard'),
   list: (params = {}) => api.get('/followups', { params }),
-  get: (id) => api.get(`/followups/${id}`),
-  create: (data) => api.post('/followups', data),
-  update: (id, data) => api.put(`/followups/${id}`, data),
+  // The price is absent until the same unlock token the contract files use
+  // is sent. Omit it and the record still loads; the amount does not.
+  get: (id, token) => api.get(`/followups/${id}`, token ? withUnlock(token) : undefined),
+  create: (data, token) => api.post('/followups', data, token ? withUnlock(token) : undefined),
+  update: (id, data, token) => api.put(`/followups/${id}`, data, token ? withUnlock(token) : undefined),
   delete: (id) => api.delete(`/followups/${id}`),
   // Milestones are addressed by kind, not by row id — a record has at most one
   // of each, so the client never has to track which ones exist yet.

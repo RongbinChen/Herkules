@@ -118,7 +118,10 @@ export async function checkFollowUpMilestones() {
     include: {
       owner: { select: { id: true, name: true, email: true } },
       followUp: {
-        include: {
+        // Named scalars only. The contract value is not part of a reminder,
+        // and a bare include would put it on the object the mail is built from.
+        select: {
+          id: true, title: true, orderNo: true,
           owner: { select: { id: true, name: true, email: true } },
           customer: { select: { name: true } },
         },

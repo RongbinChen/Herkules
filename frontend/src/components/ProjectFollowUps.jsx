@@ -12,7 +12,7 @@
  * (/followups/:id) rather than a modal so a reminder mail can link straight at
  * it.
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { followUpsAPI, usersAPI, customersAPI, contractsAPI } from '../api/api'
@@ -67,7 +67,7 @@ function dueTone(m) {
 }
 
 // ── List ─────────────────────────────────────────────────────────────────────
-function FollowUpRow({ f, onOpen }) {
+export function FollowUpRow({ f, onOpen }) {
   const next = f.next
   const tone = next ? dueTone(next) : null
   return (
@@ -846,13 +846,55 @@ function ContractPicker({ customerId, selected, onChange, note }) {
   )
 }
 
+// The price is drawn only when this view is unlocked and the payload says so.
+// A locked record can still say the number exists; the button asks for the
+// same team PIN the contract files use. A stale `contractValue` left on the
+// object is not rendered — the flags decide, not the presence of a string.
+export function ContractValueLabel({ followUp, unlocked = false, onRequestUnlock }) {
+  if (!followUp) return null
+  if (followUp.contractValueHidden) {
+    return (
+      <span className="text-slate-400" title={`Visible to ${followUp.team} and admins, after that team's PIN`}>
+        🔒 Contract value restricted
+      </span>
+    )
+  }
+  const amount = String(followUp.contractValue ?? '').trim()
+  if (unlocked && followUp.contractValueLocked !== true && amount) {
+    return <span>💰 {amount}</span>
+  }
+  if (followUp.hasContractValue || amount) {
+    return (
+      <button
+        type="button"
+        onClick={onRequestUnlock}
+        className="font-semibold text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-brand-600"
+      >
+        🔒 Enter {followUp.team} PIN to view
+      </button>
+    )
+  }
+  return null
+}
+
+// A locked or restricted price is not an empty field. Treating it as empty
+// would offer to overwrite a number the form is not allowed to show.
+export function missingContractFields(f) {
+  const missing = []
+  if (!String(f.machineType ?? '').trim()) missing.push('machineType')
+  const heldBack = f.contractValueHidden || (f.contractValueLocked && f.hasContractValue)
+  if (!heldBack && !String(f.contractValue ?? '').trim()) missing.push('contractValue')
+  if (!String(f.orderNo ?? '').trim()) missing.push('orderNo')
+  return missing
+}
+
 // ── Linked contracts on the detail page ──────────────────────────────────────
 // Locked, this says how many are attached and nothing else: the count is
 // ordinary project data, the filenames are not.
 function LinkedContracts({ f, catalogue, onChanged, onPatch }) {
   const { user } = useAuth()
   const { unlock, team, setTeam, doUnlock, busy, error, configured, lock } = useContractUnlock(
-    user?.team === 'WRC' ? 'WRC' : 'HRC',
+    f.team === 'WRC' || f.team === 'HRC' ? f.team : (user?.team === 'WRC' ? 'WRC' : 'HRC'),
   )
   const [pin, setPin] = useState('')
   const [files, setFiles] = useState(null)
@@ -861,8 +903,9 @@ function LinkedContracts({ f, catalogue, onChanged, onPatch }) {
   const [filling, setFilling] = useState(false)
   const count = f._count?.contractFiles ?? 0
   // Only offered while something is still missing — a button that overwrites
-  // what a colleague typed is not a convenience.
-  const missing = ['machineType', 'contractValue', 'orderNo'].filter((k) => !String(f[k] ?? '').trim())
+  // what a colleague typed is not a convenience. A price the PIN is still
+  // holding is not missing.
+  const missing = missingContractFields(f)
 
   // The same read the create dialog does, run after the fact: contracts are
   // often attached once the order is already on file.
@@ -943,7 +986,7 @@ function LinkedContracts({ f, catalogue, onChanged, onPatch }) {
               </Select>
             </span>
             <span className="inline-block w-32">
-              <Input type="password" value={pin} placeholder="Team PIN" className="py-1 text-xs"
+              <Input id="followup-contract-pin" type="password" value={pin} placeholder="Team PIN" className="py-1 text-xs"
                 onChange={(e) => setPin(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doUnlock(pin) } }} />
             </span>
@@ -1007,25 +1050,73 @@ function LinkedContracts({ f, catalogue, onChanged, onPatch }) {
 // ── Detail ───────────────────────────────────────────────────────────────────
 function Detail({ id, catalogue, users, onBack, onChanged }) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { unlock, setTeam, switchTeam } = useContractUnlock(user?.team === 'WRC' ? 'WRC' : 'HRC')
   const [f, setF] = useState(null)
   const [note, setNote] = useState('')
   const [adding, setAdding] = useState(false)
   const [newContact, setNewContact] = useState({ name: '', role: '', company: '', phone: '', email: '' })
+  const reqSeq = useRef(0)
+  const alignedTeam = useRef(false)
 
   const load = useCallback(async () => {
-    const { data } = await followUpsAPI.get(id)
+    const seq = ++reqSeq.current
+    const { data } = await followUpsAPI.get(id, unlock?.token || null)
+    if (seq !== reqSeq.current) return
     setF(data)
-  }, [id])
+  }, [id, unlock?.token])
   useEffect(() => { load() }, [load])
+  useEffect(() => { setF(null) }, [id])
+
+  // Drop the figure the moment the unlock no longer covers this order, so a
+  // lock does not leave the price in state while the refetch is in flight.
+  // The label also refuses to draw it; this keeps every other reader honest.
+  useLayoutEffect(() => {
+    setF((current) => {
+      if (!current || current.contractValueHidden) return current
+      const open = Boolean(unlock?.token) && unlock.team === current.team
+      if (open) return current
+      if (current.contractValueLocked && !current.contractValue) return current
+      const hasContractValue = Boolean(String(current.contractValue ?? '').trim() || current.hasContractValue)
+      return { ...current, contractValue: null, contractValueLocked: true, hasContractValue }
+    })
+  }, [unlock?.token, unlock?.team])
+
+  // The PIN prompt defaults to whoever is logged in. The price on this record
+  // opens with this record's team, so point the prompt there once, while
+  // nothing is unlocked yet.
+  useEffect(() => {
+    if (alignedTeam.current || !f?.team || unlock) return
+    if (f.team !== 'WRC' && f.team !== 'HRC') return
+    alignedTeam.current = true
+    setTeam(f.team)
+  }, [f?.team, unlock, setTeam])
 
   const refresh = async () => { await load(); onChanged?.() }
+
+  const revealValue = async () => {
+    if (!f?.team) return
+    const focusPin = () => {
+      const el = document.getElementById('followup-contract-pin')
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el?.focus()
+    }
+    if (!unlock) {
+      setTeam(f.team)
+      focusPin()
+      return
+    }
+    if (unlock.team === f.team) return
+    const ok = await switchTeam(f.team)
+    if (!ok) setTimeout(focusPin, 60)
+  }
 
   if (!f) return <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
   const canManage = f.canManage
   const byKind = new Map(f.milestones.map((m) => [m.kind, m]))
 
   const patch = async (data) => {
-    try { await followUpsAPI.update(f.id, data); await refresh() }
+    try { await followUpsAPI.update(f.id, data, unlock?.token || null); await refresh() }
     catch (e) { window.alert(e.response?.data?.error || 'Save failed') }
   }
 
@@ -1083,11 +1174,13 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
             <button onClick={() => navigate('/hotprojects')} className="text-brand-600 hover:underline">🔥 From Hot Projects ↗</button>
           )}
           {f.machineType && <span>🛠 {f.machineType}</span>}
-          {/* Restricted and empty are not the same thing to someone chasing a
-              number, so the restricted case says so. */}
-          {f.contractValueHidden
-            ? <span className="text-slate-400" title={`Visible to ${f.team} and admins`}>🔒 Contract value restricted</span>
-            : f.contractValue && <span>💰 {f.contractValue}</span>}
+          {/* Restricted, locked and empty are three different facts. The
+              amount is drawn only from an unlocked payload. */}
+          <ContractValueLabel
+            followUp={f}
+            unlocked={Boolean(unlock?.token) && unlock.team === f.team}
+            onRequestUnlock={revealValue}
+          />
           <span className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{f.team}</span>
           <span className="flex items-center gap-1">
             👤 Owner
@@ -1282,7 +1375,7 @@ function NewModal({ users, catalogue, seed, onClose, onCreated }) {
                 <option value="HRC">HRC</option>
               </Select>
               <span className="mt-0.5 block font-normal text-[10px] text-slate-400">
-                Only this team and admins can see the contract value.
+                Only this team and admins can read the contract value, and only after that team’s PIN.
               </span>
             </label>
           </div>
@@ -1363,7 +1456,7 @@ function NewModal({ users, catalogue, seed, onClose, onCreated }) {
             if (!form.title.trim()) { setErr('Project name is required'); return }
             setErr(''); setSaving(true)
             try {
-              const { data } = await followUpsAPI.create({ ...form, customerId: form.customerId || null })
+              const { data } = await followUpsAPI.create({ ...form, customerId: form.customerId || null }, unlockToken)
               // Linking is a second call because the record has no id until the
               // first one returns. A failure here is not worth throwing the
               // created record away for — the detail page can link them.
@@ -1451,6 +1544,7 @@ export default function ProjectFollowUps() {
 
         {id ? (
           <Detail
+            key={id}
             id={id}
             catalogue={catalogue}
             users={users}
