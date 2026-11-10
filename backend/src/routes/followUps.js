@@ -18,6 +18,7 @@ import { summariseContractFile, DgxOfflineError } from '../services/contractSumm
 import { suggestTimelineForFiles, shiftFollowUpMilestones, storedDeliveryChoice } from '../services/contractTimeline.js';
 import { isIsoDate, milestoneDay, planMilestoneApply, redactMoney } from '../services/contractTimelineFormat.js';
 import { selectOpenOrders } from '../services/openOrders.js';
+import { selectDashboardFollowUps } from '../services/dashboardFollowUps.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -187,6 +188,50 @@ router.get('/', async (req, res) => {
     res.json(decorated);
   } catch (error) {
     console.error('Error listing follow-ups:', error);
+    res.status(500).json({ error: 'Failed to list follow-ups' });
+  }
+});
+
+// ── Dashboard strip ──────────────────────────────────────────────────────────
+// Registered before /:id so "dashboard" is not parsed as a follow-up id.
+// Slim on purpose. The list payload is every live order, including the
+// contract value for anyone on that team, and its milestones name no owner.
+// The home page needs a date, a name, and who watches the next node — not
+// the money, and not the contract files the team PIN exists to withhold.
+router.get('/dashboard', async (req, res) => {
+  try {
+    const rows = await prisma.projectFollowUp.findMany({
+      where: { status: { in: ['ACTIVE', 'ON_HOLD'] } },
+      select: {
+        id: true,
+        title: true,
+        orderNo: true,
+        status: true,
+        createdAt: true,
+        owner: { select: { id: true, name: true } },
+        customer: { select: { id: true, name: true } },
+        milestones: {
+          select: {
+            id: true,
+            kind: true,
+            label: true,
+            dueDate: true,
+            doneAt: true,
+            owner: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    const prepared = rows.map((row) => ({
+      ...row,
+      milestones: row.milestones.map((m) => {
+        const meta = MILESTONE_BY_KIND.get(m.kind);
+        return { ...m, en: meta?.en || null, zh: meta?.zh || null };
+      }),
+    }));
+    res.json(selectDashboardFollowUps(prepared, { today: chinaDay() }));
+  } catch (error) {
+    console.error('Error listing dashboard follow-ups:', error);
     res.status(500).json({ error: 'Failed to list follow-ups' });
   }
 });

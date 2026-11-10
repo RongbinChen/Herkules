@@ -1,11 +1,12 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { eventsAPI, usersAPI } from '../api/api'
+import { eventsAPI, followUpsAPI, usersAPI } from '../api/api'
 import { listProjectThreads } from '../api/chinabidding'
 import { Button, Card } from './ui'
 import UserManagementModal from './UserManagementModal'
 import { visitReportRemindLocation } from '../utils/remindAnchor'
+import { FollowUpStatusSection } from './DashboardFollowUps'
 
 // Lifecycle stage → compact badge for the Watching panel.
 const WATCH_STAGES = {
@@ -332,12 +333,19 @@ export default function Dashboard() {
   const { user, logout, updateUser } = useAuth()
   const isAdmin = user?.isAdmin === true
   const [reminders, setReminders] = useState([])
+  const [followUps, setFollowUps] = useState({ items: [], total: 0 })
   const [watching, setWatching] = useState([])
   const [users, setUsers] = useState([])
   const [userManagerOpen, setUserManagerOpen] = useState(false)
 
   useEffect(() => {
     eventsAPI.dueReminders().then((r) => setReminders(r.data || [])).catch(() => {})
+    followUpsAPI.dashboard()
+      .then((r) => setFollowUps({
+        items: Array.isArray(r.data?.items) ? r.data.items : [],
+        total: r.data?.total || 0,
+      }))
+      .catch(() => {})
     listProjectThreads({ ourStatus: 'WATCHING' }).then((t) => setWatching(t || [])).catch(() => {})
   }, [])
 
@@ -441,6 +449,8 @@ export default function Dashboard() {
             </div>
           </section>
         )}
+
+        <FollowUpStatusSection items={followUps.items} total={followUps.total} />
 
         {/* Watching projects — the bids we're actively monitoring, front and center */}
         {watching.length > 0 && (
