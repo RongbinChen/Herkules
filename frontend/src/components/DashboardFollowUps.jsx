@@ -57,10 +57,12 @@ export function FollowUpStatusRow({ item }) {
   const next = item.next
   const badge = badgeFor(item)
   const identity = followUpStripIdentity(item)
-  const actionTitle = next
-    ? [next.label, next.zh, next.dueDate, next.cue, next.ownerName].filter(Boolean).join(' · ')
-    : 'No open date'
+  // The strip stays in English. zh is still on the payload for other screens.
   const owner = next?.ownerName || item.ownerName || 'Unassigned'
+  const followedBy = `follow-up by ${owner}`
+  const actionTitle = next
+    ? [next.label, next.dueDate, next.cue, followedBy].filter(Boolean).join(' · ')
+    : `No open date · ${followedBy}`
   // The earliest late milestone is already the next action. Listing it again
   // under the date chip repeated the same fact. The list is the other ones.
   const overdue = (Array.isArray(item.overdue) ? item.overdue : []).filter((d) => (
@@ -116,9 +118,8 @@ export function FollowUpStatusRow({ item }) {
             {item.status === 'ON_HOLD' && <span className="font-semibold text-amber-700">On hold</span>}
             {item.status === 'ON_HOLD' && <span aria-hidden="true" className="text-slate-300">·</span>}
             <span className="min-w-0 font-medium text-slate-800">{next ? next.label : 'No open date'}</span>
-            {next?.zh && <span className="text-[11px] text-slate-400">{next.zh}</span>}
             <span aria-hidden="true" className="text-slate-300">·</span>
-            <span className="max-w-full truncate text-slate-500">{owner}</span>
+            <span className="max-w-full truncate text-slate-500">{followedBy}</span>
           </span>
           {(overdue.length > 0 || moreOverdue > 0) && (
             <span className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-4">
@@ -127,7 +128,7 @@ export function FollowUpStatusRow({ item }) {
                 <span
                   key={`${d.kind}-${d.dueDate}-${index}`}
                   className="font-medium text-rose-700"
-                  title={[d.label, d.zh, d.dueDate, d.cue, d.ownerName].filter(Boolean).join(' · ')}
+                  title={[d.label, d.dueDate, d.cue, d.ownerName && `follow-up by ${d.ownerName}`].filter(Boolean).join(' · ')}
                 >
                   {d.short} <time dateTime={d.dueDate}>{String(d.dueDate).slice(5)}</time>
                   {d.cue && <span className="font-normal text-rose-600"> {d.cue}</span>}
