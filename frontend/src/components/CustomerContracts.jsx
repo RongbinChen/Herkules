@@ -23,6 +23,9 @@ export default function CustomerContracts({ customerId, currentUser }) {
   // "unsorted" beats a wrong label applied by someone who never looked.
   const [docType, setDocType] = useState('OTHER')
   const [note, setNote] = useState('')
+  // Kept after a successful upload, like the document type: the next file
+  // dropped here is usually the same machine. Blank stays a No serial file.
+  const [serial, setSerial] = useState('')
   const [saving, setSaving] = useState(false)
 
   const isAdmin = currentUser?.isAdmin === true
@@ -58,6 +61,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
     setProgress(0)
     const fd = new FormData()
     fd.append('docType', docType)
+    if (serial.trim()) fd.append('machineSerial', serial.trim())
     if (note.trim()) fd.append('note', note.trim())
     fd.append('file', file)
     try {
@@ -201,6 +205,18 @@ export default function CustomerContracts({ customerId, currentUser }) {
                 <option key={k} value={k}>{CONTRACT_DOC_TYPES[k].label}</option>
               ))}
             </select>
+            <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              Serial / 序列号
+              <input
+                value={serial}
+                onChange={(e) => setSerial(e.target.value)}
+                placeholder="5.1022"
+                maxLength={40}
+                autoComplete="off"
+                title="Machine serial / 机床序列号"
+                className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-normal text-slate-700 outline-none transition focus:border-brand-500 focus:bg-white"
+              />
+            </label>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -241,6 +257,7 @@ export default function CustomerContracts({ customerId, currentUser }) {
                     </p>
                     {f.note && <p className="mt-0.5 truncate text-[11px] text-slate-500">{f.note}</p>}
                     <p className="mt-0.5 text-[11px] text-slate-400">
+                      {f.machineSerial && <span className="font-semibold text-slate-500">{f.machineSerial} · </span>}
                       {fmtFileSize(f.size)} · {f.uploadedBy?.name || 'Unknown user'} · {format(new Date(f.createdAt), 'yyyy-MM-dd')}
                     </p>
                   </button>
