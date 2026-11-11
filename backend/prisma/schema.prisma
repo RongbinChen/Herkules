@@ -108,6 +108,40 @@ model HotProjectUpdate {
   @@index([projectId])
 }
 
+// Human-confirmed spelling of a Hot Projects customer as it appears on a
+// Chinabidding / Tracking purchaser line (the buyer or procurer). The
+// hot-project calendar matches a tender ONLY through a row with
+// confirmed = true. A draft someone typed but has not confirmed does not
+// match, and nothing here is filled in by a fuzzy guess. Production is not
+// seeded. Additive: a new table, no change to existing columns.
+//
+// A deploy that includes this model needs a database backup and
+// `npx prisma db push` before the app restarts. Auto-deploy stops when
+// schema.prisma changes.
+model HotCustomerAlias {
+  id            Int       @id @default(autoincrement())
+  // The name as it is written on the Hot Project (the CRM name, when linked).
+  customerName  String
+  customerId    Int?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Purchaser / procurer text. Matched by normalized equality, never by
+  // substring, so a short alias cannot pull in a different company that
+  // merely contains those letters (Waldrich Coburg, INNSE-BERARDI).
+  alias         String
+  confirmed     Boolean   @default(false)
+  note          String?
+  createdById   Int?
+  confirmedById Int?
+  confirmedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([customerName, alias])
+  @@index([customerName])
+  @@index([confirmed])
+  @@index([customerId])
+}
+
 // ── Project follow-up (order execution after a deal is won) ──────────────────
 // Hot Projects tracks a deal until it is won; this tracks what happens after.
 // The two are deliberately separate records: an order can arrive without ever
@@ -312,6 +346,8 @@ model Customer {
   noteEntries   CustomerNote[]
   contractFiles ContractFile[]
   followUps     ProjectFollowUp[]
+  // Purchaser spellings a person has filed for the hot-project calendar.
+  hotCustomerAliases HotCustomerAlias[]
 
   @@index([status])
   @@index([tier])

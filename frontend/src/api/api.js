@@ -110,6 +110,12 @@ export const hotProjectsAPI = {
   reopen: (id) => api.post(`/hotprojects/${id}/reopen`),
   summarize: (id) => api.post(`/hotprojects/${id}/summarize`),
   deleteUpdate: (id, updateId) => api.delete(`/hotprojects/${id}/updates/${updateId}`),
+  // Shared date strip. Not filtered by hot-project visibility.
+  calendar: () => api.get('/hotprojects/calendar'),
+  createAlias: (data) => api.post('/hotprojects/aliases', data),
+  updateAlias: (id, data) => api.put(`/hotprojects/aliases/${id}`, data),
+  confirmAlias: (id) => api.post(`/hotprojects/aliases/${id}/confirm`),
+  deleteAlias: (id) => api.delete(`/hotprojects/aliases/${id}`),
 }
 
 export const followUpsAPI = {

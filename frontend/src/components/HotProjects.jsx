@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { usersAPI, hotProjectsAPI, customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Input, Textarea, Badge } from './ui'
+import HotMiniCalendar from './HotMiniCalendar'
 
 // Internal sales open/potential projects list (from the WAV Excel template).
 // Sensitive module: per-record visibility (TEAM | PRIVATE = owner+admin only).
@@ -561,6 +562,9 @@ export default function HotProjects() {
             <Button onClick={() => setCreateOpen(true)}>＋ New Project</Button>
           </div>
         </div>
+
+        {/* Shared by every logged-in user. The team tabs below do not filter it. */}
+        <HotMiniCalendar />
 
         {/* Category tabs + filters */}
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
