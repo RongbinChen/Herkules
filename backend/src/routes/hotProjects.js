@@ -8,6 +8,9 @@ import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { callDeepSeek } from '../services/deepseek.js';
 import { newProjectMail, projectUpdateMail, projectClosedMail } from '../services/hotProjectMail.js';
+import {
+  aliasPatch, aliasValidationError, loadHotCalendarData, normalizeAliasInput,
+} from '../services/hotCalendar.js';
 
 const router = express.Router();
 
@@ -123,6 +126,109 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('Error listing hot projects:', error);
     res.status(500).json({ error: 'Failed to list hot projects' });
+  }
+});
+
+// ── Mini calendar ─────────────────────────────────────────────────────────────
+// Every logged-in user sees the same dates. Hot-project visibility (PRIVATE
+// vs TEAM) does not filter this: the calendar is the team's shared view of
+// open bid dates for hot customers, plus live follow-up milestones. It does
+// not send mail and it does not write a second copy of the dates.
+router.get('/calendar', async (req, res) => {
+  try {
+    res.json(await loadHotCalendarData(prisma));
+  } catch (error) {
+    console.error('Error loading hot calendar:', error);
+    res.status(500).json({ error: 'Failed to load calendar' });
+  }
+});
+
+async function aliasCustomerId(customerId) {
+  if (!customerId) return null;
+  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+  return customer ? customerId : null;
+}
+
+router.get('/aliases', async (req, res) => {
+  try {
+    const rows = await prisma.hotCustomerAlias.findMany({
+      orderBy: [{ customerName: 'asc' }, { id: 'asc' }],
+    });
+    res.json(rows);
+  } catch (error) {
+    console.error('Error listing aliases:', error);
+    res.status(500).json({ error: 'Failed to list aliases' });
+  }
+});
+
+// A new alias is a draft. Confirming it is a separate action so a typed
+// guess never starts matching tenders on its own.
+router.post('/aliases', async (req, res) => {
+  try {
+    const input = normalizeAliasInput(req.body);
+    input.customerId = await aliasCustomerId(input.customerId);
+    const existing = await prisma.hotCustomerAlias.findMany();
+    const error = aliasValidationError(input, existing);
+    if (error) return res.status(400).json({ error });
+    const row = await prisma.hotCustomerAlias.create({
+      data: { ...input, confirmed: false, createdById: req.user.userId },
+    });
+    res.status(201).json(row);
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(400).json({ error: 'That alias is already on this customer' });
+    console.error('Error creating alias:', error);
+    res.status(500).json({ error: 'Failed to create alias' });
+  }
+});
+
+router.put('/aliases/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await prisma.hotCustomerAlias.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    const input = normalizeAliasInput(req.body);
+    input.customerId = await aliasCustomerId(input.customerId);
+    const others = await prisma.hotCustomerAlias.findMany();
+    const error = aliasValidationError(input, others, id);
+    if (error) return res.status(400).json({ error });
+    const row = await prisma.hotCustomerAlias.update({
+      where: { id },
+      data: aliasPatch(existing, input),
+    });
+    res.json(row);
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(400).json({ error: 'That alias is already on this customer' });
+    console.error('Error updating alias:', error);
+    res.status(500).json({ error: 'Failed to update alias' });
+  }
+});
+
+router.post('/aliases/:id/confirm', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await prisma.hotCustomerAlias.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    const row = await prisma.hotCustomerAlias.update({
+      where: { id },
+      data: { confirmed: true, confirmedById: req.user.userId, confirmedAt: new Date() },
+    });
+    res.json(row);
+  } catch (error) {
+    console.error('Error confirming alias:', error);
+    res.status(500).json({ error: 'Failed to confirm alias' });
+  }
+});
+
+router.delete('/aliases/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await prisma.hotCustomerAlias.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    await prisma.hotCustomerAlias.delete({ where: { id } });
+    res.status(204).end();
+  } catch (error) {
+    console.error('Error deleting alias:', error);
+    res.status(500).json({ error: 'Failed to delete alias' });
   }
 });
 
