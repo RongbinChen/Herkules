@@ -1,14 +1,15 @@
 /**
  * Collapsible month calendar on Hot Projects.
  *
- * Collapsed (the default) is a compact grid: colored dots mark days that
- * already have an open bid date or a live follow-up milestone, and the next
- * month peeks in underneath. Expanding enlarges the grid and, once a day is
- * picked, lists that day's events as separate links — a tracking thread or
- * a follow-up record, never a merged row.
+ * Collapsed (the default, every visit) is a compact bar: the English month
+ * title, a short teaser, and Expand. Expanding reveals the month grid, the
+ * next-month peek, the legend, and — once a day is picked — that day's events
+ * as separate links. A tracking thread and a follow-up record stay on their
+ * own rows.
  *
  * Dates are China calendar days. The list is the same for every logged-in
- * user; the team tabs on the page below do not filter it.
+ * user; the team tabs on the page below do not filter it. Copy on this card
+ * is English only.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -26,14 +27,20 @@ const DOT = {
 }
 
 const LEGEND = [
-  { color: 'brand', en: 'Deadline', zh: '截止' },
-  { color: 'violet', en: 'Opening', zh: '开标' },
-  { color: 'amber', en: 'Follow-up', zh: '里程碑' },
-  { color: 'rose', en: 'Overdue', zh: '逾期' },
+  { color: 'brand', label: 'Deadline' },
+  { color: 'violet', label: 'Opening' },
+  { color: 'amber', label: 'Follow-up' },
+  { color: 'rose', label: 'Overdue' },
 ]
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function eventsOn(events, day) {
   return day ? events.filter((event) => event.day === day) : []
+}
+
+function shortDay(day) {
+  return `${SHORT_MONTHS[Number(day.slice(5, 7)) - 1]} ${Number(day.slice(8, 10))}`
 }
 
 function DayCell({ day, events, today, selected, expanded, onSelect }) {
@@ -77,7 +84,7 @@ function DayCell({ day, events, today, selected, expanded, onSelect }) {
 
 function EventList({ events }) {
   if (!events.length) {
-    return <p className="mt-3 text-xs text-slate-400">Nothing on this day · 这一天没有安排</p>
+    return <p className="mt-3 text-xs text-slate-400">Nothing on this day</p>
   }
   return (
     <ul data-testid="event-list" className="mt-3 max-h-64 space-y-1.5 overflow-y-auto">
@@ -91,13 +98,49 @@ function EventList({ events }) {
             <span className="block text-sm font-semibold text-slate-800">{event.title}</span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
               <span className={`inline-block h-1.5 w-1.5 rounded-full ${DOT[event.color] || 'bg-slate-400'}`} />
-              <span>{event.detail}{event.detailZh ? ` · ${event.detailZh}` : ''}</span>
-              {event.overdue && <span className="font-semibold text-rose-600">Overdue · 逾期</span>}
+              <span>{event.detail}</span>
+              {event.overdue && <span className="font-semibold text-rose-600">Overdue</span>}
             </span>
           </Link>
         </li>
       ))}
     </ul>
+  )
+}
+
+function CollapsedTeaser({ events, today, onJump }) {
+  const overdue = events
+    .filter((event) => event.overdue)
+    .sort((a, b) => a.day.localeCompare(b.day) || a.id.localeCompare(b.id))
+  const upcoming = events
+    .filter((event) => event.day >= today)
+    .sort((a, b) => a.day.localeCompare(b.day) || a.id.localeCompare(b.id))
+  const next = upcoming[0]
+  if (!overdue.length && !next) return null
+  const nextLabel = next
+    ? `${next.day === today ? 'Today' : `Next ${shortDay(next.day)}`}${next.detail ? ` · ${next.detail}` : ''}`
+    : ''
+  return (
+    <div data-testid="calendar-teaser" className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+      {overdue.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onJump(overdue[0].day)}
+          className="font-semibold text-rose-600 hover:underline"
+        >
+          {overdue.length} overdue
+        </button>
+      )}
+      {next && (
+        <button
+          type="button"
+          onClick={() => onJump(next.day)}
+          className="font-semibold text-slate-600 hover:underline"
+        >
+          {nextLabel}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -112,7 +155,7 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
     const customerName = draft.customerName.trim()
     const alias = draft.alias.trim()
     if (customerName.length < 2 || alias.length < 2) {
-      setFormError('Enter a customer and a purchaser name · 请填写客户和采购方')
+      setFormError('Enter a customer and a purchaser name')
       return
     }
     const match = hotCustomers.find((customer) => customer.name === customerName)
@@ -156,11 +199,10 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
     <div className="mt-3 border-t border-slate-100 pt-3" data-testid="alias-panel">
       <p className="text-xs text-slate-500">
         Confirmed purchaser names only. An unconfirmed alias does not put tenders on the calendar.
-        <span className="mt-0.5 block text-slate-400">仅已确认的采购方名称会匹配招标，模糊猜测不会自动确认。</span>
       </p>
       <form onSubmit={submit} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-[11px] font-semibold text-slate-500">
-          Customer · 客户
+          Customer
           <Input
             value={draft.customerName}
             list="hot-calendar-customers"
@@ -173,7 +215,7 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
           </datalist>
         </label>
         <label className="text-[11px] font-semibold text-slate-500">
-          Purchaser · 采购方
+          Purchaser
           <Input
             value={draft.alias}
             onChange={(event) => setDraft((d) => ({ ...d, alias: event.target.value }))}
@@ -186,19 +228,19 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
           <Input
             value={draft.note}
             onChange={(event) => setDraft((d) => ({ ...d, note: event.target.value }))}
-            placeholder="Optional · 可选"
+            placeholder="Optional"
             className="mt-1"
           />
         </label>
         <div className="sm:col-span-2">
-          <Button type="submit" size="sm" disabled={busy}>Add · 添加</Button>
+          <Button type="submit" size="sm" disabled={busy}>Add</Button>
         </div>
       </form>
       {(formError || aliasError) && (
         <p className="mt-2 text-xs text-rose-600">{formError || aliasError}</p>
       )}
       <ul className="mt-3 space-y-1.5">
-        {aliases.length === 0 && <li className="text-xs text-slate-400">No aliases yet · 还没有别名</li>}
+        {aliases.length === 0 && <li className="text-xs text-slate-400">No aliases yet</li>}
         {aliases.map((row) => (
           <li key={row.id} data-testid={`alias-${row.id}`} className="rounded-xl border border-slate-200 px-3 py-2">
             {editing?.id === row.id ? (
@@ -206,7 +248,7 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
                 <Input value={editing.customerName} onChange={(event) => setEditing((e) => ({ ...e, customerName: event.target.value }))} />
                 <Input value={editing.alias} onChange={(event) => setEditing((e) => ({ ...e, alias: event.target.value }))} />
                 <div className="flex gap-2 sm:col-span-2">
-                  <Button type="button" size="sm" disabled={busy} onClick={saveEdit}>Save · 保存</Button>
+                  <Button type="button" size="sm" disabled={busy} onClick={saveEdit}>Save</Button>
                   <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
                 </div>
               </div>
@@ -220,7 +262,7 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                   row.confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                 }`}>
-                  {row.confirmed ? 'Confirmed · 已确认' : 'Pending · 待确认'}
+                  {row.confirmed ? 'Confirmed' : 'Pending'}
                 </span>
                 {!row.confirmed && (
                   <button
@@ -229,7 +271,7 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
                     onClick={() => onConfirmAlias?.(row.id)}
                     className="rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white"
                   >
-                    Confirm · 确认
+                    Confirm
                   </button>
                 )}
                 <button
@@ -242,7 +284,7 @@ function AliasPanel({ hotCustomers, aliases, aliasError, onCreateAlias, onUpdate
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Remove alias “${row.alias}”? · 删除该别名？`)) onDeleteAlias?.(row.id)
+                    if (window.confirm(`Remove alias “${row.alias}”?`)) onDeleteAlias?.(row.id)
                   }}
                   className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-rose-600"
                 >
@@ -311,143 +353,160 @@ export function HotMiniCalendarView({
       data-expanded={expanded ? 'true' : 'false'}
       className="mb-4 w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Dates · 日程</p>
-          <h2 className="text-base font-bold text-slate-800 sm:text-lg">
-            {label.en}
-            <span className="ml-2 text-sm font-semibold text-slate-400">{label.zh}</span>
-          </h2>
-          <p className="mt-0.5 text-[11px] text-slate-400 sm:text-xs">
-            Hot-customer bid dates and follow-up milestones · 热点客户投标日与执行里程碑
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => { setMonth(shiftMonth(month, -1)); setSelected(null) }}
-            aria-label="Previous month · 上个月"
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            ‹
-          </button>
-          {month !== todayDay.slice(0, 7) && (
-            <button type="button" onClick={() => { setMonth(todayDay.slice(0, 7)); setSelected(todayDay); setExpanded(true) }}
-              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-              Today · 今天
-            </button>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Dates</p>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            <h2 className={`font-bold text-slate-800 ${expanded ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}`}>
+              {label}
+            </h2>
+          </div>
+          {expanded ? (
+            <p className="mt-0.5 text-[11px] text-slate-400 sm:text-xs">
+              Hot-customer bid dates and follow-up milestones
+            </p>
+          ) : (
+            <>
+              {loading && <p className="mt-0.5 text-xs text-slate-400">Loading…</p>}
+              {error && <p className="mt-0.5 text-xs text-rose-600">{error}</p>}
+              {!loading && !error && (
+                <CollapsedTeaser events={events} today={todayDay} onJump={selectDay} />
+              )}
+            </>
           )}
-          <button type="button" onClick={() => { setMonth(shiftMonth(month, 1)); setSelected(null) }}
-            aria-label="Next month · 下个月"
-            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            ›
-          </button>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {expanded && (
+            <>
+              <button type="button" onClick={() => { setMonth(shiftMonth(month, -1)); setSelected(null) }}
+                aria-label="Previous month"
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                ‹
+              </button>
+              {month !== todayDay.slice(0, 7) && (
+                <button type="button" onClick={() => { setMonth(todayDay.slice(0, 7)); setSelected(todayDay); setExpanded(true) }}
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                  Today
+                </button>
+              )}
+              <button type="button" onClick={() => { setMonth(shiftMonth(month, 1)); setSelected(null) }}
+                aria-label="Next month"
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                ›
+              </button>
+            </>
+          )}
           <button
             type="button"
+            data-testid="calendar-toggle"
             aria-expanded={expanded}
             onClick={() => setExpanded((open) => !open)}
             className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-white"
           >
-            {expanded ? 'Collapse · 收起' : 'Expand · 展开'}
+            {expanded ? 'Collapse' : 'Expand'}
           </button>
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 sm:text-xs">
-        {LEGEND.map((item) => (
-          <span key={item.color} className="inline-flex items-center gap-1">
-            <span className={`h-1.5 w-1.5 rounded-full ${DOT[item.color]}`} />
-            {item.en} · {item.zh}
-          </span>
-        ))}
-      </div>
-
-      {loading && <p className="mt-2 text-xs text-slate-400">Loading…</p>}
-      {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
-      {earlier.length > 0 && (
-        <button
-          type="button"
-          onClick={() => { setMonth(earlier[0].day.slice(0, 7)); setSelected(earlier[0].day); setExpanded(true) }}
-          className="mt-2 text-xs font-semibold text-rose-600 hover:underline"
-        >
-          {earlier.length} overdue · 更早
-        </button>
-      )}
-
-      <div className="mt-2 grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:text-xs" data-testid="calendar-weekdays">
-        {WEEKDAYS.map((day) => <div key={day.en} title={day.zh}>{day.en}</div>)}
-      </div>
-      <div className="mt-1 grid w-full grid-cols-7 gap-0.5" data-testid="calendar-grid">
-        {grid.map((day, index) => (
-          <DayCell
-            key={day || `blank-${index}`}
-            day={day}
-            events={eventsOn(events, day)}
-            today={todayDay}
-            selected={selected}
-            expanded={expanded}
-            onSelect={selectDay}
-          />
-        ))}
-      </div>
-
-      <div className="mt-2 border-t border-slate-100 pt-2">
-        <button
-          type="button"
-          onClick={() => { setMonth(peek.month); setSelected(null) }}
-          className="mb-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
-        >
-          {peekLabel.zh}
-          <span className="ml-1 font-medium">{peekLabel.en}</span>
-        </button>
-        <div className="grid w-full grid-cols-7 gap-0.5" data-testid="calendar-peek">
-          {peek.cells.map((day, index) => (
-            <DayCell
-              key={day || `peek-${index}`}
-              day={day}
-              events={byDay.get(day) || []}
-              today={todayDay}
-              selected={selected}
-              expanded={expanded}
-              onSelect={selectDay}
-            />
-          ))}
-        </div>
-      </div>
-
-      {visibleCount === 0 && !loading && (
-        <p className="mt-2 text-xs text-slate-400">No dates this month · 本月无节点</p>
-      )}
-      {confirmed === 0 && (
-        <p className="mt-1 text-[11px] text-slate-400">
-          Bid dates need a confirmed alias · 确认别名后才显示投标日
-        </p>
-      )}
-
       {expanded && (
-        selected
-          ? <EventList events={selectedEvents} />
-          : <p className="mt-3 text-xs text-slate-400">Select a day · 选择日期</p>
-      )}
+        <>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 sm:text-xs" data-testid="calendar-legend">
+            {LEGEND.map((item) => (
+              <span key={item.color} className="inline-flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 rounded-full ${DOT[item.color]}`} />
+                {item.label}
+              </span>
+            ))}
+          </div>
 
-      <div className="mt-3">
-        <button
-          type="button"
-          aria-expanded={aliasesOpen}
-          onClick={() => setAliasesOpen((open) => !open)}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          Aliases · 别名
-          <span className="ml-1 text-slate-400">{confirmed}/{aliases.length}</span>
-        </button>
-      </div>
-      {aliasesOpen && (
-        <AliasPanel
-          hotCustomers={hotCustomers}
-          aliases={aliases}
-          aliasError={aliasError}
-          onCreateAlias={onCreateAlias}
-          onUpdateAlias={onUpdateAlias}
-          onConfirmAlias={onConfirmAlias}
-          onDeleteAlias={onDeleteAlias}
-        />
+          {loading && <p className="mt-2 text-xs text-slate-400">Loading…</p>}
+          {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+          {earlier.length > 0 && (
+            <button
+              type="button"
+              onClick={() => selectDay(earlier[0].day)}
+              className="mt-2 text-xs font-semibold text-rose-600 hover:underline"
+            >
+              {earlier.length} overdue
+            </button>
+          )}
+
+          <div className="mt-2 grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:text-xs" data-testid="calendar-weekdays">
+            {WEEKDAYS.map((day) => <div key={day.short} title={day.title}>{day.short}</div>)}
+          </div>
+          <div className="mt-1 grid w-full grid-cols-7 gap-0.5" data-testid="calendar-grid">
+            {grid.map((day, index) => (
+              <DayCell
+                key={day || `blank-${index}`}
+                day={day}
+                events={eventsOn(events, day)}
+                today={todayDay}
+                selected={selected}
+                expanded={expanded}
+                onSelect={selectDay}
+              />
+            ))}
+          </div>
+
+          <div className="mt-2 border-t border-slate-100 pt-2">
+            <button
+              type="button"
+              onClick={() => { setMonth(peek.month); setSelected(null) }}
+              className="mb-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
+            >
+              {peekLabel}
+            </button>
+            <div className="grid w-full grid-cols-7 gap-0.5" data-testid="calendar-peek">
+              {peek.cells.map((day, index) => (
+                <DayCell
+                  key={day || `peek-${index}`}
+                  day={day}
+                  events={byDay.get(day) || []}
+                  today={todayDay}
+                  selected={selected}
+                  expanded={expanded}
+                  onSelect={selectDay}
+                />
+              ))}
+            </div>
+          </div>
+
+          {visibleCount === 0 && !loading && (
+            <p className="mt-2 text-xs text-slate-400">No dates this month</p>
+          )}
+          {confirmed === 0 && (
+            <p className="mt-1 text-[11px] text-slate-400">
+              Bid dates need a confirmed alias
+            </p>
+          )}
+
+          {selected
+            ? <EventList events={selectedEvents} />
+            : <p className="mt-3 text-xs text-slate-400">Select a day</p>}
+
+          <div className="mt-3">
+            <button
+              type="button"
+              aria-expanded={aliasesOpen}
+              onClick={() => setAliasesOpen((open) => !open)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Aliases
+              <span className="ml-1 text-slate-400">{confirmed}/{aliases.length}</span>
+            </button>
+          </div>
+          {aliasesOpen && (
+            <AliasPanel
+              hotCustomers={hotCustomers}
+              aliases={aliases}
+              aliasError={aliasError}
+              onCreateAlias={onCreateAlias}
+              onUpdateAlias={onUpdateAlias}
+              onConfirmAlias={onConfirmAlias}
+              onDeleteAlias={onDeleteAlias}
+            />
+          )}
+        </>
       )}
     </section>
   )

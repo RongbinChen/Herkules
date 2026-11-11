@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMonthGrid, chinaToday, dotColors, peekRow, shiftMonth } from './hotCalendar.js'
+import { WEEKDAYS, buildMonthGrid, chinaToday, dotColors, monthLabel, peekRow, shiftMonth } from './hotCalendar.js'
 
 test('November 2026 starts on Sunday and December peeks onto Tuesday', () => {
   const november = buildMonthGrid('2026-11')
@@ -19,6 +19,19 @@ test('November 2026 starts on Sunday and December peeks onto Tuesday', () => {
 test('today is a China calendar day, including the UTC evening boundary', () => {
   assert.equal(chinaToday(new Date('2026-11-10T15:59:00.000Z')), '2026-11-10')
   assert.equal(chinaToday(new Date('2026-11-10T16:00:00.000Z')), '2026-11-11')
+})
+
+test('month and weekday labels are English only', () => {
+  assert.equal(monthLabel('2026-11'), 'November 2026')
+  assert.equal(monthLabel('2026-12'), 'December 2026')
+  assert.deepEqual(WEEKDAYS.map((day) => day.short), ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'])
+  const text = [
+    monthLabel('2026-08'),
+    ...WEEKDAYS.map((day) => `${day.short} ${day.title}`),
+  ].join(' ')
+  assert.doesNotMatch(text, /[\u4e00-\u9fff]/)
+  assert.match(text, /August 2026/)
+  assert.match(text, /Sunday/)
 })
 
 test('a day keeps one dot per color and does not merge events', () => {
