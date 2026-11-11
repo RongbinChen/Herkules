@@ -1,21 +1,21 @@
 // China-day month grid for the Hot Projects mini calendar. Weekdays are
 // Sunday-first, matching the activity calendar, and every cell is a Beijing
 // calendar day rather than the browser's local midnight.
+// Labels on this card are English only.
 
 const CN_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' })
 
 export const WEEKDAYS = [
-  { en: 'Su', zh: '日' },
-  { en: 'Mo', zh: '一' },
-  { en: 'Tu', zh: '二' },
-  { en: 'We', zh: '三' },
-  { en: 'Th', zh: '四' },
-  { en: 'Fr', zh: '五' },
-  { en: 'Sa', zh: '六' },
+  { short: 'Su', title: 'Sunday' },
+  { short: 'Mo', title: 'Monday' },
+  { short: 'Tu', title: 'Tuesday' },
+  { short: 'We', title: 'Wednesday' },
+  { short: 'Th', title: 'Thursday' },
+  { short: 'Fr', title: 'Friday' },
+  { short: 'Sa', title: 'Saturday' },
 ]
 
 const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const MONTHS_ZH = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
 
 export function chinaToday(now = new Date()) {
   return CN_DATE.format(now)
@@ -30,7 +30,7 @@ export function shiftMonth(month, delta) {
 export function monthLabel(month) {
   const mon = Number(month.slice(5, 7))
   const year = month.slice(0, 4)
-  return { en: `${MONTHS_EN[mon - 1]} ${year}`, zh: MONTHS_ZH[mon - 1] }
+  return `${MONTHS_EN[mon - 1]} ${year}`
 }
 
 // Leading nulls are the weekdays before the 1st. Trailing nulls finish the
