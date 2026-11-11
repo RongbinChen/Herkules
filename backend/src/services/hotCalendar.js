@@ -1,13 +1,17 @@
-// Hot-project mini calendar. Events are derived on read from the current
-// Tracking / scrape rows and from live follow-up milestones. There is no
-// calendar table to go stale: when a scrape moves a deadline, or a tender
-// is awarded, the next read already shows the new set.
+// Hot-project mini calendar. Events are derived on read from current
+// Chinabidding tracking and scrape rows for Hot Project customers. Project
+// follow-up milestones (L/C, shipment, payment, and the rest of execution)
+// belong to the follow-up module and are not read here. There is no
+// calendar table to go stale: when a scrape moves a deadline, the next
+// read already shows the new day.
 //
 // A Chinabidding tender is included only when its purchaser matches a
 // human-confirmed alias of a customer who still has an open Hot Project.
-// The Hot Project's own name is not a match by itself — a search that
-// merely contains "Waldrich" or "INNSE" has already pulled in the wrong
-// companies, and this calendar does not repeat that.
+// Matching is normalizeCompany equality, never a substring. The Hot
+// Project's own name is not a match by itself — a search that merely
+// contains "Waldrich" or "INNSE" has already pulled in the wrong
+// companies, and this calendar does not repeat that. An unconfirmed alias
+// does not match, and nothing here confirms an alias on its own.
 
 import { normalizeCompany } from './companyName.js';
 
@@ -17,30 +21,6 @@ const STAGE_ORDER = { TENDER: 0, CHANGE: 1, EVALUATION: 2, AWARD: 3 };
 const ROUND_RE = /[（(](\d+)[)）]\s*$/;
 const OPEN_STAGES = new Set(['TENDER', 'CHANGE']);
 const FINISHED_TRACKING = new Set(['WON', 'LOST', 'ABANDONED']);
-const LIVE_FOLLOWUP = new Set(['ACTIVE', 'ON_HOLD']);
-
-// Display labels only. The reminder mail keeps its own copy in followUps.js;
-// this calendar does not send mail.
-const MILESTONES = [
-  { kind: 'CONTRACT_SIGNED', en: 'Contract signed', zh: '合同签署' },
-  { kind: 'CONTRACT_EFFECTIVE', en: 'Contract effective', zh: '合同生效' },
-  { kind: 'LC_OPEN_DEADLINE', en: 'L/C to be opened by', zh: '信用证开证截止' },
-  { kind: 'LC_RECEIVED', en: 'L/C received & checked', zh: '信用证收到并审核' },
-  { kind: 'LC_LATEST_SHIPMENT', en: 'Latest shipment date (L/C)', zh: '最晚装运期' },
-  { kind: 'LC_PRESENTATION', en: 'Document presentation due', zh: '交单期' },
-  { kind: 'PAYMENT_DOWN', en: 'Down payment received', zh: '预付款到账' },
-  { kind: 'PAYMENT_SHIPMENT', en: 'Shipment payment received', zh: '发货款到账' },
-  { kind: 'PAYMENT_FINAL', en: 'Final payment received', zh: '尾款到账' },
-  { kind: 'GUARANTEE_EXPIRY', en: 'Bank guarantee expires', zh: '保函到期' },
-  { kind: 'DRAWING_APPROVAL', en: 'Drawings / spec approved', zh: '图纸/技术协议确认' },
-  { kind: 'FAT', en: 'FAT (factory acceptance)', zh: 'FAT 出厂验收' },
-  { kind: 'SHIPMENT', en: 'Shipment / customs', zh: '装运 / 到港清关' },
-  { kind: 'INSTALLATION', en: 'Installation & commissioning', zh: '安装调试' },
-  { kind: 'FAC', en: 'FAC (final acceptance)', zh: 'FAC 终验收' },
-  { kind: 'WARRANTY_EXPIRY', en: 'Warranty expires', zh: '质保到期' },
-];
-const MILESTONE_BY_KIND = new Map(MILESTONES.map((m) => [m.kind, m]));
-const MILESTONE_RANK = new Map(MILESTONES.map((m, i) => [m.kind, i]));
 
 const CN_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' });
 
@@ -287,56 +267,15 @@ function tenderEvent({ key, kind, day, customer, projectName, today }) {
     detailZh: label.zh,
     href: `/chinabidding/tracking?q=${encodeURIComponent(key)}`,
     threadKey: key,
-    followUpId: null,
     overdue: Boolean(today) && day < today,
     color: (today && day < today) ? 'rose' : (kind === 'deadline' ? 'brand' : 'violet'),
   };
 }
 
-function followUpCustomer(row) {
-  if (typeof row.customerName === 'string' && row.customerName.trim()) return row.customerName.trim();
-  if (row.customer?.name) return String(row.customer.name).trim();
-  if (row.hotProject?.customer) return String(row.hotProject.customer).trim();
-  return '';
-}
-
-function followUpEvents(followUps, today) {
-  const events = [];
-  for (const row of followUps || []) {
-    if (!LIVE_FOLLOWUP.has(row.status)) continue;
-    const customer = followUpCustomer(row);
-    const project = clip(row.title, 72);
-    for (const milestone of row.milestones || []) {
-      if (milestone.doneAt || !milestone.dueDate) continue;
-      const day = chinaDay(milestone.dueDate);
-      if (!day) continue;
-      const meta = MILESTONE_BY_KIND.get(milestone.kind) || { en: milestone.label || milestone.kind, zh: '' };
-      const overdue = Boolean(today) && day < today;
-      events.push({
-        id: `followup:${row.id}:${milestone.kind}`,
-        source: 'followup',
-        kind: milestone.kind,
-        day,
-        customer,
-        title: customer ? `${customer} · ${project}` : project,
-        detail: milestone.label || meta.en,
-        detailZh: meta.zh,
-        href: `/followups/${row.id}`,
-        threadKey: null,
-        followUpId: row.id,
-        overdue,
-        color: overdue ? 'rose' : 'amber',
-      });
-    }
-  }
-  return events;
-}
-
 function eventRank(event) {
   if (event.kind === 'deadline') return 0;
   if (event.kind === 'opening') return 1;
-  const milestone = MILESTONE_RANK.get(event.kind);
-  return 2 + (milestone == null ? 50 : milestone);
+  return 2;
 }
 
 export function listHotCustomers(hotProjects) {
@@ -352,13 +291,14 @@ export function listHotCustomers(hotProjects) {
 }
 
 /**
- * Build the calendar from the current rows. Callers pass the live query
- * result; nothing is stored.
+ * Build the calendar from the current Chinabidding rows. Callers pass the
+ * live query result; nothing is stored. Follow-up rows are not an input:
+ * L/C, shipment, payment, and other execution milestones stay off this
+ * calendar even if a caller still has them in hand.
  *
- * Tender events: one deadline and, when a date exists, one opening. Two
- * tenders on the same day stay two events. Follow-up events: every open
- * milestone on a live follow-up (ACTIVE or ON_HOLD). Completed milestones
- * and completed / cancelled follow-ups are absent.
+ * One deadline and, when a date exists, one opening, per open tender whose
+ * purchaser matches a confirmed alias. Two tenders on the same day stay two
+ * events.
  */
 export function deriveHotCalendarEvents({
   hotProjects = [],
@@ -366,7 +306,6 @@ export function deriveHotCalendarEvents({
   announcements = [],
   trackings = [],
   bidOpenings = [],
-  followUps = [],
   today = chinaDay(new Date()),
 } = {}) {
   const events = [];
@@ -387,7 +326,6 @@ export function deriveHotCalendarEvents({
       }
     }
   });
-  events.push(...followUpEvents(followUps, today));
   events.sort((a, b) =>
     a.day.localeCompare(b.day) ||
     (eventRank(a) - eventRank(b)) ||
@@ -444,23 +382,12 @@ export function aliasPatch(existing, input) {
 }
 
 export async function loadHotCalendarData(prisma) {
-  const [hotProjects, aliases, followUps, announcements, trackings, bidOpenings] = await Promise.all([
+  const [hotProjects, aliases, announcements, trackings, bidOpenings] = await Promise.all([
     prisma.hotProject.findMany({
       where: { closedAt: null },
       select: { id: true, customer: true, customerId: true, closedAt: true },
     }),
     prisma.hotCustomerAlias.findMany({ orderBy: [{ customerName: 'asc' }, { id: 'asc' }] }),
-    prisma.projectFollowUp.findMany({
-      where: { status: { in: ['ACTIVE', 'ON_HOLD'] } },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        customer: { select: { name: true } },
-        hotProject: { select: { customer: true } },
-        milestones: { select: { kind: true, label: true, dueDate: true, doneAt: true } },
-      },
-    }),
     // Stage columns for every notice. The award that closes a thread often
     // has no purchaser of its own, so filtering to "purchaser is set" would
     // leave the tender looking open. Page text stays out of this query.
@@ -503,7 +430,6 @@ export async function loadHotCalendarData(prisma) {
     announcements: enriched,
     trackings,
     bidOpenings,
-    followUps,
   });
   return { ...derived, aliases };
 }

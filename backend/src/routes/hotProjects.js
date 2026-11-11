@@ -132,8 +132,9 @@ router.get('/', async (req, res) => {
 // ── Mini calendar ─────────────────────────────────────────────────────────────
 // Every logged-in user sees the same dates. Hot-project visibility (PRIVATE
 // vs TEAM) does not filter this: the calendar is the team's shared view of
-// open bid dates for hot customers, plus live follow-up milestones. It does
-// not send mail and it does not write a second copy of the dates.
+// Chinabidding bid dates for hot customers. Project follow-up milestones
+// stay in the follow-up module. This route does not send mail and it does
+// not write a second copy of the dates.
 router.get('/calendar', async (req, res) => {
   try {
     res.json(await loadHotCalendarData(prisma));

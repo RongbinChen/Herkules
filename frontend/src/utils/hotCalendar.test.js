@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { WEEKDAYS, buildMonthGrid, chinaToday, dotColors, monthLabel, peekRow, shiftMonth } from './hotCalendar.js'
+import { WEEKDAYS, bidCalendarEvents, buildMonthGrid, chinaToday, dotColors, monthLabel, peekRow, shiftMonth } from './hotCalendar.js'
 
 test('November 2026 starts on Sunday and December peeks onto Tuesday', () => {
   const november = buildMonthGrid('2026-11')
@@ -32,6 +32,34 @@ test('month and weekday labels are English only', () => {
   assert.doesNotMatch(text, /[\u4e00-\u9fff]/)
   assert.match(text, /August 2026/)
   assert.match(text, /Sunday/)
+})
+
+test('follow-up milestones are not bid-calendar events', () => {
+  const kept = bidCalendarEvents([
+    {
+      id: 'tender:A:deadline',
+      source: 'tender',
+      kind: 'deadline',
+      href: '/chinabidding/tracking?q=THREAD-A',
+      detail: 'Bid deadline',
+    },
+    {
+      id: 'followup:7:LC_OPEN_DEADLINE',
+      source: 'followup',
+      kind: 'LC_OPEN_DEADLINE',
+      followUpId: 7,
+      href: '/followups/7',
+      detail: 'L/C to be opened by',
+    },
+    {
+      id: 'followup:7:SHIPMENT',
+      source: 'followup',
+      kind: 'SHIPMENT',
+      href: '/followups/7',
+      detail: 'Shipment / customs',
+    },
+  ])
+  assert.deepEqual(kept.map((event) => event.id), ['tender:A:deadline'])
 })
 
 test('a day keeps one dot per color and does not merge events', () => {
