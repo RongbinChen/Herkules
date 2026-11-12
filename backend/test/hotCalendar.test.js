@@ -50,7 +50,6 @@ function derive(extra = {}) {
     announcements: [notice()],
     trackings: [],
     bidOpenings: [],
-    followUps: [],
     ...extra,
   });
 }
@@ -292,84 +291,52 @@ test('two tenders on the same day stay two events', () => {
   assert.equal(deadlines.every((event) => event.day === '2026-11-20'), true);
 });
 
-test('live follow-up milestones are included and completed or closed ones are not', () => {
-  const result = derive({
+test('a follow-up milestone is not a calendar event', () => {
+  const shenyang = {
+    id: 7,
+    title: 'Shenyang Fortune Precision Equipment Co., Ltd. — GRG-FCJM-202608A',
+    status: 'ACTIVE',
+    customerName: 'Shenyang Fortune Precision Equipment Co., Ltd.',
+    customer: { name: 'Shenyang Fortune Precision Equipment Co., Ltd.' },
+    hotProject: { customer: 'Shenyang Fortune Precision Equipment Co., Ltd.' },
+    milestones: [
+      { kind: 'LC_OPEN_DEADLINE', label: 'L/C to be opened by', dueDate: '2026-11-15', doneAt: null },
+      { kind: 'SHIPMENT', label: 'Shipment / customs', dueDate: '2026-11-20', doneAt: null },
+      { kind: 'PAYMENT_DOWN', label: 'Down payment received', dueDate: '2026-11-02', doneAt: null },
+    ],
+  };
+  const onlyFollowUp = derive({
     announcements: [],
     aliases: [],
-    followUps: [
-      {
-        id: 7,
-        title: 'Roll grinder WS 180',
-        status: 'ACTIVE',
-        customerName: 'Baosteel',
-        milestones: [
-          { kind: 'LC_OPEN_DEADLINE', label: null, dueDate: '2026-11-02', doneAt: null },
-          { kind: 'PAYMENT_DOWN', label: 'Down payment received', dueDate: '2026-11-20', doneAt: '2026-11-01T00:00:00.000Z' },
-          { kind: 'FAT', label: null, dueDate: new Date('2026-11-30T00:00:00.000Z'), doneAt: null },
-          { kind: 'SHIPMENT', label: null, dueDate: new Date('2026-11-30T16:00:00.000Z'), doneAt: null },
-        ],
-      },
-      {
-        id: 8,
-        title: 'On hold order',
-        status: 'ON_HOLD',
-        customerName: 'Baosteel',
-        milestones: [{ kind: 'FAC', dueDate: '2026-12-01', doneAt: null }],
-      },
-      {
-        id: 9,
-        title: 'Finished order',
-        status: 'COMPLETED',
-        customerName: 'Baosteel',
-        milestones: [{ kind: 'LC_OPEN_DEADLINE', dueDate: '2026-11-02', doneAt: null }],
-      },
-      {
-        id: 10,
-        title: 'Cancelled order',
-        status: 'CANCELLED',
-        customerName: 'Baosteel',
-        milestones: [{ kind: 'LC_OPEN_DEADLINE', dueDate: '2026-11-02', doneAt: null }],
-      },
-    ],
+    followUps: [shenyang],
   });
-  assert.deepEqual(kinds(result), [
-    'LC_OPEN_DEADLINE@2026-11-02',
-    'FAT@2026-11-30',
-    'SHIPMENT@2026-12-01',
-    'FAC@2026-12-01',
-  ]);
-  const lc = result.events[0];
-  assert.equal(lc.overdue, true);
-  assert.equal(lc.color, 'rose');
-  assert.equal(lc.title, 'Baosteel · Roll grinder WS 180');
-  assert.equal(lc.detail, 'L/C to be opened by');
-  assert.equal(lc.detailZh, '信用证开证截止');
-  assert.equal(lc.href, '/followups/7');
-  assert.equal(result.events[1].overdue, false);
-  assert.equal(result.events[1].day, '2026-11-30');
-  assert.equal(result.events.find((event) => event.kind === 'SHIPMENT').day, '2026-12-01');
-});
+  assert.deepEqual(onlyFollowUp.events, []);
 
-test('a tender and a follow-up on the same day stay stacked as separate events, deadline first', () => {
-  const result = derive({
+  const besideTender = derive({
     announcements: [notice({
-      deadline: '2026-11-20',
-      rawContent: 'Open-Time of Bids: 2026-11-20',
+      deadline: '2026-11-15',
+      rawContent: 'Open-Time of Bids: 2026-11-15',
     })],
-    followUps: [{
-      id: 7,
-      title: 'Roll grinder',
-      status: 'ACTIVE',
-      customerName: 'Baosteel',
-      milestones: [{ kind: 'LC_OPEN_DEADLINE', dueDate: '2026-11-20', doneAt: null }],
-    }],
+    followUps: [shenyang],
   });
-  assert.deepEqual(result.events.map((event) => event.source + ':' + event.kind), [
+  assert.deepEqual(kinds(besideTender), ['deadline@2026-11-15', 'opening@2026-11-15']);
+  assert.deepEqual(besideTender.events.map((event) => `${event.source}:${event.kind}`), [
     'tender:deadline',
     'tender:opening',
-    'followup:LC_OPEN_DEADLINE',
   ]);
-  assert.equal(new Set(result.events.map((event) => event.id)).size, 3);
+  assert.equal(besideTender.events.every((event) => event.href.startsWith('/chinabidding/tracking?q=')), true);
+  assert.equal(besideTender.events.some((event) => /followup|\/followups\/|L\/C|shipment|payment/i.test(
+    `${event.id} ${event.detail} ${event.title} ${event.href}`,
+  )), false);
+  assert.equal(Object.hasOwn(besideTender.events[0], 'followUpId'), false);
+});
+
+test('the calendar service does not read follow-ups', () => {
+  const src = readFileSync(new URL('../src/services/hotCalendar.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /projectFollowUp/);
+  assert.doesNotMatch(src, /\/followups\//);
+  assert.doesNotMatch(src, /followUpEvents/);
+  assert.doesNotMatch(src, /L\/C to be opened by/);
 });
 
 test('an overdue bid deadline is still listed while the tender is open', () => {

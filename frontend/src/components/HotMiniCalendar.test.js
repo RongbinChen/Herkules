@@ -43,17 +43,57 @@ const events = [
     color: 'brand',
   },
   {
+    id: 'tender:OLD:deadline:baosteel',
+    source: 'tender',
+    kind: 'deadline',
+    day: '2026-11-02',
+    customer: 'Baosteel',
+    title: 'Baosteel · Earlier mill',
+    detail: 'Bid deadline',
+    detailZh: '投标截止',
+    href: '/chinabidding/tracking?q=THREAD-OLD',
+    overdue: true,
+    color: 'rose',
+  },
+  {
     id: 'followup:7:LC_OPEN_DEADLINE',
     source: 'followup',
     kind: 'LC_OPEN_DEADLINE',
-    day: '2026-11-02',
-    customer: 'Baosteel',
-    title: 'Baosteel · Roll grinder',
+    day: '2026-11-03',
+    customer: 'Shenyang Fortune Precision Equipment Co., Ltd.',
+    title: 'Shenyang Fortune Precision Equipment Co., Ltd. · Shenyang Fortune Precision Equipment Co., Ltd. — GRG-FCJM-202608A',
     detail: 'L/C to be opened by',
     detailZh: '信用证开证截止',
     href: '/followups/7',
+    followUpId: 7,
     overdue: true,
     color: 'rose',
+  },
+  {
+    id: 'followup:7:LC_FUTURE',
+    source: 'followup',
+    kind: 'LC_OPEN_DEADLINE',
+    day: '2026-11-15',
+    customer: 'Shenyang Fortune Precision Equipment Co., Ltd.',
+    title: 'Shenyang Fortune Precision Equipment Co., Ltd. · Shenyang Fortune Precision Equipment Co., Ltd. — GRG-FCJM-202608A',
+    detail: 'L/C to be opened by',
+    detailZh: '信用证开证截止',
+    href: '/followups/7',
+    followUpId: 7,
+    overdue: false,
+    color: 'amber',
+  },
+  {
+    id: 'followup:7:SHIPMENT',
+    source: 'followup',
+    kind: 'SHIPMENT',
+    day: '2026-11-18',
+    customer: 'Shenyang Fortune Precision Equipment Co., Ltd.',
+    title: 'Shenyang Fortune Precision Equipment Co., Ltd. · Shipment',
+    detail: 'Shipment / customs',
+    href: '/followups/7',
+    overdue: false,
+    color: 'amber',
   },
 ]
 
@@ -78,7 +118,13 @@ test('collapsed default is a compact bar and hides the month grid', async () => 
   assert.match(html, />Expand</)
   assert.match(html, /data-testid="calendar-teaser"/)
   assert.match(html, /1 overdue/)
+  assert.doesNotMatch(html, /2 overdue/)
   assert.match(html, /Next Nov 20 · Bid deadline/)
+  assert.doesNotMatch(html, /Next Nov 15/)
+  assert.doesNotMatch(html, /L\/C to be opened by/)
+  assert.doesNotMatch(html, /Shipment/)
+  assert.doesNotMatch(html, /GRG-FCJM-202608A/)
+  assert.doesNotMatch(html, /\/followups\//)
   assert.match(html, /class="[^"]*\bw-full\b/)
   assert.match(html, /max-w-full/)
   assert.doesNotMatch(html, /min-w-\[/)
@@ -131,13 +177,20 @@ test('expanded month shows the grid, peek, legend, and English copy', async () =
   assert.match(html, /title="Sunday"/)
   assert.match(html, /data-testid="calendar-peek"/)
   assert.match(html, /data-testid="calendar-legend"/)
+  assert.match(html, /Hot-customer bid dates/)
   assert.match(html, /Deadline/)
   assert.match(html, /Opening/)
-  assert.match(html, /Follow-up/)
   assert.match(html, /Overdue/)
+  assert.doesNotMatch(html, /Follow-up/)
+  assert.doesNotMatch(html, /follow-up milestones/)
+  assert.doesNotMatch(html, /L\/C to be opened by/)
+  assert.doesNotMatch(html, /Shipment/)
   assert.match(html, /December 2026/)
   assert.match(html, /data-testid="day-2026-11-20"[^>]*data-dots="brand"/)
   assert.match(html, /data-testid="day-2026-11-02"[^>]*data-dots="rose"/)
+  assert.match(html, /data-testid="day-2026-11-15"[^>]*data-dots=""/)
+  assert.match(html, /data-testid="day-2026-11-03"[^>]*data-dots=""/)
+  assert.doesNotMatch(html, /data-dots="[^"]*amber/)
   assert.match(html, /aria-current="date"/)
   assert.match(html, /h-12/)
   assert.match(html, /Select a day/)
@@ -172,21 +225,23 @@ test('expanded day stacks two tenders as separate tracking links', async () => {
   assert.doesNotMatch(html, CJK)
 })
 
-test('a follow-up event links to that follow-up record', async () => {
+test('a follow-up milestone does not render on the selected day', async () => {
   const { HotMiniCalendarView } = await loadJsxModule(path.join(here, 'HotMiniCalendar.jsx'))
   const html = render(createElement(HotMiniCalendarView, {
     events,
     today: '2026-11-11',
     initialMonth: '2026-11',
     initialExpanded: true,
-    initialSelected: '2026-11-02',
+    initialSelected: '2026-11-15',
     aliases: [],
   }))
-  assert.match(html, /href="\/followups\/7"/)
-  assert.match(html, /L\/C to be opened by/)
-  assert.match(html, /Overdue/)
-  assert.doesNotMatch(html, /信用证开证截止/)
-  assert.doesNotMatch(html, /逾期/)
+  assert.match(html, /Nothing on this day/)
+  assert.doesNotMatch(html, /data-testid="cal-event"/)
+  assert.doesNotMatch(html, /L\/C to be opened by/)
+  assert.doesNotMatch(html, /Shipment/)
+  assert.doesNotMatch(html, /GRG-FCJM-202608A/)
+  assert.doesNotMatch(html, /href="\/followups\/7"/)
+  assert.doesNotMatch(html, /data-dots="[^"]*amber/)
   assert.doesNotMatch(html, CJK)
 })
 

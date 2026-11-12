@@ -2,10 +2,10 @@
  * Collapsible month calendar on Hot Projects.
  *
  * Collapsed (the default, every visit) is a compact bar: the English month
- * title, a short teaser, and Expand. Expanding reveals the month grid, the
- * next-month peek, the legend, and — once a day is picked — that day's events
- * as separate links. A tracking thread and a follow-up record stay on their
- * own rows.
+ * title, a short teaser of Chinabidding dates, and Expand. Expanding reveals
+ * the month grid, the next-month peek, the legend, and — once a day is
+ * picked — that day's bid deadlines and openings as separate tracking links.
+ * Project follow-up milestones are not shown and never link out of this card.
  *
  * Dates are China calendar days. The list is the same for every logged-in
  * user; the team tabs on the page below do not filter it. Copy on this card
@@ -16,20 +16,18 @@ import { Link } from 'react-router-dom'
 import { hotProjectsAPI } from '../api/api'
 import { Button, Input } from './ui'
 import {
-  WEEKDAYS, buildMonthGrid, chinaToday, dotColors, monthLabel, peekRow, shiftMonth,
+  WEEKDAYS, bidCalendarEvents, buildMonthGrid, chinaToday, dotColors, monthLabel, peekRow, shiftMonth,
 } from '../utils/hotCalendar'
 
 const DOT = {
   brand: 'bg-brand-600',
   violet: 'bg-violet-500',
-  amber: 'bg-amber-500',
   rose: 'bg-rose-500',
 }
 
 const LEGEND = [
   { color: 'brand', label: 'Deadline' },
   { color: 'violet', label: 'Opening' },
-  { color: 'amber', label: 'Follow-up' },
   { color: 'rose', label: 'Overdue' },
 ]
 
@@ -317,6 +315,7 @@ export function HotMiniCalendarView({
   initialAliasesOpen = false,
 }) {
   const todayDay = today || chinaToday()
+  const bidEvents = useMemo(() => bidCalendarEvents(events), [events])
   const [expanded, setExpanded] = useState(initialExpanded)
   const [month, setMonth] = useState(initialMonth || todayDay.slice(0, 7))
   const [selected, setSelected] = useState(initialSelected)
@@ -328,18 +327,18 @@ export function HotMiniCalendarView({
   const peekLabel = monthLabel(peek.month)
   const byDay = useMemo(() => {
     const map = new Map()
-    for (const event of events) {
+    for (const event of bidEvents) {
       if (!map.has(event.day)) map.set(event.day, [])
       map.get(event.day).push(event)
     }
     return map
-  }, [events])
+  }, [bidEvents])
 
   const visibleDays = useMemo(() => new Set([...grid, ...peek.cells].filter(Boolean)), [grid, peek])
-  const visibleCount = events.filter((event) => visibleDays.has(event.day)).length
-  const earlier = events.filter((event) => event.overdue && event.day.slice(0, 7) < month)
+  const visibleCount = bidEvents.filter((event) => visibleDays.has(event.day)).length
+  const earlier = bidEvents.filter((event) => event.overdue && event.day.slice(0, 7) < month)
   const confirmed = aliases.filter((row) => row.confirmed).length
-  const selectedEvents = eventsOn(events, expanded ? selected : null)
+  const selectedEvents = eventsOn(bidEvents, expanded ? selected : null)
 
   const selectDay = (day) => {
     setMonth(day.slice(0, 7))
@@ -363,14 +362,14 @@ export function HotMiniCalendarView({
           </div>
           {expanded ? (
             <p className="mt-0.5 text-[11px] text-slate-400 sm:text-xs">
-              Hot-customer bid dates and follow-up milestones
+              Hot-customer bid dates
             </p>
           ) : (
             <>
               {loading && <p className="mt-0.5 text-xs text-slate-400">Loading…</p>}
               {error && <p className="mt-0.5 text-xs text-rose-600">{error}</p>}
               {!loading && !error && (
-                <CollapsedTeaser events={events} today={todayDay} onJump={selectDay} />
+                <CollapsedTeaser events={bidEvents} today={todayDay} onJump={selectDay} />
               )}
             </>
           )}
@@ -439,7 +438,7 @@ export function HotMiniCalendarView({
               <DayCell
                 key={day || `blank-${index}`}
                 day={day}
-                events={eventsOn(events, day)}
+                events={eventsOn(bidEvents, day)}
                 today={todayDay}
                 selected={selected}
                 expanded={expanded}

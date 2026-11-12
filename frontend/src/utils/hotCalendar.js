@@ -62,3 +62,19 @@ export function dotColors(events, limit = 3) {
   }
   return colors
 }
+
+const BID_KINDS = new Set(['deadline', 'opening'])
+
+// Chinabidding deadlines and openings only. A follow-up milestone that still
+// arrives in a payload (L/C, shipment, payment) is dropped before the card
+// counts overdue days, teases the next date, or paints a row.
+export function bidCalendarEvents(events) {
+  return (events || []).filter((event) => {
+    if (!event || !BID_KINDS.has(event.kind)) return false
+    if (event.source && event.source !== 'tender') return false
+    if (event.followUpId) return false
+    const href = typeof event.href === 'string' ? event.href : ''
+    if (href.includes('/followups')) return false
+    return true
+  })
+}
