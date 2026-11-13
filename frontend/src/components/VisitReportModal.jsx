@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { applyCaptionChange } from '../utils/visitReportCaptions'
 import SectionBody from './visit-report/SectionBody'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { visitReportsAPI, customersAPI } from '../api/api'
@@ -31,6 +32,9 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     attachments: Array.isArray(report?.attachments) ? report.attachments : [],
     status: report?.status || 'DRAFT',
   }))
+  // Latest captions, including a keystroke that has not re-rendered yet.
+  // Save reads this. Cancel drops the component, so the saved report is unchanged.
+  const attachmentsRef = useRef(form.attachments || [])
   const [photos, setPhotos] = useState([])
   const photoInputRef = useRef(null)
   const [docFile, setDocFile] = useState(null) // .docx to auto-import
@@ -149,6 +153,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
         rawNotes: data.rawNotes || f.rawNotes,
         attachments: Array.isArray(data.attachments) ? data.attachments : f.attachments,
       }))
+      attachmentsRef.current = Array.isArray(data.attachments) ? data.attachments : attachmentsRef.current
       setPhotos([])
       if (photoInputRef.current) photoInputRef.current.value = ''
       if (!form.customerId && data.customerMatch) setCustQuery(data.customerMatch.name)
@@ -184,30 +189,21 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     } finally { setSummarizing(false) }
   }
 
-  const setCaption = (photo, caption, edited) => {
-    setForm((current) => ({
-      ...current,
-      attachments: (current.attachments || []).map((item) => (
-        item?.storedName === photo.storedName
-          ? { ...item, caption, captionEdited: edited }
-          : item
-      )),
-    }))
+  const replaceAttachments = (attachments) => {
+    const next = Array.isArray(attachments) ? attachments : []
+    attachmentsRef.current = next
+    setForm((current) => ({ ...current, attachments: next }))
   }
 
+  const setCaption = (photo, caption, { regenerate = false } = {}) => {
+    replaceAttachments(applyCaptionChange(attachmentsRef.current, photo.storedName, caption, { regenerate }))
+  }
+
+  // Draft only. The report row changes when the user saves the whole report.
   const regenerateCaption = async (photo) => {
     try {
-      // A photo from this generate call is not on the saved row yet, so the
-      // report-scoped route would 404. Only photos already stored on the report
-      // are overwritten in the database; the form still updates either way.
-      const alreadySaved = Array.isArray(report?.attachments)
-        && report.attachments.some((item) => item?.storedName === photo.storedName)
-      const { data } = alreadySaved
-        ? await visitReportsAPI.regenerateCaption(report.id, photo.storedName)
-        : await visitReportsAPI.captionDraft(photo.storedName, { context: sourceText() })
-      // One photo only. Replacing the whole list would drop captions or new
-      // photos that are still only in this form.
-      setCaption(photo, data.caption || '', false)
+      const { data } = await visitReportsAPI.captionDraft(photo.storedName, { context: sourceText() })
+      setCaption(photo, data.caption || '', { regenerate: true })
     } catch (e) {
       setErr(e.response?.data?.error || t.captionFailed)
     }
@@ -220,7 +216,12 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     if (dupes.length > 0 && !window.confirm(t.dupConfirm)) return
     setErr(''); setSaving(true)
     try {
-      const payload = { ...form, status: status || form.status, customerId: linkedCustomerId || null }
+      const payload = {
+        ...form,
+        attachments: attachmentsRef.current,
+        status: status || form.status,
+        customerId: linkedCustomerId || null,
+      }
       if (isNew) {
         const { data } = await visitReportsAPI.create(payload)
         // Dated targets became calendar reminders server-side — tell the user.
@@ -510,7 +511,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
             lang={lang}
             photos={form.attachments}
             editable={editing && canEdit}
-            onCaptionChange={(photo, caption) => setCaption(photo, caption, true)}
+            onCaptionChange={(photo, caption) => setCaption(photo, caption)}
             onRegenerate={editing && canEdit ? regenerateCaption : undefined}
           />
 

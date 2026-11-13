@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { visitReportsAPI } from '../../api/api'
 import { STRINGS } from '../../i18n/visitReports'
 
 // End-of-report gallery. Parents place this after the body (summary, sections,
 // tables). No photos → render nothing, so an empty report does not grow a box.
+//
+// Reading (the detail page, and the modal before Edit) is static text.
+// Caption fields and Regenerate exist only while the whole report is being edited.
 function displayable(photos) {
   if (!Array.isArray(photos)) return []
   return photos.filter((photo) => photo && photo.storedName && photo.kind !== 'document')
@@ -66,7 +69,7 @@ export default function ReportPhotos({
   if (!items.length) return null
 
   const regenerate = async (photo) => {
-    if (!onRegenerate || busy) return
+    if (!editable || !onRegenerate || busy) return
     setBusy(photo.storedName)
     try {
       await onRegenerate(photo)
@@ -78,11 +81,11 @@ export default function ReportPhotos({
   return (
     <section className="mt-6" data-report-photos aria-label={t.reportPhotos}>
       <h2 className={compact
-        ? 'mb-2 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500'
-        : 'mb-2 border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700'}>
+        ? 'mb-3 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500'
+        : 'mb-3 border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700'}>
         {t.reportPhotos}
       </h2>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3">
         {items.map((photo) => (
           <PhotoTile
             key={photo.storedName}
@@ -93,7 +96,7 @@ export default function ReportPhotos({
             t={t}
             onOpen={() => setActive(photo)}
             onCaptionChange={onCaptionChange}
-            onRegenerate={onRegenerate ? () => regenerate(photo) : null}
+            onRegenerate={editable && onRegenerate ? () => regenerate(photo) : null}
           />
         ))}
       </ul>
@@ -115,12 +118,12 @@ export default function ReportPhotos({
               />
             )}
             {active.caption && (
-              <figcaption className="mt-3 text-center text-sm text-white">{active.caption}</figcaption>
+              <figcaption className="mt-3 max-w-full break-words px-2 text-center text-sm font-normal leading-relaxed text-white">{active.caption}</figcaption>
             )}
             <button
               type="button"
               onClick={() => setActive(null)}
-              className="mt-3 block w-full text-center text-xs font-semibold text-white/80"
+              className="mt-3 block min-h-11 w-full text-center text-sm font-semibold text-white/80"
             >
               {t.close}
             </button>
@@ -132,17 +135,6 @@ export default function ReportPhotos({
 }
 
 function PhotoTile({ photo, src, editable, busy, t, onOpen, onCaptionChange, onRegenerate }) {
-  const [caption, setCaption] = useState(photo.caption || '')
-  useEffect(() => {
-    setCaption(photo.caption || '')
-  }, [photo.storedName, photo.caption])
-
-  const commit = (event) => {
-    if (event?.relatedTarget?.dataset?.action === 'regenerate-caption') return
-    if ((caption || '') === (photo.caption || '')) return
-    onCaptionChange?.(photo, caption)
-  }
-
   return (
     <li className="min-w-0">
       <button
@@ -158,32 +150,57 @@ function PhotoTile({ photo, src, editable, busy, t, onOpen, onCaptionChange, onR
         )}
       </button>
       {editable ? (
-        <>
-          <textarea
-            rows={2}
-            maxLength={200}
-            value={caption}
-            aria-label={t.captionPlaceholder}
-            placeholder={t.captionPlaceholder}
-            onChange={(event) => setCaption(event.target.value)}
-            onBlur={commit}
-            className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 px-2 py-1 text-xs leading-snug text-slate-700"
-          />
-          {onRegenerate && (
-            <button
-              type="button"
-              data-action="regenerate-caption"
-              onClick={onRegenerate}
-              disabled={busy}
-              className="mt-1 text-[11px] font-semibold text-brand-600 hover:underline disabled:opacity-50"
-            >
-              {busy ? t.regeneratingCaption : t.regenerateCaption}
-            </button>
-          )}
-        </>
+        <CaptionEditor
+          photo={photo}
+          busy={busy}
+          t={t}
+          onCaptionChange={onCaptionChange}
+          onRegenerate={onRegenerate}
+        />
       ) : (
-        photo.caption ? <p className="mt-1.5 text-xs leading-snug text-slate-600">{photo.caption}</p> : null
+        photo.caption ? (
+          <p className="mt-1.5 break-words text-sm font-normal leading-relaxed text-slate-600">{photo.caption}</p>
+        ) : null
       )}
     </li>
+  )
+}
+
+function CaptionEditor({ photo, busy, t, onCaptionChange, onRegenerate }) {
+  const ref = useRef(null)
+  const value = photo.caption || ''
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+
+  return (
+    <>
+      <textarea
+        ref={ref}
+        rows={2}
+        maxLength={200}
+        value={value}
+        data-caption-editor
+        aria-label={t.captionPlaceholder}
+        placeholder={t.captionPlaceholder}
+        onChange={(event) => onCaptionChange?.(photo, event.target.value)}
+        className="mt-1.5 box-border w-full min-w-0 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm font-normal leading-relaxed text-slate-700"
+      />
+      {onRegenerate && (
+        <button
+          type="button"
+          data-action="regenerate-caption"
+          onClick={onRegenerate}
+          disabled={busy}
+          className="mt-0.5 flex min-h-11 w-full items-center text-left text-xs font-semibold leading-snug text-brand-600 disabled:opacity-50"
+        >
+          {busy ? t.regeneratingCaption : t.regenerateCaption}
+        </button>
+      )}
+    </>
   )
 }
