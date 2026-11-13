@@ -51,6 +51,8 @@ services:
       CHINABIDDING_USERNAME: ${CHINABIDDING_USERNAME:-}
       CHINABIDDING_PASSWORD: ${CHINABIDDING_PASSWORD:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GMT_API_BASE: ${GMT_API_BASE:-https://gmt.herkulesgroup-china.com}
+      GMT_CUSTOMER_SYNC_TOKEN: ${GMT_CUSTOMER_SYNC_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -66,6 +66,8 @@ export const customersAPI = {
   linkProject: (id, data) => api.post(`/customers/${id}/projects`, data),
   unlinkProject: (id, linkId) => api.delete(`/customers/${id}/projects/${linkId}`),
   createShare: (data) => api.post('/customers/share', data),
+  // GMT tasks + service reports. The backend holds the service token.
+  fieldService: (id) => api.get(`/customers/${id}/field-service`, { timeout: 12000 }),
   // Public — no auth required (interceptor omits the header when logged out).
   getShared: (token) => api.get(`/customers/share/${token}`),
 }
