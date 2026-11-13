@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  TIMELINE_KINDS, addDays, addMonths, assembleProposals, detectDeliveryStart,
-  hasConcreteTiming, isIsoDate, lcClausesFromText, parseDate, parseTimelineAnswer,
-  parseTiming, planAnchorShift, planMilestoneApply, projectTimeline, redactMoney,
+  TIMELINE_KINDS, addDays, addMonths, annotateCorrections, assembleProposals,
+  commercialClausesFromText, commercialReadingIncomplete, detectDeliveryStart,
+  effectiveMilestoneZh, executionClausesFromText, hasConcreteTiming, isIsoDate,
+  lcClausesFromText, parseDate, parseTimelineAnswer, parseTiming, planAnchorShift,
+  planMilestoneApply, projectTimeline, readEffectiveBasis, redactMoney,
   redactProposalNotes, resolveTimeline, timelineFromSummary, timelineKindsFor, timelinePrompt,
 } from '../src/services/contractTimelineFormat.js';
 import { orderIdsMatch, selectOpenOrders } from '../src/services/openOrders.js';
@@ -714,5 +716,248 @@ test('correcting the signed date moves a down payment that is still the contract
   const by = Object.fromEntries(shifted.map((s) => [s.kind, s]));
   assert.equal(by.PAYMENT_DOWN.dueDate, '2026-10-30');
   assert.equal(by.SHIPMENT.dueDate, '2027-10-20');
+});
+
+// A commercial contract in the shape of a multi-lot order whose delivery and
+// the first letter of credit are counted from signing. Amounts are omitted.
+// The technical agreement states installation and warranty, and a letter of
+// credit sentence that must not become a date.
+const MULTI_LOT_COMMERCIAL = [
+  'The Contract shall come into effective after being signed by both parties.',
+  '本合同在经买卖双方签字后生效。',
+  '3.1 Time of delivery. The delivery period is counted from the signing of this Contract.',
+  'Units 1-2: the first lot shall be delivered no later than Apr. 4, 2028 FOB (19 months after signing); the last lot of units 1-2 no later than Jun. 4, 2028 FOB (21 months after signing).',
+  'Units 3-4: the first lot shall be delivered no later than Jun. 4, 2028 FOB (21 months after signing); the last lot no later than Aug. 4, 2028 FOB (23 months after signing).',
+  '合同签订后 19 个月交货，合同签订后 23 个月为最后一批交货。',
+  'The Buyer shall pay the advance no later than 30 days after receipt of the Seller\'s advance-payment documents.',
+  'The first irrevocable Letter of Credit shall be opened six (6) months after the signing of this Contract.',
+  'The Letter of Credit shall be valid until 30 days after the delivery period in clause 3.1.',
+  'The second irrevocable Letter of Credit shall be opened one (1) month before the last lot in clause 3.1, but before the Seller sends engineers to the site.',
+  'The Seller shall present the L/C documents to its bank within 21 days after the B/L date.',
+  'The shipment portion is paid at sight, pro rata, against documents after shipment.',
+  'The final portion is tied to acceptance.',
+].join('\n');
+
+const MULTI_LOT_TECHNICAL = [
+  'Installation has to be carried out within 12 months after FOB shipment.',
+  'The warranty and the bank guarantee run 12 months from FAC, or 23 months from the last B/L if the FAC cannot be signed, whichever comes first.',
+  'The letter of credit shall be opened six (6) months after the signing of this Contract.',
+].join('\n');
+
+function multiLotGroups() {
+  const commercial = commercialClausesFromText(MULTI_LOT_COMMERCIAL);
+  const summary = timelineFromSummary(fields({
+    signedDate: '4 September 2026',
+    payment: '20% advance / 70% on shipment / 10% on acceptance',
+  }));
+  return {
+    commercial,
+    groups: [
+      {
+        docType: 'COMMERCIAL',
+        fileId: 51,
+        clauses: [...summary, ...commercial.clauses],
+        conditional: commercial.conditional,
+      },
+      {
+        docType: 'TECHNICAL',
+        fileId: 50,
+        clauses: [
+          ...executionClausesFromText(MULTI_LOT_TECHNICAL),
+          ...commercialClausesFromText(MULTI_LOT_TECHNICAL).clauses,
+        ],
+      },
+    ],
+  };
+}
+
+test('commercial pages supply opening, last lot, presentation and a signing start', () => {
+  const coarse = timelineFromSummary(fields({
+    signedDate: '4 September 2026',
+    payment: '20% advance / 70% on shipment / 10% on acceptance',
+    delivery: '19 months after signing',
+  }));
+  assert.equal(byKind(resolveTimeline(coarse)).LC_OPEN_DEADLINE, undefined);
+  assert.equal(commercialReadingIncomplete(coarse, MULTI_LOT_COMMERCIAL), true);
+
+  const { commercial, groups } = multiLotGroups();
+  assert.equal(commercialReadingIncomplete([...coarse, ...commercial.clauses], MULTI_LOT_COMMERCIAL), false);
+  const { proposals, conditional, deliveryStart } = assembleProposals(groups, { today: '2026-11-13' });
+  const got = byKind(proposals);
+
+  assert.equal(deliveryStart.rule, 'SIGNED');
+  assert.equal(deliveryStart.source, 'contract');
+  assert.equal(deliveryStart.effectiveZh, '合同生效');
+  assert.equal(got.CONTRACT_SIGNED.dueDate, '2026-09-04');
+  assert.equal(got.CONTRACT_EFFECTIVE.dueDate, '2026-09-04');
+  assert.equal(got.CONTRACT_EFFECTIVE.zh, '合同生效');
+  assert.equal(got.CONTRACT_EFFECTIVE.zh.includes('定金到账'), false);
+  assert.equal(got.SHIPMENT.dueDate, '2028-04-04');
+  assert.equal(got.SHIPMENT.docType, 'COMMERCIAL');
+  assert.equal(got.LC_LATEST_SHIPMENT.dueDate, '2028-08-04');
+  assert.equal(got.LC_LATEST_SHIPMENT.docType, 'COMMERCIAL');
+  assert.equal(got.LC_OPEN_DEADLINE.dueDate, '2027-03-04');
+  assert.equal(got.LC_OPEN_DEADLINE.docType, 'COMMERCIAL');
+  assert.equal(got.LC_PRESENTATION.dueDate, '2028-04-25');
+  assert.equal(got.LC_PRESENTATION.docType, 'COMMERCIAL');
+  assert.equal(got.LC_RECEIVED, undefined);
+  assert.equal(got.PAYMENT_DOWN.dueDate, null);
+  assert.equal(got.PAYMENT_DOWN.confirmReceipt, false);
+  assert.equal(got.PAYMENT_SHIPMENT.dueDate, '2028-04-04');
+  assert.equal(got.PAYMENT_FINAL.dueDate, null);
+  assert.equal(got.INSTALLATION.dueDate, '2029-08-04');
+  assert.equal(got.INSTALLATION.docType, 'TECHNICAL');
+  assert.equal(got.WARRANTY_EXPIRY.dueDate, null);
+  assert.equal(got.WARRANTY_EXPIRY.rejectSigning, true);
+  assert.equal(got.GUARANTEE_EXPIRY.dueDate, null);
+  assert.equal(conditional.length, 1);
+  assert.equal(conditional[0].dueDate, '2028-07-04');
+  assert.equal(conditional[0].conditional, true);
+  assert.match(conditional[0].notes, /last lot|before/i);
+
+  const technicalOnly = assembleProposals([groups[1]], { today: '2026-11-13' });
+  const tech = byKind(technicalOnly.proposals);
+  assert.equal(tech.LC_OPEN_DEADLINE, undefined);
+  assert.equal(tech.LC_LATEST_SHIPMENT, undefined);
+  assert.equal(tech.LC_PRESENTATION, undefined);
+  assert.equal(tech.LC_RECEIVED, undefined);
+});
+
+test('confirming the down payment does not move dates this contract counts from signing', () => {
+  const { groups } = multiLotGroups();
+  const { proposals } = assembleProposals(groups, { today: '2026-11-13' });
+  const clauses = groups.flatMap((g) => (g.clauses || []).map((c) => ({ ...c, docType: c.docType || g.docType })));
+  const shifted = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 1, kind: 'LC_OPEN_DEADLINE', dueDate: '2027-03-04', doneAt: null },
+      { id: 2, kind: 'SHIPMENT', dueDate: '2028-04-04', doneAt: null },
+      { id: 3, kind: 'LC_LATEST_SHIPMENT', dueDate: '2028-08-04', doneAt: null },
+      { id: 4, kind: 'LC_PRESENTATION', dueDate: '2028-04-25', doneAt: null },
+      { id: 5, kind: 'INSTALLATION', dueDate: '2029-08-04', doneAt: null },
+      { id: 6, kind: 'CONTRACT_EFFECTIVE', dueDate: '2026-09-04', doneAt: null },
+    ],
+    movedKind: 'PAYMENT_DOWN',
+    before: { signedDate: '2026-09-04', paymentDate: null },
+    after: { signedDate: '2026-09-04', paymentDate: '2026-10-30' },
+  });
+  assert.equal(shifted.length, 0);
+  assert.equal(byKind(proposals).LC_OPEN_DEADLINE.dueDate, '2027-03-04');
+});
+
+test('presentation follows the first shipment and installation follows the last lot', () => {
+  const { groups } = multiLotGroups();
+  const clauses = groups.flatMap((g) => (g.clauses || []).map((c) => ({ ...c, docType: c.docType || g.docType })));
+  const movedShipment = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 4, kind: 'LC_PRESENTATION', dueDate: '2028-04-25', doneAt: null },
+      { id: 5, kind: 'INSTALLATION', dueDate: '2029-08-04', doneAt: null },
+      { id: 1, kind: 'LC_OPEN_DEADLINE', dueDate: '2027-03-04', doneAt: null },
+      { id: 9, kind: 'LC_PRESENTATION', dueDate: '2028-06-01', doneAt: null },
+    ],
+    movedKind: 'SHIPMENT',
+    before: { signedDate: '2026-09-04', shipmentDate: '2028-04-04' },
+    after: { signedDate: '2026-09-04', shipmentDate: '2028-05-01' },
+  });
+  const by = Object.fromEntries(movedShipment.map((s) => [s.kind, s]));
+  assert.equal(by.LC_PRESENTATION.dueDate, '2028-05-22');
+  assert.equal(by.INSTALLATION, undefined);
+  assert.equal(by.LC_OPEN_DEADLINE, undefined);
+
+  const handEdited = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 4, kind: 'LC_PRESENTATION', dueDate: '2028-06-01', doneAt: null },
+    ],
+    movedKind: 'SHIPMENT',
+    before: { signedDate: '2026-09-04', shipmentDate: '2028-04-04' },
+    after: { signedDate: '2026-09-04', shipmentDate: '2028-05-01' },
+  });
+  assert.equal(handEdited.length, 0);
+
+  const movedLast = planAnchorShift({
+    clauses,
+    existing: [
+      { id: 5, kind: 'INSTALLATION', dueDate: '2029-08-04', doneAt: null },
+      { id: 4, kind: 'LC_PRESENTATION', dueDate: '2028-04-25', doneAt: null },
+    ],
+    movedKind: 'LC_LATEST_SHIPMENT',
+    before: { signedDate: '2026-09-04', latestShipmentDate: '2028-08-04' },
+    after: { signedDate: '2026-09-04', latestShipmentDate: '2028-09-04' },
+  });
+  assert.equal(movedLast.find((s) => s.kind === 'INSTALLATION').dueDate, '2029-09-04');
+  assert.equal(movedLast.find((s) => s.kind === 'LC_PRESENTATION'), undefined);
+});
+
+test('a filled effective date that was the down payment is a correction, and a signing-based warranty is cleared', () => {
+  const { groups } = multiLotGroups();
+  const { proposals } = assembleProposals(groups, { today: '2026-11-13' });
+  const existing = [
+    { kind: 'CONTRACT_EFFECTIVE', dueDate: '2026-10-30', doneAt: new Date('2026-10-30') },
+    { kind: 'WARRANTY_EXPIRY', dueDate: '2027-09-04', doneAt: null },
+    { kind: 'LC_OPEN_DEADLINE', dueDate: '2027-03-04', doneAt: null },
+  ];
+  const annotated = annotateCorrections(proposals, existing);
+  const got = byKind(annotated);
+  assert.equal(got.CONTRACT_EFFECTIVE.correction, true);
+  assert.equal(got.CONTRACT_EFFECTIVE.storedDate, '2026-10-30');
+  assert.equal(got.CONTRACT_EFFECTIVE.dueDate, '2026-09-04');
+  assert.equal(got.CONTRACT_EFFECTIVE.storedDone, true);
+  assert.equal(got.WARRANTY_EXPIRY.correction, true);
+  assert.equal(got.WARRANTY_EXPIRY.clearDate, true);
+  assert.equal(got.WARRANTY_EXPIRY.dueDate, null);
+  assert.equal(got.LC_OPEN_DEADLINE.correction, undefined);
+
+  const leftAlone = planMilestoneApply(existing, annotated, { replace: false });
+  assert.equal(leftAlone.find((a) => a.kind === 'CONTRACT_EFFECTIVE').action, 'skip');
+  assert.equal(leftAlone.find((a) => a.kind === 'WARRANTY_EXPIRY').reason, 'filled');
+
+  const applied = planMilestoneApply(existing, annotated, { corrections: true });
+  const effective = applied.find((a) => a.kind === 'CONTRACT_EFFECTIVE');
+  const warranty = applied.find((a) => a.kind === 'WARRANTY_EXPIRY');
+  assert.equal(effective.action, 'update');
+  assert.equal(effective.data.dueDate, '2026-09-04');
+  assert.equal(effective.data.done, undefined);
+  assert.equal(warranty.action, 'update');
+  assert.equal(warranty.data.dueDate, null);
+
+  const unrelated = annotateCorrections(proposals, [
+    { kind: 'WARRANTY_EXPIRY', dueDate: '2029-01-15', doneAt: null },
+  ]);
+  assert.equal(byKind(unrelated).WARRANTY_EXPIRY.correction, undefined);
+});
+
+test('the effective-date name mentions the down payment only when that contract uses it', () => {
+  assert.equal(effectiveMilestoneZh({ effectiveness: 'SIGNED', deliveryStart: 'SIGNED' }), '合同生效');
+  assert.equal(effectiveMilestoneZh({}), '合同生效');
+  assert.equal(effectiveMilestoneZh({ effectiveness: 'PAYMENT_DOWN' }), '合同生效（定金到账）');
+  assert.equal(effectiveMilestoneZh({ deliveryStart: 'PAYMENT_DOWN' }), '合同生效（定金到账）');
+
+  const follow = readFileSync(new URL('../src/services/followUps.js', import.meta.url), 'utf8');
+  const line = follow.split('\n').find((l) => l.includes("kind: 'CONTRACT_EFFECTIVE'"));
+  assert.match(line, /合同生效'/);
+  assert.doesNotMatch(line, /定金到账/);
+
+  const fromPayment = readEffectiveBasis([{
+    docType: 'COMMERCIAL',
+    summary: { fields: fields({
+      payment: 'The contract becomes effective when the down payment arrives.',
+      delivery: '3 months after receipt of the down payment.',
+    }) },
+  }]);
+  assert.equal(fromPayment.zh, '合同生效（定金到账）');
+
+  const fromSigning = readEffectiveBasis([{
+    docType: 'COMMERCIAL',
+    timeline: {
+      deliveryStart: 'SIGNED',
+      deliveryStartSource: 'contract',
+      clauses: commercialClausesFromText(MULTI_LOT_COMMERCIAL).clauses,
+    },
+    summary: { fields: fields({ signedDate: '4 September 2026' }) },
+  }]);
+  assert.equal(fromSigning.deliveryStart, 'SIGNED');
+  assert.equal(fromSigning.zh, '合同生效');
 });
 

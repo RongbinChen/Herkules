@@ -1,17 +1,18 @@
 // Turn linked contracts into suggested follow-up milestones.
 //
-// The summary is the fast path: it is already cached, and for a contract whose
-// payment line says "20% within 15 days of signing" that is the whole answer.
-// When the summary does not pin a single date down, a focused ask over the
-// payment / letter-of-credit / delivery pages fills the gap, and that answer
-// is cached on the file the same way the summary is. Either way the caller
-// gets proposals. Nothing is written onto a follow-up here.
+// The summary is the fast path when it already states a clock. A one-line
+// payment blurb is not that. Commercial pages are read on every pass for the
+// opening, the presentation window, and which event delivery is counted from,
+// and that reading is cached on the file. A model call happens only when the
+// pages and the summary still leave one of those clocks unread. Nothing is
+// written onto a follow-up here.
 import { prisma } from '../index.js';
 import { askDgx, DgxOfflineError } from './contractQa.js';
 import { summariseContractFile } from './contractSummary.js';
 import {
   TIMELINE_PROMPT_VERSION, TIMELINE_VERSION,
-  assembleProposals, clausesForDocument, detectDeliveryStart, lcClausesFromText,
+  assembleProposals, clausesForDocument, commercialClausesFromText,
+  commercialReadingIncomplete, detectDeliveryStart, executionClausesFromText,
   mergeClauses, milestoneDay, parseTimelineAnswer, pickTimelinePages,
   planAnchorShift, summaryTimelineEnough, timelineFromSummary, timelinePrompt,
 } from './contractTimelineFormat.js';
@@ -71,10 +72,55 @@ async function rememberDeliveryStart(files, rule) {
   }
 }
 
-async function commercialPageText(file) {
-  if (file.docType !== 'COMMERCIAL' || file.ocrStatus !== 'DONE') return '';
-  const pages = await selectTimelinePages(file.id);
-  return pages.map((p) => p.text).join('\n');
+// Every readable page, not the short list sent to the model. A letter of
+// credit opening can sit on a page the ranker would not have kept, and the
+// reader below is a scan, not a prompt.
+async function pageTextFor(file) {
+  if (!file || file.ocrStatus !== 'DONE') return '';
+  const rows = await prisma.contractPage.findMany({
+    where: { fileId: file.id, text: { not: '' } },
+    select: { text: true },
+    orderBy: { pageNo: 'asc' },
+  });
+  return rows.map((r) => r.text).join('\n');
+}
+
+function summaryBlob(summary) {
+  const fields = summary?.fields;
+  if (!Array.isArray(fields)) return '';
+  return fields.map((f) => (f && f.value) || '').filter(Boolean).join('\n');
+}
+
+// The detected start is part of the cached timeline, next to any model
+// answer already stored. A choice a person made is left as they made it.
+async function persistCommercialReading(file, pageClauses, rule) {
+  if (!file || file.docType !== 'COMMERCIAL' || !pageClauses?.length) return;
+  const prev = file.timeline && typeof file.timeline === 'object' && !Array.isArray(file.timeline)
+    ? file.timeline
+    : {};
+  const manual = prev.deliveryStartSource === 'manual'
+    && (prev.deliveryStart === 'SIGNED' || prev.deliveryStart === 'PAYMENT_DOWN');
+  const merged = mergeClauses([
+    ...(Array.isArray(prev.clauses) ? prev.clauses : []).map((c) => ({ ...c, docType: 'COMMERCIAL' })),
+    ...pageClauses.map((c) => ({ ...c, docType: 'COMMERCIAL' })),
+  ]);
+  const payload = {
+    ...prev,
+    version: prev.version || TIMELINE_VERSION,
+    promptVersion: prev.promptVersion || TIMELINE_PROMPT_VERSION,
+    docType: 'COMMERCIAL',
+    clauses: merged,
+    pageRead: true,
+    deliveryStart: manual ? prev.deliveryStart : (rule || prev.deliveryStart || null),
+    deliveryStartSource: manual ? 'manual' : (rule ? 'contract' : (prev.deliveryStartSource || null)),
+  };
+  await prisma.contractFile.update({
+    where: { id: file.id },
+    data: { timeline: payload, timelineAt: new Date() },
+  }).catch((err) => {
+    console.error('[timeline] page reading cache failed:', err.message);
+  });
+  file.timeline = payload;
 }
 
 async function timelineFromDgx(file, { refresh = false } = {}) {
@@ -148,8 +194,8 @@ export async function suggestTimelineForFiles({
   const ids = [...new Set((fileIds || []).map(Number).filter(Boolean))].slice(0, 8);
   if (!ids.length) {
     return {
-      proposals: [], sources: [], baseDate: null,
-      deliveryStart: { rule: null, detected: null, source: null, ambiguous: false, evidence: null },
+      proposals: [], conditional: [], sources: [], baseDate: null,
+      deliveryStart: { rule: null, detected: null, source: null, ambiguous: false, evidence: null, effectiveZh: null },
     };
   }
 
@@ -168,6 +214,7 @@ export async function suggestTimelineForFiles({
 
   const sources = [];
   const groups = [];
+  const readings = [];
   for (const file of files) {
     let summary = null;
     let offline = false;
@@ -183,20 +230,39 @@ export async function suggestTimelineForFiles({
 
     const fromSummary = timelineFromSummary(summary?.fields);
     const clauses = [...tag(fromSummary, file, 'summary')];
-    let via = 'summary';
+    let via = fromSummary.length ? 'summary' : null;
     let cached = summary?.cached === true;
     let reason = summary?.reason || null;
 
-    const thin = !summaryTimelineEnough(fromSummary);
-    if (thin && !offline && file.ocrStatus === 'DONE') {
+    // Pages first. A coarse payment line is not a timeline, and it must not
+    // be what decides that the commercial file has already been read.
+    const pageText = await pageTextFor(file);
+    const parsed = file.docType === 'COMMERCIAL'
+      ? commercialClausesFromText(pageText)
+      : { clauses: executionClausesFromText(pageText), conditional: [] };
+    const pageClauses = parsed.clauses || [];
+    if (pageClauses.length) {
+      clauses.push(...tag(pageClauses, file, 'pages'));
+      via = 'pages';
+    }
+    readings.push({ file, pageClauses });
+
+    const summaryThin = !summaryTimelineEnough(fromSummary);
+    const pagesMissed = file.docType === 'COMMERCIAL' && commercialReadingIncomplete(
+      [...fromSummary, ...pageClauses],
+      pageText || summaryBlob(summary),
+    );
+    const needModel = !offline && file.ocrStatus === 'DONE' && (pagesMissed || (summaryThin && !pageClauses.length));
+    if (needModel) {
       try {
         const extracted = await timelineFromDgx(file, { refresh });
         if (extracted.clauses?.length) {
           // DGX first so an equally specific summary line does not cover it.
           // Letter-of-credit lines from a technical file are removed later,
-          // when the groups are assembled.
+          // when the groups are assembled. Page clauses stay after it and
+          // win where the page reader is the stricter source.
           clauses.unshift(...tag(extracted.clauses, file, extracted.cached ? 'dgx-cache' : 'dgx'));
-          via = extracted.cached ? 'dgx-cache' : 'dgx';
+          if (!pageClauses.length) via = extracted.cached ? 'dgx-cache' : 'dgx';
           cached = extracted.cached === true;
           reason = extracted.reason || null;
         } else if (extracted.reason) {
@@ -205,18 +271,16 @@ export async function suggestTimelineForFiles({
       } catch (err) {
         const dgxOff = err instanceof DgxOfflineError || err?.name === 'DgxOfflineError';
         reason = dgxOff ? 'dgx-offline' : 'failed';
-        via = fromSummary.length ? 'summary' : null;
+        via = fromSummary.length || pageClauses.length ? (pageClauses.length ? 'pages' : 'summary') : null;
       }
     }
-
-    const pageText = await commercialPageText(file);
-    if (pageText) clauses.push(...tag(lcClausesFromText(pageText), file, 'pages'));
 
     groups.push({
       docType: file.docType,
       fileId: file.id,
       filename: file.filename,
       clauses: clausesForDocument(clauses, file.docType),
+      conditional: file.docType === 'COMMERCIAL' ? (parsed.conditional || []) : [],
     });
     if (!sources.some((s) => s.fileId === file.id)) {
       sources.push({
@@ -227,21 +291,28 @@ export async function suggestTimelineForFiles({
   }
 
   const assembled = assembleProposals(groups, { today, deliveryStart: manual });
+  const detectedRule = assembled.deliveryStart?.detected || null;
+  for (const reading of readings) {
+    await persistCommercialReading(reading.file, reading.pageClauses, detectedRule);
+  }
   const base = assembled.proposals.find((p) => p.kind === 'CONTRACT_SIGNED' && p.dueDate);
   return {
     proposals: assembled.proposals,
+    conditional: assembled.conditional || [],
     sources,
     baseDate: base?.dueDate || null,
     deliveryStart: assembled.deliveryStart,
   };
 }
 
-function anchorOptions(rule, source, signedDate, paymentDate) {
+function anchorOptions(rule, source, dates) {
   return {
     deliveryStart: rule || null,
     deliveryStartSource: source === 'manual' ? 'manual' : null,
-    signedDate: signedDate || null,
-    paymentDate: paymentDate || null,
+    signedDate: dates.signedDate || null,
+    paymentDate: dates.paymentDate || null,
+    shipmentDate: dates.shipmentDate || null,
+    latestShipmentDate: dates.latestShipmentDate || null,
   };
 }
 
@@ -282,7 +353,10 @@ export async function shiftFollowUpMilestones(followUpId, change = {}) {
 
   const groups = [];
   for (const file of followUp.contractFiles) {
-    const pageText = await commercialPageText(file);
+    const pageText = await pageTextFor(file);
+    const parsed = file.docType === 'COMMERCIAL'
+      ? commercialClausesFromText(pageText)
+      : { clauses: executionClausesFromText(pageText) };
     const cached = Array.isArray(file.timeline?.clauses) ? file.timeline.clauses : [];
     groups.push({
       docType: file.docType,
@@ -291,7 +365,7 @@ export async function shiftFollowUpMilestones(followUpId, change = {}) {
       clauses: clausesForDocument([
         ...cached,
         ...timelineFromSummary(file.summary?.fields),
-        ...lcClausesFromText(pageText),
+        ...(parsed.clauses || []),
       ], file.docType),
     });
   }
@@ -307,10 +381,16 @@ export async function shiftFollowUpMilestones(followUpId, change = {}) {
 
   const signedStored = milestoneDay(followUp.milestones.find((m) => m.kind === 'CONTRACT_SIGNED')?.dueDate);
   const paymentStored = milestoneDay(followUp.milestones.find((m) => m.kind === 'PAYMENT_DOWN')?.dueDate);
+  const shipmentStored = milestoneDay(followUp.milestones.find((m) => m.kind === 'SHIPMENT')?.dueDate);
+  const latestStored = milestoneDay(followUp.milestones.find((m) => m.kind === 'LC_LATEST_SHIPMENT')?.dueDate);
   let previousSigned = signedStored;
   let nextSigned = signedStored;
   let previousPayment = paymentStored;
   let nextPayment = paymentStored;
+  let previousShipment = shipmentStored;
+  let nextShipment = shipmentStored;
+  let previousLatest = latestStored;
+  let nextLatest = latestStored;
   if (moved === 'CONTRACT_SIGNED') {
     previousSigned = milestoneDay(change.previousDue);
     nextSigned = milestoneDay(change.nextDue);
@@ -319,18 +399,41 @@ export async function shiftFollowUpMilestones(followUpId, change = {}) {
     previousPayment = milestoneDay(change.previousDue);
     nextPayment = milestoneDay(change.nextDue);
   }
+  if (moved === 'SHIPMENT') {
+    previousShipment = milestoneDay(change.previousDue);
+    nextShipment = milestoneDay(change.nextDue);
+  }
+  if (moved === 'LC_LATEST_SHIPMENT') {
+    previousLatest = milestoneDay(change.previousDue);
+    nextLatest = milestoneDay(change.nextDue);
+  }
 
   const previousChoice = moved === 'DELIVERY_START' ? (change.previousDeliveryStart || null) : stored;
   const nextChoice = moved === 'DELIVERY_START' ? (change.nextDeliveryStart || null) : stored;
   const previousManual = manualOverride(previousChoice, detected.rule);
   const nextManual = manualOverride(nextChoice, detected.rule);
+  // Pin a shipment date only when that row is the one that just moved.
+  // Pinning it on every save would freeze a delivery that is supposed to
+  // follow the down payment.
+  const beforeDates = {
+    signedDate: previousSigned,
+    paymentDate: previousPayment,
+    shipmentDate: moved === 'SHIPMENT' ? previousShipment : null,
+    latestShipmentDate: moved === 'LC_LATEST_SHIPMENT' ? previousLatest : null,
+  };
+  const afterDates = {
+    signedDate: nextSigned,
+    paymentDate: nextPayment,
+    shipmentDate: moved === 'SHIPMENT' ? nextShipment : null,
+    latestShipmentDate: moved === 'LC_LATEST_SHIPMENT' ? nextLatest : null,
+  };
 
   const plan = planAnchorShift({
     clauses,
     existing: followUp.milestones,
     movedKind: moved,
-    before: anchorOptions(previousManual || detected.rule, previousManual ? 'manual' : null, previousSigned, previousPayment),
-    after: anchorOptions(nextManual || detected.rule, nextManual ? 'manual' : null, nextSigned, nextPayment),
+    before: anchorOptions(previousManual || detected.rule, previousManual ? 'manual' : null, beforeDates),
+    after: anchorOptions(nextManual || detected.rule, nextManual ? 'manual' : null, afterDates),
   });
 
   for (const step of plan) {

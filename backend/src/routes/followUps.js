@@ -18,7 +18,9 @@ import {
 import { milestoneReminderMail } from '../services/followUpMail.js';
 import { summariseContractFile, DgxOfflineError } from '../services/contractSummary.js';
 import { suggestTimelineForFiles, shiftFollowUpMilestones, storedDeliveryChoice } from '../services/contractTimeline.js';
-import { isIsoDate, milestoneDay, planMilestoneApply, redactMoney } from '../services/contractTimelineFormat.js';
+import {
+  annotateCorrections, isIsoDate, milestoneDay, planMilestoneApply, readEffectiveBasis, redactMoney,
+} from '../services/contractTimelineFormat.js';
 import { selectOpenOrders } from '../services/openOrders.js';
 import { selectDashboardFollowUps } from '../services/dashboardFollowUps.js';
 import { followUpCreateData, followUpUpdateData } from '../services/followUpFields.js';
@@ -245,10 +247,18 @@ router.get('/:id', async (req, res) => {
     if (!f) return res.status(404).json({ error: 'Not found' });
     const viewer = await valueViewer(req.user);
     const unlockTeam = readContractUnlock(req);
+    const commercial = await prisma.contractFile.findMany({
+      where: { followUps: { some: { id: f.id } }, docType: 'COMMERCIAL' },
+      select: { docType: true, summary: true, timeline: true },
+    });
+    const basis = readEffectiveBasis(commercial);
     res.json({
       ...presentContractValue(f, viewer, unlockTeam),
       milestones: f.milestones.map((m) => ({ ...m, meta: MILESTONE_BY_KIND.get(m.kind) || null })),
       canManage: canManage(f, req.user),
+      // The milestone list reads this instead of assuming every contract
+      // becomes effective when the down payment arrives.
+      effectiveZh: basis.zh,
     });
   } catch (error) {
     console.error('Error fetching follow-up:', error);
@@ -361,7 +371,9 @@ router.put('/:id/milestones/:kind', async (req, res) => {
     // counts from it are moved in the same request; a tick without a new date
     // is only the confirmation and does not recompute anything.
     let shifted = [];
-    if ((kind === 'PAYMENT_DOWN' || kind === 'CONTRACT_SIGNED') && b.dueDate !== undefined
+    const shiftsDependents = kind === 'PAYMENT_DOWN' || kind === 'CONTRACT_SIGNED'
+      || kind === 'SHIPMENT' || kind === 'LC_LATEST_SHIPMENT';
+    if (shiftsDependents && b.dueDate !== undefined
       && milestoneDay(previousDue) !== milestoneDay(b.dueDate)) {
       shifted = await shiftFollowUpMilestones(followUpId, {
         movedKind: kind,
@@ -628,6 +640,10 @@ function sanitizeProposals(raw) {
       // Only the signature may arrive already done. A payment in the past is
       // overdue until someone confirms the money landed.
       done: p?.done === true && kind === 'CONTRACT_SIGNED',
+      correction: p?.correction === true,
+      clearDate: p?.clearDate === true,
+      storedDate: isIsoDate(p?.storedDate) ? p.storedDate : null,
+      rejectSigning: p?.rejectSigning === true,
     });
   }
   return out;
@@ -657,6 +673,13 @@ async function respondTimeline(req, res, fileIds, { followUpId = null } = {}) {
     deliveryStart: choice,
     rememberChoice: Boolean(choice),
   });
+  if (followUpId) {
+    const rows = await prisma.followUpMilestone.findMany({
+      where: { followUpId },
+      select: { kind: true, dueDate: true, doneAt: true },
+    });
+    result.proposals = annotateCorrections(result.proposals, rows);
+  }
   // Choosing the basis fills dates that are already on the record and were
   // waiting on it. New kinds stay in the suggestion list until Apply.
   // The down payment is not marked received by this.
@@ -708,7 +731,11 @@ router.post('/:id/timeline/apply', async (req, res) => {
     if (!canManage(f, req.user)) return res.status(403).json({ error: 'Only the owner, the creator or an admin can edit this' });
 
     const proposals = sanitizeProposals(req.body?.proposals);
-    const actions = planMilestoneApply(f.milestones, proposals, { replace: req.body?.replace === true });
+    const corrections = req.body?.corrections === true;
+    const actions = planMilestoneApply(f.milestones, proposals, {
+      replace: req.body?.replace === true && !corrections,
+      corrections,
+    });
     const applied = [];
     const skipped = [];
     for (const action of actions) {
@@ -717,9 +744,11 @@ router.post('/:id/timeline/apply', async (req, res) => {
         continue;
       }
       const data = {};
-      if (action.data.dueDate) {
-        data.dueDate = new Date(`${action.data.dueDate}T00:00:00.000Z`);
+      if (Object.prototype.hasOwnProperty.call(action.data, 'dueDate')) {
+        data.dueDate = action.data.dueDate ? new Date(`${action.data.dueDate}T00:00:00.000Z`) : null;
         data.lastRemindedOn = null;
+        // A cleared date is no longer a finished milestone.
+        if (data.dueDate === null) data.doneAt = null;
       }
       if (action.data.label) data.label = action.data.label;
       if (action.data.notes) data.notes = action.data.notes;

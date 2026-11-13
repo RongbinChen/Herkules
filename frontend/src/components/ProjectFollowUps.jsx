@@ -163,7 +163,9 @@ function MilestoneRow({ f, item, canManage, onChanged }) {
         <span className={`text-sm ${m?.doneAt ? 'text-slate-400 line-through' : 'font-medium text-slate-700'}`}>
           {m?.label || item.en}
         </span>
-        <span className="text-[11px] text-slate-300">{item.zh}</span>
+        <span className="text-[11px] text-slate-300">
+          {item.kind === 'CONTRACT_EFFECTIVE' && f.effectiveZh ? f.effectiveZh : item.zh}
+        </span>
         <span className="flex-1" />
         {/* Wrapped rather than sized directly: the shared Input carries
             `w-full`, which wins over a width passed in className — Tailwind
@@ -384,23 +386,113 @@ function PrefillNote({ state, values, onUse }) {
 // (on a record) or until the create dialog is submitted with the box checked.
 // Rows that already have a date are shown struck as "kept" and the server
 // skips them unless Replace is checked.
+// The suggestion list, without the request. Tests render this with a fixed
+// plan; the button above is what asks the server.
+export function TimelineSuggestionList({
+  proposals, conditional, catalogue, existing, followUpId, replace, picked, onToggle, onApply, onApplyCorrections, applying,
+}) {
+  const meta = useMemo(() => new Map((catalogue || []).map((c) => [c.kind, c])), [catalogue])
+  const byExisting = new Map((existing || []).map((m) => [m.kind, m]))
+  const corrections = (proposals || []).filter((p) => p.correction)
+  const pickedCount = corrections.filter((p) => picked?.[p.kind]).length
+  return (
+    <>
+      <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto">
+        {proposals.map((p) => {
+          const item = meta.get(p.kind)
+          const row = byExisting.get(p.kind)
+          const filled = Boolean(row && (row.dueDate || row.doneAt))
+          const correction = Boolean(followUpId) && p.correction && !replace
+          const skip = Boolean(followUpId) && filled && !replace && !correction
+          const zh = p.zh || item?.zh
+          return (
+            <li key={p.kind} className={`rounded-xl border px-3 py-2 ${skip ? 'border-slate-100 bg-white/60' : correction ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+                {correction && (
+                  <input
+                    type="checkbox"
+                    checked={Boolean(picked?.[p.kind])}
+                    onChange={() => onToggle?.(p.kind)}
+                    aria-label={`Apply correction for ${item?.en || p.kind}`}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                  />
+                )}
+                <span className={`text-sm font-medium ${skip ? 'text-slate-400' : 'text-slate-800'}`}>{item?.en || p.kind}</span>
+                {zh && <span className="text-[11px] text-slate-300">{zh}</span>}
+                {p.docType && <Badge tone={docTypeMeta(p.docType).tone}>{docTypeMeta(p.docType).short}</Badge>}
+                <span className={`text-xs font-semibold tabular-nums sm:ml-auto ${p.dueDate ? 'text-slate-700' : 'text-slate-400'}`}>
+                  {p.clearDate ? 'Clear date' : (p.dueDate || 'No date')}
+                </span>
+                {p.done && !correction && <span className="text-[10px] font-semibold text-emerald-600">Will mark done</span>}
+                {p.confirmReceipt && (
+                  <span className="text-[10px] font-semibold text-amber-700">Theoretical — confirm receipt</span>
+                )}
+                {p.needsStart && (
+                  <span className="text-[10px] font-semibold text-amber-700">Needs a delivery basis</span>
+                )}
+                {correction && <span className="text-[10px] font-semibold text-amber-800">Correction</span>}
+                {skip && <span className="text-[10px] font-semibold text-slate-400">Kept — already filled</span>}
+              </div>
+              {correction && (
+                <p className="mt-0.5 text-[11px] text-amber-900">
+                  {p.clearDate
+                    ? `${p.storedDate} is not what this contract counts. Clear it.`
+                    : `${p.storedDate} on the record → ${p.dueDate}.`}
+                  {p.storedDone ? ' Marked done. Applying changes the date only.' : ''}
+                </p>
+              )}
+              {p.notes && <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{p.notes}</p>}
+            </li>
+          )
+        })}
+        {(conditional || []).map((c, i) => (
+          <li key={`cond-${i}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+              <span className="text-sm font-medium text-slate-800">{c.label || 'Conditional date'}</span>
+              {c.docType && <Badge tone={docTypeMeta(c.docType).tone}>{docTypeMeta(c.docType).short}</Badge>}
+              <span className="text-xs font-semibold tabular-nums text-slate-700 sm:ml-auto">{c.dueDate || 'No date'}</span>
+              <span className="text-[10px] font-semibold text-slate-500">Conditional — not written as L/C to be opened by</span>
+            </div>
+            {c.notes && <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{c.notes}</p>}
+          </li>
+        ))}
+      </ul>
+      {followUpId && (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <Button size="sm" disabled={applying} onClick={onApply}>
+            {applying ? 'Applying…' : replace ? 'Replace timeline' : 'Apply to empty milestones'}
+          </Button>
+          {corrections.length > 0 && !replace && (
+            <Button size="sm" variant="secondary" disabled={applying || pickedCount === 0} onClick={onApplyCorrections}>
+              Apply selected corrections{pickedCount ? ` (${pickedCount})` : ''}
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPlan, onApplied, onLock }) {
   const [busy, setBusy] = useState(false)
   const [proposals, setProposals] = useState(null)
+  const [conditional, setConditional] = useState([])
   const [sources, setSources] = useState([])
   const [baseDate, setBaseDate] = useState(null)
   const [delivery, setDelivery] = useState(null)
   const [error, setError] = useState('')
   const [replace, setReplace] = useState(false)
+  const [picked, setPicked] = useState({})
   const [include, setInclude] = useState(true)
   const [applying, setApplying] = useState(false)
   const [result, setResult] = useState(null)
-  const meta = useMemo(() => new Map((catalogue || []).map((c) => [c.kind, c])), [catalogue])
   const key = (fileIds || []).slice().sort((a, b) => a - b).join(',')
   const ready = Boolean(token) && (fileIds || []).length > 0
 
   useEffect(() => {
     setProposals(null)
+    setConditional([])
+    setPicked({})
     setSources([])
     setBaseDate(null)
     setDelivery(null)
@@ -420,6 +512,8 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
         : await followUpsAPI.suggestTimeline(fileIds, token, deliveryStart)
       const list = data.proposals || []
       setProposals(list)
+      setConditional(data.conditional || [])
+      setPicked({})
       setSources(data.sources || [])
       setBaseDate(data.baseDate || null)
       setDelivery(data.deliveryStart || null)
@@ -437,11 +531,17 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
     }
   }
 
-  const apply = async () => {
+  const apply = async (mode) => {
     setApplying(true)
     setError('')
     try {
-      const { data } = await followUpsAPI.applyTimeline(followUpId, proposals || [], replace)
+      const selected = mode === 'corrections'
+        ? (proposals || []).filter((p) => p.correction && picked[p.kind])
+        : (proposals || [])
+      const { data } = await followUpsAPI.applyTimeline(followUpId, selected, {
+        replace: mode === 'replace',
+        corrections: mode === 'corrections',
+      })
       setResult(data)
       await onApplied?.()
     } catch (e) {
@@ -453,7 +553,6 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
 
   const offline = sources.some((s) => s.reason === 'dgx-offline')
   const unread = sources.filter((s) => s.reason === 'not-read')
-  const byExisting = new Map((existing || []).map((m) => [m.kind, m]))
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -512,49 +611,28 @@ function TimelineSuggest({ token, fileIds, followUpId, catalogue, existing, onPl
                 : 'No dates in these contracts could be turned into milestones. Fill the timeline by hand.'}
             </p>
           ) : (
-            <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto">
-              {proposals.map((p) => {
-                const item = meta.get(p.kind)
-                const row = byExisting.get(p.kind)
-                const filled = Boolean(row && (row.dueDate || row.doneAt))
-                const skip = Boolean(followUpId) && filled && !replace
-                return (
-                  <li key={p.kind} className={`rounded-xl border px-3 py-2 ${skip ? 'border-slate-100 bg-white/60' : 'border-slate-200 bg-white'}`}>
-                    <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
-                      <span className={`text-sm font-medium ${skip ? 'text-slate-400' : 'text-slate-800'}`}>{item?.en || p.kind}</span>
-                      {item?.zh && <span className="text-[11px] text-slate-300">{item.zh}</span>}
-                      {p.docType && <Badge tone={docTypeMeta(p.docType).tone}>{docTypeMeta(p.docType).short}</Badge>}
-                      <span className={`text-xs font-semibold tabular-nums sm:ml-auto ${p.dueDate ? 'text-slate-700' : 'text-slate-400'}`}>
-                        {p.dueDate || 'No date'}
-                      </span>
-                      {p.done && <span className="text-[10px] font-semibold text-emerald-600">Will mark done</span>}
-                      {p.confirmReceipt && (
-                        <span className="text-[10px] font-semibold text-amber-700">Theoretical — confirm receipt</span>
-                      )}
-                      {p.needsStart && (
-                        <span className="text-[10px] font-semibold text-amber-700">Needs a delivery basis</span>
-                      )}
-                      {skip && <span className="text-[10px] font-semibold text-slate-400">Kept — already filled</span>}
-                    </div>
-                    {p.notes && <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{p.notes}</p>}
-                  </li>
-                )
-              })}
-            </ul>
+            <TimelineSuggestionList
+              proposals={proposals}
+              conditional={conditional}
+              catalogue={catalogue}
+              existing={existing}
+              followUpId={followUpId}
+              replace={replace}
+              picked={picked}
+              applying={applying}
+              onToggle={(kind) => setPicked((s) => ({ ...s, [kind]: !s[kind] }))}
+              onApply={() => apply(replace ? 'replace' : 'empty')}
+              onApplyCorrections={() => apply('corrections')}
+            />
           )}
           {proposals.length > 0 && (
             <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               {followUpId ? (
-                <>
-                  <label className="flex items-center gap-2 text-[11px] text-slate-600">
-                    <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600" />
-                    Replace dates already filled
-                  </label>
-                  <Button size="sm" disabled={applying} onClick={apply}>
-                    {applying ? 'Applying…' : replace ? 'Replace timeline' : 'Apply to empty milestones'}
-                  </Button>
-                </>
+                <label className="flex items-center gap-2 text-[11px] text-slate-600">
+                  <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600" />
+                  Replace dates already filled
+                </label>
               ) : (
                 <label className="flex items-center gap-2 text-[11px] text-slate-600">
                   <input type="checkbox" checked={include}
