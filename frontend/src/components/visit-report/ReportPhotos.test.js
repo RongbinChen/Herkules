@@ -35,13 +35,59 @@ test('the gallery is bilingual, shows captions, and hides when there is nothing 
 
   const en = renderToStaticMarkup(createElement(ReportPhotos, {
     lang: 'en',
-    photos: [{ storedName: 'bed.jpg', kind: 'image', caption: 'Bed of the machine' }],
+    photos: [{ storedName: 'bed.jpg', kind: 'image', caption: 'Worn worm rack components of the table drive' }],
   }))
   assert.match(en, /Report photos/)
-  assert.match(en, /Bed of the machine/)
+  assert.match(en, /Worn worm rack components of the table drive/)
+  assert.match(en, /text-sm font-normal leading-relaxed text-slate-600/)
   assert.doesNotMatch(en, /<textarea/)
   assert.doesNotMatch(en, /Regenerate caption/)
+  assert.doesNotMatch(en, /line-clamp/)
   assert.doesNotMatch(en, /报告图片/)
+})
+
+test('reading a finalized report has no caption editor; editing the whole report does', async () => {
+  const { default: VisitReportModal } = await loadJsxModule(path.join(here, '../VisitReportModal.jsx'))
+  const report = {
+    id: 54,
+    title: 'Northline works visit',
+    status: 'FINAL',
+    visitDate: '2026-11-12T00:00:00.000Z',
+    canEdit: true,
+    author: { id: 7, name: 'Ada North' },
+    customer: { id: 3, name: 'Northline Works' },
+    content: { nextSteps: 'Keep contact' },
+    attachments: [{
+      storedName: 'mill-c.jpg',
+      kind: 'image',
+      caption: 'Worn worm rack components of the table drive',
+    }],
+  }
+  const read = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(read, /Worn worm rack components of the table drive/)
+  assert.doesNotMatch(read, /<textarea/)
+  assert.doesNotMatch(read, /Regenerate caption/)
+  assert.match(read, />Edit</)
+
+  const editing = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, startEditing: true, lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(editing, /data-caption-editor/)
+  assert.match(editing, /Regenerate caption/)
+  assert.match(editing, /Save &amp; Finalize|Save & Finalize/)
+})
+
+test('the detail page does not edit captions, and save keeps the latest draft', () => {
+  const detail = readFileSync(new URL('../VisitReportDetail.jsx', import.meta.url), 'utf8')
+  const modal = readFileSync(new URL('../VisitReportModal.jsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(detail, /editable=/)
+  assert.doesNotMatch(detail, /regenerateCaption/)
+  assert.doesNotMatch(detail, /onCaptionChange/)
+  assert.match(modal, /captionDraft/)
+  assert.doesNotMatch(modal, /visitReportsAPI\.regenerateCaption/)
+  assert.match(modal, /attachments: attachmentsRef\.current/)
 })
 
 test('the photo block sits after the report body on the detail page and in the editor', () => {

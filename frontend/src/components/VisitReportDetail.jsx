@@ -125,27 +125,6 @@ export default function VisitReportDetail() {
   const tables = Array.isArray(content.tables) ? content.tables : []
   const canEdit = report.canEdit || report.author?.id === user?.id || user?.isAdmin
 
-  const saveCaption = async (photo, caption) => {
-    const attachments = (report.attachments || []).map((item) => (
-      item?.storedName === photo.storedName ? { ...item, caption, captionEdited: true } : item
-    ))
-    try {
-      const { data } = await visitReportsAPI.update(report.id, { attachments })
-      setReport((current) => ({ ...current, attachments: data.attachments ?? attachments }))
-    } catch {
-      window.alert(t.captionSaveFailed)
-    }
-  }
-
-  const regenerateCaption = async (photo) => {
-    try {
-      const { data } = await visitReportsAPI.regenerateCaption(report.id, photo.storedName)
-      setReport((current) => ({ ...current, attachments: data.attachments ?? current.attachments }))
-    } catch {
-      window.alert(t.captionFailed)
-    }
-  }
-
   return (
     <div className={`min-h-screen bg-slate-50 ${focusId ? 'pb-[80vh]' : ''}`}>
       <div className="mx-auto max-w-3xl px-4 py-6">
@@ -286,9 +265,6 @@ export default function VisitReportDetail() {
             lang={lang}
             reportId={report.id}
             photos={report.attachments}
-            editable={canEdit}
-            onCaptionChange={saveCaption}
-            onRegenerate={canEdit ? regenerateCaption : undefined}
           />
         </article>
       </div>
