@@ -168,7 +168,16 @@ export const followUpsAPI = {
     deliveryStart ? { deliveryStart } : {},
     withUnlock(token, { timeout: 180000 }),
   ),
-  applyTimeline: (id, proposals, replace = false) => api.post(`/followups/${id}/timeline/apply`, { proposals, replace }),
+  applyTimeline: (id, proposals, replaceOrOpts = false) => {
+    const opts = replaceOrOpts && typeof replaceOrOpts === 'object'
+      ? replaceOrOpts
+      : { replace: replaceOrOpts === true }
+    return api.post(`/followups/${id}/timeline/apply`, {
+      proposals,
+      replace: opts.replace === true,
+      corrections: opts.corrections === true,
+    })
+  },
 }
 
 export const agentsAPI = {

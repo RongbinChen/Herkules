@@ -56,6 +56,9 @@ const BASE_TO_KIND = {
   CONTRACT_SIGNED: 'CONTRACT_SIGNED',
   CONTRACT_EFFECTIVE: 'CONTRACT_EFFECTIVE',
   LC_OPEN_DEADLINE: 'LC_OPEN_DEADLINE',
+  // The last contractual lot. Installation that says "after FOB" uses this
+  // when the commercial contract names more than one lot.
+  LC_LATEST_SHIPMENT: 'LC_LATEST_SHIPMENT',
 };
 
 // Letter-of-credit dates are commercial terms. A technical agreement describes
@@ -316,7 +319,8 @@ function directionNear(text, index) {
 }
 
 function parseRelative(text) {
-  const re = /(\d+)\s*(?:working\s+|calendar\s+)?(days?|weeks?|months?|years?|个?月|日|天)/gi;
+  // "(6)" is how these contracts write a number that was also spelled out.
+  const re = /(\d+)\s*\)?\s*(?:working\s+|calendar\s+)?(days?|weeks?|months?|years?|个?月|日|天)/gi;
   let m;
   while ((m = re.exec(text))) {
     const word = m[2].toLowerCase();
@@ -419,7 +423,16 @@ function kindsInPayment(seg) {
 // be opened within 30 days of signing, and the money it pays moves on shipment.
 // Giving both the opening offset would schedule the shipment payment a month
 // after signature.
+// "30 days after receipt of the seller's advance-payment documents" names a
+// clock whose start is not in the contract. Counting it from signing would
+// invent a down-payment date.
+function documentReceiptUndated(seg) {
+  return /after receipt of [\s\S]{0,80}documents|advance-payment documents|收到[\s\S]{0,16}单据/i.test(seg)
+    && !parseDate(seg);
+}
+
 function timingForKind(kind, seg) {
+  if (kind === 'PAYMENT_DOWN' && documentReceiptUndated(seg)) return null;
   const timing = parseTiming(seg);
   if (kind === 'PAYMENT_SHIPMENT') {
     const openingClock = timing?.offset?.base === 'SIGNED' && /open|opened|opening|开证|开立/.test(seg);
@@ -439,7 +452,10 @@ function clausesFromPayment(text) {
   for (const seg of splitPayment(text)) {
     const kinds = kindsInPayment(seg);
     for (const kind of kinds) {
-      out.push({ kind, ...spreadTiming(timingForKind(kind, seg)), notes: clipNote(seg) });
+      const timing = timingForKind(kind, seg);
+      const clause = { kind, ...spreadTiming(timing), notes: clipNote(seg) };
+      if (kind === 'PAYMENT_DOWN' && documentReceiptUndated(seg)) clause.noInventedDate = true;
+      out.push(clause);
     }
   }
   return out;
@@ -531,7 +547,9 @@ function effectiveClause(blob) {
   if (/effective\s+(?:upon|on|after|when)\s+(?:the\s+)?(?:receipt\s+of\s+)?(?:the\s+)?(?:down payment|advance|deposit)|预付款(?:到账|支付).{0,12}生效|自预付款.{0,16}生效|定金到账后生效|定金到账/i.test(blob)) {
     return { kind: 'CONTRACT_EFFECTIVE', anchor: 'PAYMENT_DOWN', notes: clipNote('Effective when the down payment is received') };
   }
-  if (/effective\s+(?:upon|on|from)\s+(?:the\s+)?sign|自签订之日起生效|签订后生效|签署之日生效/i.test(blob)) {
+  // "come into effective after being signed" is the same rule as "effective
+  // on signing". It is not the down-payment rule, which was checked above.
+  if (/effective\s+(?:upon|on|from|after)\s+(?:being\s+)?(?:the\s+)?sign|come into effect(?:ive)? after being signed|自签订之日起生效|签订后生效|签署之日生效|签字后生效|双方签字后生效/i.test(blob)) {
     return { kind: 'CONTRACT_EFFECTIVE', anchor: 'SIGNED', notes: clipNote('Effective on signing') };
   }
   return null;
@@ -575,6 +593,36 @@ function joinNotes(a, b) {
   return clipNote(parts.join(' · '));
 }
 
+function documentClock(c) {
+  return Boolean(c?.noInventedDate)
+    || /after receipt of [\s\S]{0,50}documents|advance-payment documents|单据/i.test(c?.notes || '');
+}
+
+// A later clause replaces the one already kept when it is the reading we are
+// not allowed to lose: a warranty that must not be dated from signing, a down
+// payment whose only clock is an undated document receipt, the main letter of
+// credit rather than a conditional second one, or a delivery rule read off
+// the commercial pages rather than a coarser summary.
+function preferIncoming(next, prev) {
+  if (!next || !prev || next.kind !== prev.kind) return false;
+  if ((next.kind === 'WARRANTY_EXPIRY' || next.kind === 'GUARANTEE_EXPIRY')
+    && next.rejectSigning && !prev.rejectSigning) return true;
+  if (next.kind === 'PAYMENT_DOWN' && next.noInventedDate && !next.offset && !next.absolute) {
+    const prevReal = Boolean(prev.absolute || (prev.offset?.base === 'SIGNED' && prev.offset?.n))
+      && !documentClock(prev);
+    if (!prevReal) return true;
+  }
+  if (next.kind === 'LC_OPEN_DEADLINE' && next.mainOpening && !prev.mainOpening) return true;
+  if (next.kind === 'LC_LATEST_SHIPMENT' && next.offset?.base === 'LC_RECEIVED' && prev.lastLot) return true;
+  if (next.kind === 'LC_LATEST_SHIPMENT' && next.lastLot && !prev.lastLot
+    && prev.offset?.base !== 'LC_RECEIVED' && !prev.absolute) return true;
+  if (next.kind === 'INSTALLATION' && next.fromPages && next.offset && !prev.fromPages) return true;
+  if (next.kind === 'SHIPMENT' && next.fromPages && next.startRule && next.offset && !prev.fromPages
+    && prev.docType !== 'TECHNICAL') return true;
+  if (next.kind === 'LC_PRESENTATION' && next.fromPages && next.offset && !prev.offset && !prev.absolute) return true;
+  return false;
+}
+
 export function mergeClauses(clauses) {
   const byKind = new Map();
   for (const c of clauses || []) {
@@ -593,7 +641,9 @@ export function mergeClauses(clauses) {
       && a.docType === 'COMMERCIAL'
       && b?.docType !== 'COMMERCIAL'
       && (a.absolute || a.offset || a.anchor || a.unresolvedStart);
-    if (commercialShipment(c, prev)) { winner = c; loser = prev; }
+    if (preferIncoming(c, prev)) { winner = c; loser = prev; }
+    else if (preferIncoming(prev, c)) { winner = prev; loser = c; }
+    else if (commercialShipment(c, prev)) { winner = c; loser = prev; }
     else if (commercialShipment(prev, c)) { winner = prev; loser = c; }
     else if (sb > sa) { winner = c; loser = prev; }
     else if (sb === sa) {
@@ -654,6 +704,32 @@ export function summaryTimelineEnough(clauses) {
   return resolvable.length >= 1;
 }
 
+// The one-line summary can be "enough" to skip a model call and still have
+// missed the letter-of-credit opening, the presentation window, or which
+// event delivery is counted from. Those live in the page text. True means
+// the pages still have to be asked, because the clauses in hand do not
+// cover a clock the text actually states.
+export function commercialReadingIncomplete(clauses, pageText) {
+  const text = String(pageText || '');
+  if (!text.trim()) return false;
+  const list = clauses || [];
+  const has = (kind) => list.some((c) => c.kind === kind && hasConcreteTiming(c));
+  const mentionsOpen = /letter of credit|l\/c|信用证/i.test(text) && /open|opened|opening|开立|开证/i.test(text);
+  if (mentionsOpen && !has('LC_OPEN_DEADLINE')) return true;
+  const mentionsPresentation = /present(?:ation)?|交单/i.test(text) && /b\/?l|bill of lading|提单|\d+\s*days|\d+\s*日/i.test(text);
+  if (mentionsPresentation && !has('LC_PRESENTATION')) return true;
+  const mentionsDelivery = /deliver|交货|装运|\bfob\b|\blot\b|批次/i.test(text);
+  const shipment = list.find((c) => c.kind === 'SHIPMENT');
+  const startKnown = Boolean(shipment && (
+    shipment.startRule
+    || shipment.absolute
+    || shipment.unresolvedStart
+    || ['SIGNED', 'PAYMENT_DOWN', 'EFFECTIVE'].includes(shipment.offset?.base || shipment.anchor)
+  ));
+  if (mentionsDelivery && !startKnown) return true;
+  return false;
+}
+
 function parseWhen(when) {
   const w = String(when || '').trim();
   if (!w || /^[—\-–]$/.test(w) || /^n\/?a$/i.test(w)) return {};
@@ -706,7 +782,12 @@ export function timelinePrompt(docType) {
   const extra = commercial
     ? `- LC_RECEIVED and LC_LATEST_SHIPMENT only when the pages state a real number of days or a calendar date. If the number is not written, omit the line. Never write the letter N in place of a number.
 - When the latest shipment is counted from arrival of the letter of credit, BASE is LC_RECEIVED.
-- SHIPMENT (delivery time) uses the base the sentence names. "After signing" / 签订后 is SIGNED. "After receipt of the down payment" / 预付款到账后 is PAYMENT_DOWN. "After the contract becomes effective" is EFFECTIVE. If the sentence gives a length but does not say which of those it is counted from, WHEN is — and the note quotes the length. Do not assume signing.`
+- SHIPMENT (delivery time) uses the base the sentence names. "After signing" / 签订后 is SIGNED. "After receipt of the down payment" / 预付款到账后 is PAYMENT_DOWN. "After the contract becomes effective" is EFFECTIVE. If the sentence gives a length but does not say which of those it is counted from, WHEN is — and the note quotes the length. Do not assume signing.
+- When several lots are named, SHIPMENT is the first lot and LC_LATEST_SHIPMENT is the last lot, each from the base the sentence names.
+- LC_PRESENTATION is the document window after the B/L. WHEN is "N days after SHIPMENT" when the sentence says that. The first lot is the single date.
+- A second letter of credit that opens before the last lot is not LC_OPEN_DEADLINE. Omit that line.
+- If the advance is a number of days after receipt of documents and the pages give no document date, leave PAYMENT_DOWN as — . Do not count it from signing.
+- Warranty or a bank guarantee counted from FAC or from the B/L, whichever is first, is WHEN —. Do not count it from signing.`
     : `- Do not extract letter-of-credit milestones (opening, receipt, latest shipment, presentation). Those belong to the commercial contract. Omit the line even if a page mentions shipment or payment in passing.
 - Delivery, installation, FAT, FAC, drawings and warranty still belong here when this document states them.`;
   return `Extract the execution milestones this contract actually states. One line per milestone, nothing else:
@@ -761,9 +842,23 @@ function kindOfBase(base) {
 // Walk anchors until every clause that can be dated is dated. Cycles (shipment
 // "before shipment") and missing bases stay undated — a blank is filled in by
 // hand, a wrong date starts the wrong reminder.
+// "Within 12 months after FOB shipment" is one deadline. When the commercial
+// contract names a later lot, that deadline is the last lot plus the same
+// length, not the first lot. A first-lot wording is left on the first lot.
+function linkLotDependencies(clauses) {
+  const latest = (clauses || []).find((c) => c.kind === 'LC_LATEST_SHIPMENT' && c.lastLot);
+  if (!latest) return clauses || [];
+  return (clauses || []).map((c) => {
+    if (c.kind !== 'INSTALLATION' || !c.offset || c.offset.base !== 'SHIPMENT') return c;
+    if (c.offset.unit !== 'months') return c;
+    if (/first lot|first shipment|第一批|首批/i.test(c.notes || '')) return c;
+    return { ...c, offset: { ...c.offset, base: 'LC_LATEST_SHIPMENT' } };
+  });
+}
+
 export function resolveTimeline(clauses, { today } = {}) {
   const dates = new Map();
-  const items = (clauses || []).filter((c) => c?.kind && KIND_SET.has(c.kind));
+  const items = linkLotDependencies((clauses || []).filter((c) => c?.kind && KIND_SET.has(c.kind)));
   for (const c of items) {
     if (c.absolute && !dates.has(c.kind)) dates.set(c.kind, c.absolute);
   }
@@ -804,9 +899,12 @@ export function resolveTimeline(clauses, { today } = {}) {
       done,
       confirmReceipt: c.kind === 'PAYMENT_DOWN' && Boolean(dueDate),
       needsStart: Boolean(c.unresolvedStart) && !dueDate,
+      rejectSigning: Boolean(c.rejectSigning),
+      signingMonths: Array.isArray(c.signingMonths) ? c.signingMonths : null,
       docType: c.docType || null,
       fileId: c.fileId || null,
       filename: c.filename || null,
+      zh: c.zh || null,
     };
   });
 }
@@ -887,10 +985,13 @@ export function detectDeliveryStart(clauses) {
   const shipment = list.find((c) => c.kind === 'SHIPMENT');
   const effective = list.find((c) => c.kind === 'CONTRACT_EFFECTIVE');
   if (!shipment) return { rule: null, evidence: null, ambiguous: false };
+  const base = shipment.offset?.base || shipment.anchor || null;
+  if (shipment.startRule === 'SIGNED' || shipment.startRule === 'PAYMENT_DOWN') {
+    return { rule: shipment.startRule, evidence: shipment.notes || null, ambiguous: false };
+  }
   if (shipment.absolute && !shipment.offset && !shipment.anchor) {
     return { rule: null, evidence: shipment.notes || null, ambiguous: false };
   }
-  const base = shipment.offset?.base || shipment.anchor || null;
   const evidence = shipment.notes || effective?.notes || null;
   if (base === 'SIGNED') return { rule: 'SIGNED', evidence, ambiguous: false };
   if (base === 'PAYMENT_DOWN') return { rule: 'PAYMENT_DOWN', evidence, ambiguous: false };
@@ -946,29 +1047,373 @@ export function milestoneDay(value) {
 // replace the contractual expectation for that one milestone so everything
 // counted from it moves with the confirmation. Passing neither leaves the
 // clause's own timing, which is the theoretical date from the text.
+function pinAbsolute(clause, iso) {
+  if (!iso) return clause;
+  const { offset, anchor, unresolvedStart, ...rest } = clause;
+  return { ...rest, absolute: iso };
+}
+
 export function projectTimeline(clauses, {
-  signedDate, paymentDate, deliveryStart, deliveryStartSource, today,
+  signedDate, paymentDate, shipmentDate, latestShipmentDate,
+  deliveryStart, deliveryStartSource, today,
 } = {}) {
   const normalized = normalizeDeliveryClauses(clauses, {
     rule: deliveryStart || null,
     source: deliveryStartSource || null,
   });
   const anchored = normalized.map((c) => {
-    if (c.kind === 'CONTRACT_SIGNED' && signedDate) {
-      const { offset, anchor, ...rest } = c;
-      return { ...rest, absolute: signedDate };
-    }
-    if (c.kind === 'PAYMENT_DOWN' && paymentDate) {
-      const { offset, anchor, unresolvedStart, ...rest } = c;
-      return { ...rest, absolute: paymentDate };
-    }
+    if (c.kind === 'CONTRACT_SIGNED' && signedDate) return pinAbsolute(c, signedDate);
+    if (c.kind === 'PAYMENT_DOWN' && paymentDate) return pinAbsolute(c, paymentDate);
+    // A date someone typed on the shipment row is the base for presentation
+    // and, when it is the last lot, for installation. The clause's own
+    // formula is the previous value, used to see what was still derived.
+    if (c.kind === 'SHIPMENT' && shipmentDate) return pinAbsolute(c, shipmentDate);
+    if (c.kind === 'LC_LATEST_SHIPMENT' && latestShipmentDate) return pinAbsolute(c, latestShipmentDate);
     return c;
   });
   return resolveTimeline(anchored, { today });
 }
 
+const DURATION_WORDS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+  ten: 10, eleven: 11, twelve: 12,
+};
+
+function durationUnit(word) {
+  const w = String(word || '').toLowerCase();
+  if (/year/.test(w)) return 'years';
+  if (/month|月/.test(w)) return 'months';
+  if (/week/.test(w)) return 'weeks';
+  return 'days';
+}
+
+function asOffset(n, unit) {
+  let count = Number(n);
+  let u = unit;
+  if (u === 'years') { u = 'months'; count *= 12; }
+  if (u === 'weeks') { u = 'days'; count *= 7; }
+  if (!count) return null;
+  return { n: count, unit: u === 'months' ? 'months' : 'days' };
+}
+
+// First duration in a sentence. A parenthetical digit wins over the word
+// beside it: "six (6) months" is 6, not a failed word match.
+function durationNear(text) {
+  const paren = /\(\s*(\d+)\s*\)\s*(days?|weeks?|months?|years?|个?月|日|天)/i.exec(text);
+  if (paren) return asOffset(paren[1], durationUnit(paren[2]));
+  const plain = /(\d+)\s*(days?|weeks?|months?|years?|个?月|日|天)/i.exec(text);
+  if (plain) return asOffset(plain[1], durationUnit(plain[2]));
+  const word = new RegExp(`\\b(${Object.keys(DURATION_WORDS).join('|')})\\b\\s*(days?|weeks?|months?|years?)`, 'i').exec(text);
+  if (word) return asOffset(DURATION_WORDS[word[1].toLowerCase()], durationUnit(word[2]));
+  return null;
+}
+
+function monthHits(sentence, patterns) {
+  const found = [];
+  for (const re of patterns) {
+    const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+    let m;
+    while ((m = r.exec(sentence))) {
+      const n = Number(m[1]);
+      if (n) found.push(n);
+    }
+  }
+  return found;
+}
+
+const SIGNING_MONTHS = [
+  /(\d+)\s*months?\s+after\s+(?:the\s+)?sign(?:ing|ature|ed)?/gi,
+  /(?:合同)?签订后\s*(\d+)\s*个?月/g,
+  /签署后\s*(\d+)\s*个?月/g,
+];
+
+const PAYMENT_MONTHS = [
+  /(\d+)\s*months?\s+(?:fob\s+)?after\s+receipt\s+of\s+the\s+(?:down payment|advance(?: payment)?|deposit)/gi,
+  /预付款(?:到账|支付)后\s*(\d+)\s*个?月/g,
+  /定金到账后\s*(\d+)\s*个?月/g,
+];
+
+function isDeliverySentence(sentence) {
+  if (/letter of credit|信用证|\bl\/c\b/i.test(sentence) && !/\bfob\b|\blot\b|批次|交货/i.test(sentence)) return false;
+  return /deliver|shipment|\bfob\b|交货|装运|发货|\blot\b|批次/i.test(sentence);
+}
+
+function lotClauses(text) {
+  const signing = [];
+  const payment = [];
+  const bits = [];
+  for (const sentence of splitSentences(text)) {
+    if (!isDeliverySentence(sentence)) continue;
+    bits.push(sentence);
+    signing.push(...monthHits(sentence, SIGNING_MONTHS));
+    payment.push(...monthHits(sentence, PAYMENT_MONTHS));
+  }
+  const sign = [...new Set(signing)].sort((a, b) => a - b);
+  const pay = [...new Set(payment)].sort((a, b) => a - b);
+  // Both clocks in one delivery section is not a choice we make.
+  if (sign.length && pay.length) return [];
+  const list = sign.length ? sign : pay;
+  const base = sign.length ? 'SIGNED' : 'PAYMENT_DOWN';
+  if (!list.length) return [];
+  const notes = clipNote(bits.join(' '));
+  const out = [{
+    kind: 'SHIPMENT',
+    offset: { n: list[0], unit: 'months', dir: 'after', base },
+    startRule: base,
+    fromPages: true,
+    notes,
+  }];
+  const last = list[list.length - 1];
+  if (last > list[0]) {
+    out.push({
+      kind: 'LC_LATEST_SHIPMENT',
+      offset: { n: last, unit: 'months', dir: 'after', base },
+      startRule: base,
+      lastLot: true,
+      fromPages: true,
+      notes: clipNote(`Last lot, ${last} months after ${base === 'SIGNED' ? 'signing' : 'receipt of the down payment'}`),
+    });
+  }
+  return out;
+}
+
+function openingFromPages(text) {
+  let main = null;
+  let second = null;
+  for (const sentence of splitSentences(text)) {
+    if (!/letter of credit|信用证|\bl\/c\b|\blc\b/i.test(sentence)) continue;
+    if (/valid until|validity|有效期/i.test(sentence)) continue;
+    if (/present|交单/i.test(sentence)) continue;
+    if (!/open|opened|opening|开立|开证/i.test(sentence)) continue;
+    const dur = durationNear(sentence);
+    if (!dur) continue;
+    const beforeLast = /before the last|最后一批|末批/i.test(sentence)
+      || (/before/i.test(sentence) && /last lot|last shipment|最后/i.test(sentence));
+    const afterSign = /after (?:the )?(?:signing|signature)|签订后|签署后/i.test(sentence);
+    if (beforeLast) {
+      second = {
+        offset: { n: dur.n, unit: dur.unit, dir: 'before', base: 'LC_LATEST_SHIPMENT' },
+        notes: clipNote(sentence),
+      };
+      continue;
+    }
+    if (!afterSign) continue;
+    const isSecond = /second|第二/i.test(sentence);
+    if (!main || !isSecond) {
+      main = {
+        offset: { n: dur.n, unit: dur.unit, dir: 'after', base: 'SIGNED' },
+        notes: clipNote(sentence),
+      };
+    }
+  }
+  return { main, second };
+}
+
+function presentationFromPages(text) {
+  for (const sentence of splitSentences(text)) {
+    if (!/present|交单/i.test(sentence)) continue;
+    if (!/b\/?l|bill of lading|提单|shipment|装运/i.test(sentence)) continue;
+    const dur = durationNear(sentence);
+    if (!dur) continue;
+    return {
+      kind: 'LC_PRESENTATION',
+      offset: { n: dur.n, unit: dur.unit, dir: /before/i.test(sentence) ? 'before' : 'after', base: 'SHIPMENT' },
+      fromPages: true,
+      notes: clipNote(sentence),
+    };
+  }
+  return null;
+}
+
+function monthNumbers(sentence) {
+  const found = [];
+  const re = /(\d+)\s*(?:months?|个?月)/gi;
+  let m;
+  while ((m = re.exec(sentence))) found.push(Number(m[1]));
+  return [...new Set(found.filter(Boolean))];
+}
+
+// Installation, and a warranty that is "from FAC or from the B/L, whichever
+// first". The warranty is not given a date: neither FAC nor a real bill of
+// lading is known yet, and signing is the wrong clock.
+export function executionClausesFromText(text) {
+  if (!text) return [];
+  const out = [];
+  for (const sentence of splitSentences(text)) {
+    if (/installation|commissioning|安装/i.test(sentence) && /fob|shipment|装运|发货/i.test(sentence)) {
+      const dur = durationNear(sentence);
+      if (dur) {
+        out.push({
+          kind: 'INSTALLATION',
+          offset: { n: dur.n, unit: dur.unit, dir: 'after', base: 'SHIPMENT' },
+          fromPages: true,
+          notes: clipNote(sentence),
+        });
+      }
+    }
+    const warranty = /warranty|质保|保修/i.test(sentence);
+    const guarantee = /bank guarantee|保函/i.test(sentence);
+    const whichever = /whichever/i.test(sentence) || (/fac|终验收|验收|b\/?l|bill of lading|提单/i.test(sentence) && /or|或/i.test(sentence));
+    if ((warranty || guarantee) && whichever && /fac|验收|b\/?l|bill of lading|提单|shipment/i.test(sentence)) {
+      const months = monthNumbers(sentence);
+      const note = clipNote(sentence);
+      if (warranty) {
+        out.push({ kind: 'WARRANTY_EXPIRY', rejectSigning: true, signingMonths: months, fromPages: true, notes: note });
+      }
+      if (guarantee) {
+        out.push({ kind: 'GUARANTEE_EXPIRY', rejectSigning: true, signingMonths: months, fromPages: true, notes: note });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Clauses read off commercial pages, not off the one-line summary.
+ * A summary that only says "advance / on shipment / on acceptance" never
+ * saw the opening, the presentation window, or which event delivery starts
+ * from. `conditional` is a second letter of credit that must not occupy
+ * "L/C to be opened by".
+ */
+export function commercialClausesFromText(text) {
+  if (!text) return { clauses: [], conditional: [] };
+  const clauses = [...lcClausesFromText(text)];
+  const lots = lotClauses(text);
+  if (!clauses.some((c) => c.kind === 'LC_LATEST_SHIPMENT')) {
+    clauses.push(...lots.filter((c) => c.kind === 'LC_LATEST_SHIPMENT'));
+  }
+  clauses.push(...lots.filter((c) => c.kind === 'SHIPMENT'));
+  const { main, second } = openingFromPages(text);
+  if (main) {
+    clauses.push({
+      kind: 'LC_OPEN_DEADLINE',
+      offset: main.offset,
+      mainOpening: true,
+      fromPages: true,
+      notes: main.notes,
+    });
+  }
+  const presentation = presentationFromPages(text);
+  if (presentation) clauses.push(presentation);
+  const eff = effectiveClause(text);
+  if (eff) clauses.push({ ...eff, fromPages: true });
+  for (const sentence of splitSentences(text)) {
+    if (documentReceiptUndated(sentence) && /down payment|advance|预付款|定金/i.test(sentence)) {
+      clauses.push({
+        kind: 'PAYMENT_DOWN',
+        noInventedDate: true,
+        fromPages: true,
+        notes: clipNote(sentence),
+      });
+      break;
+    }
+  }
+  if (/against documents after shipment|at sight/i.test(text) && /shipment/i.test(text)) {
+    clauses.push({
+      kind: 'PAYMENT_SHIPMENT',
+      anchor: 'SHIPMENT',
+      fromPages: true,
+      notes: clipNote('Paid against documents after shipment'),
+    });
+  }
+  if (/tied to acceptance|on acceptance|upon acceptance|尾款/i.test(text)) {
+    clauses.push({
+      kind: 'PAYMENT_FINAL',
+      anchor: 'FAC',
+      fromPages: true,
+      notes: clipNote('Tied to acceptance'),
+    });
+  }
+  clauses.push(...executionClausesFromText(text));
+  const conditional = second ? [{
+    label: 'Second L/C opening (conditional)',
+    offset: second.offset,
+    conditional: true,
+    notes: second.notes || 'Opened one month before the last lot, and before engineers are sent. Not the main opening date.',
+  }] : [];
+  return { clauses, conditional };
+}
+
+// The catalogue name is "Contract effective". The down-payment parenthetical
+// belongs only on a contract whose effectiveness, or whose delivery period,
+// actually starts when that payment arrives.
+export function effectiveMilestoneZh({ effectiveness, deliveryStart } = {}) {
+  if (effectiveness === 'PAYMENT_DOWN' || deliveryStart === 'PAYMENT_DOWN') {
+    return '合同生效（定金到账）';
+  }
+  return '合同生效';
+}
+
+export function readEffectiveBasis(files) {
+  let manual = null;
+  const clauses = [];
+  for (const file of files || []) {
+    if (file?.docType && file.docType !== 'COMMERCIAL') continue;
+    const t = file?.timeline;
+    if (t?.deliveryStartSource === 'manual'
+      && (t.deliveryStart === 'SIGNED' || t.deliveryStart === 'PAYMENT_DOWN')) {
+      manual = t.deliveryStart;
+    }
+    if (Array.isArray(t?.clauses)) {
+      clauses.push(...t.clauses.map((c) => ({ ...c, docType: c.docType || 'COMMERCIAL' })));
+    }
+    if (file?.summary?.fields) {
+      clauses.push(...timelineFromSummary(file.summary.fields).map((c) => ({ ...c, docType: 'COMMERCIAL' })));
+    }
+  }
+  const merged = mergeClauses(clauses);
+  const detected = detectDeliveryStart(merged);
+  const eff = merged.find((c) => c.kind === 'CONTRACT_EFFECTIVE');
+  const effBase = eff?.anchor || eff?.offset?.base || null;
+  const effectiveness = effBase === 'PAYMENT_DOWN' || effBase === 'SIGNED' ? effBase : null;
+  const deliveryStart = manual || detected.rule || null;
+  return {
+    effectiveness,
+    deliveryStart,
+    zh: effectiveMilestoneZh({ effectiveness, deliveryStart }),
+  };
+}
+
+function conditionalDue(item, byDate) {
+  if (!item?.offset) return item?.absolute || null;
+  const base = byDate.get(kindOfBase(item.offset.base));
+  if (!base) return null;
+  return shift(base, item.offset);
+}
+
+// A stored date that is not what this contract calculates. Applying empties
+// does not touch it. `clearDate` is a warranty that was counted from signing
+// when the text counts it from acceptance or a real bill of lading.
+export function annotateCorrections(proposals, existing) {
+  const rows = new Map((existing || []).map((m) => [m.kind, m]));
+  const signed = (proposals || []).find((p) => p.kind === 'CONTRACT_SIGNED')?.dueDate
+    || milestoneDay(rows.get('CONTRACT_SIGNED')?.dueDate);
+  return (proposals || []).map((p) => {
+    const row = rows.get(p.kind);
+    const stored = row ? milestoneDay(row.dueDate) : null;
+    if (!stored) return p;
+    if (stored === (p.dueDate || null)) return p;
+    if (p.dueDate) {
+      return { ...p, correction: true, storedDate: stored, storedDone: Boolean(row.doneAt) };
+    }
+    const months = Array.isArray(p.signingMonths) ? p.signingMonths : [];
+    const countedFromSigning = Boolean(p.rejectSigning && signed && months.some((n) => addMonths(signed, n) === stored));
+    if (countedFromSigning) {
+      return {
+        ...p,
+        correction: true,
+        clearDate: true,
+        storedDate: stored,
+        storedDone: Boolean(row.doneAt),
+      };
+    }
+    return p;
+  });
+}
+
 export function assembleProposals(groups, { today, deliveryStart } = {}) {
   const collected = [];
+  const pendingConditional = [];
   for (const g of groups || []) {
     const docType = g?.docType || null;
     for (const c of clausesForDocument(g?.clauses, docType)) {
@@ -978,6 +1423,11 @@ export function assembleProposals(groups, { today, deliveryStart } = {}) {
         fileId: g.fileId ?? c.fileId ?? null,
         filename: g.filename || c.filename || null,
       });
+    }
+    if (docType === 'COMMERCIAL') {
+      for (const item of g?.conditional || []) {
+        pendingConditional.push({ ...item, docType, fileId: g.fileId ?? null });
+      }
     }
   }
   const merged = mergeClauses(collected);
@@ -990,16 +1440,34 @@ export function assembleProposals(groups, { today, deliveryStart } = {}) {
   const normalized = manual && manual !== detected.rule
     ? normalizeDeliveryClauses(merged, { rule: manual, source: 'manual' })
     : merged;
+  const eff = normalized.find((c) => c.kind === 'CONTRACT_EFFECTIVE');
+  const effBase = eff?.anchor || eff?.offset?.base || null;
+  const effectiveness = effBase === 'PAYMENT_DOWN' || effBase === 'SIGNED' ? effBase : null;
+  const rule = manual || detected.rule || null;
+  const effectiveZh = effectiveMilestoneZh({ effectiveness, deliveryStart: rule });
   const proposals = redactProposalNotes(orderProposals(resolveTimeline(normalized, { today })))
-    .map(({ filename, ...rest }) => rest);
+    .map(({ filename, ...rest }) => (
+      rest.kind === 'CONTRACT_EFFECTIVE' ? { ...rest, zh: effectiveZh } : rest
+    ));
+  const byDate = new Map(proposals.map((p) => [p.kind, p.dueDate]));
+  const conditional = pendingConditional.map((item) => ({
+    label: item.label || 'Second L/C opening (conditional)',
+    notes: clipNote(redactMoney(item.notes)),
+    dueDate: conditionalDue(item, byDate),
+    conditional: true,
+    docType: item.docType || 'COMMERCIAL',
+    fileId: item.fileId || null,
+  }));
   return {
     proposals,
+    conditional,
     deliveryStart: {
-      rule: manual || detected.rule || null,
+      rule,
       detected: detected.rule,
       source: manual ? 'manual' : (detected.rule ? 'contract' : null),
       ambiguous: Boolean(detected.ambiguous) && !manual,
       evidence: detected.evidence || null,
+      effectiveZh,
     },
   };
 }
@@ -1045,18 +1513,41 @@ export function planAnchorShift({ clauses, existing, movedKind, before, after })
 // otherwise empty row are kept. doneAt is only set when creating a signed
 // milestone whose date is already past — replacing a date does not untick work
 // someone marked done, and it does not tick a payment we have not seen arrive.
-export function planMilestoneApply(existing, proposals, { replace = false } = {}) {
+export function planMilestoneApply(existing, proposals, { replace = false, corrections = false } = {}) {
   const byKind = new Map((existing || []).map((m) => [m.kind, m]));
   const seen = new Set();
   const actions = [];
   for (const p of proposals || []) {
     if (!p?.kind || seen.has(p.kind) || !KIND_SET.has(p.kind)) continue;
     seen.add(p.kind);
+    const row = byKind.get(p.kind);
+    if (corrections) {
+      // Only a row the suggestion marked as inconsistent. Empties stay on
+      // the other button, and a date the record no longer holds is skipped
+      // rather than written over a newer edit.
+      if (!p.correction || !row) {
+        actions.push({ kind: p.kind, action: 'skip', reason: p.correction ? 'missing' : 'not-correction' });
+        continue;
+      }
+      if (p.storedDate && milestoneDay(row.dueDate) !== p.storedDate) {
+        actions.push({ kind: p.kind, action: 'skip', reason: 'changed' });
+        continue;
+      }
+      const data = {};
+      if (p.clearDate) data.dueDate = null;
+      else if (p.dueDate && milestoneDay(row.dueDate) !== p.dueDate) data.dueDate = p.dueDate;
+      if (p.notes && !row.notes) data.notes = p.notes;
+      if (!Object.keys(data).length) {
+        actions.push({ kind: p.kind, action: 'skip', reason: 'nothing-new' });
+        continue;
+      }
+      actions.push({ kind: p.kind, action: 'update', data });
+      continue;
+    }
     if (!p.dueDate && !p.notes && !p.label) {
       actions.push({ kind: p.kind, action: 'skip', reason: 'empty' });
       continue;
     }
-    const row = byKind.get(p.kind);
     const filled = Boolean(row && (row.dueDate || row.doneAt));
     if (filled && !replace) {
       actions.push({ kind: p.kind, action: 'skip', reason: 'filled' });

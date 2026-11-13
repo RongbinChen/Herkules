@@ -17,7 +17,10 @@ import { milestoneReminderMail } from './followUpMail.js';
 // are on both sides of that language.
 export const MILESTONES = [
   { kind: 'CONTRACT_SIGNED',    en: 'Contract signed',            zh: '合同签署',        group: 'contract', lead: [7, 1] },
-  { kind: 'CONTRACT_EFFECTIVE', en: 'Contract effective',         zh: '合同生效（定金到账）', group: 'contract', lead: [14, 7, 1] },
+  // Down payment is not part of this name. A contract that really becomes
+  // effective on receipt, or that counts delivery from that receipt, says so
+  // on that follow-up (effectiveZh). Every other contract is just 合同生效.
+  { kind: 'CONTRACT_EFFECTIVE', en: 'Contract effective',         zh: '合同生效', group: 'contract', lead: [14, 7, 1] },
   // The buyer has to act on this one, so it wants the longest runway: by the
   // time it is a week out, chasing it is already an escalation.
   { kind: 'LC_OPEN_DEADLINE',   en: 'L/C to be opened by',        zh: '信用证开证截止',   group: 'lc', lead: [30, 14, 7, 1] },
