@@ -169,6 +169,16 @@ VITE_API_URL=http://localhost:3001  # 前端访问后端的地址
 # Node 默认优先 v6，高德看到的就不是白名单里那个地址，会返回 INVALID_USER_IP。
 # 不配这个 key 也能跑：地理编码退回问大模型，行程里不再出现驾车分钟数。
 AMAP_KEY=
+
+# GMT 现场服务（客户详情只读）。
+# GET {GMT_API_BASE}/api/internal/herkules/customers/:id/field-service
+# 请求头只有 X-GMT-Token，值是已有的 GMT_CUSTOMER_SYNC_TOKEN。
+# GMT 侧同一个秘密叫 HERKULES_GMT_TOKEN，拉客户时本来就带这个头。
+# 不要再造第二把钥匙，也不要加 Authorization Bearer。
+# 不配 token 时客户页只显示一行「未连接」，其余卡片照常。
+# GMT_API_BASE 缺省 https://gmt.herkulesgroup-china.com
+GMT_API_BASE=https://gmt.herkulesgroup-china.com
+GMT_CUSTOMER_SYNC_TOKEN=
 ```
 
 ---

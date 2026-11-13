@@ -6,6 +6,7 @@ import { randomBytes } from 'crypto';
 import { geocodeAddress } from '../services/geocode.js';
 import { visibleWhere } from './hotProjects.js';
 import { withCanDelete } from '../services/visitReportAccess.js';
+import { respondWithFieldService } from '../services/gmtFieldService.js';
 
 const router = express.Router();
 
@@ -193,6 +194,15 @@ const NOTE_INCLUDE = {
   orderBy: { createdAt: 'desc' },
   include: { author: { select: { id: true, name: true } } },
 };
+
+// GMT tasks and service reports for this customer. Same audience as the
+// customer page — any logged-in user — and not behind the contracts PIN.
+// The browser only talks to Herkules; the service token stays on the server.
+router.get('/:id/field-service', authenticateToken, (req, res) => {
+  respondWithFieldService(req, res, {
+    findCustomer: (id) => prisma.customer.findUnique({ where: { id }, select: { id: true } }),
+  });
+});
 
 // Get a single customer (hub view: events, linked tender projects, visit reports)
 router.get('/:id', authenticateToken, async (req, res) => {
