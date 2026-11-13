@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCaptionChange } from '../utils/visitReportCaptions'
+import { chooseImportedCustomer, chooseImportedDate, warningMessages } from '../utils/visitReportImport'
 import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
@@ -44,6 +45,8 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const [photos, setPhotos] = useState([])
   const photoInputRef = useRef(null)
   const [docFile, setDocFile] = useState(null) // .docx to auto-import
+  const [dateTouched, setDateTouched] = useState(false)
+  const [customerTouched, setCustomerTouched] = useState(Boolean(report?.customerId || report?.customer?.id))
   const [generating, setGenerating] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -117,10 +120,18 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const tables = Array.isArray(form.content?.tables) ? form.content.tables : []
   const showingOriginal = form.content?.bodySource === 'original' && form.content?.originalBody
   const draftTargets = Array.isArray(form.content?.targets) ? form.content.targets : []
+  const setTargets = (targets) => commitContent({ ...contentRef.current, targets })
   const setTarget = (index, patch) => {
     const current = Array.isArray(contentRef.current.targets) ? contentRef.current.targets : []
-    const targets = current.map((target, i) => (i === index ? { ...target, ...patch } : target))
-    commitContent({ ...contentRef.current, targets })
+    setTargets(current.map((target, i) => (i === index ? { ...target, ...patch } : target)))
+  }
+  const addTarget = () => {
+    const current = Array.isArray(contentRef.current.targets) ? contentRef.current.targets : []
+    setTargets([...current, { title: '', date: null, note: '' }])
+  }
+  const removeTarget = (index) => {
+    const current = Array.isArray(contentRef.current.targets) ? contentRef.current.targets : []
+    setTargets(current.filter((_, i) => i !== index))
   }
   const meta = form.content?.meta || {}
   const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
@@ -133,6 +144,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     try {
       const { data } = await customersAPI.create({ name })
       setCustList((prev) => [data, ...prev])
+      setCustomerTouched(true)
       set('customerId', data.id)
       setCustQuery(data.name)
       setCustOpen(false)
@@ -162,9 +174,13 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
         // A Word import must not replace a date or title the user already set.
         // Notes-only generate still prefers the date read out of the notes.
         title: data.preserved ? (f.title || data.title || '') : (data.title || f.title),
-        visitDate: data.preserved ? f.visitDate : (data.visitDate || f.visitDate),
+        visitDate: data.preserved
+          ? chooseImportedDate({ existingReport: Boolean(report), touched: dateTouched, current: f.visitDate, suggested: data.visitDate })
+          : (data.visitDate || f.visitDate),
         // Auto-link the customer the AI matched — only if none was chosen yet.
-        customerId: f.customerId || data.customerMatch?.id || '',
+        customerId: data.preserved
+          ? chooseImportedCustomer({ touched: customerTouched || Boolean(report), currentId: f.customerId, matchedId: data.customerMatch?.id })
+          : (f.customerId || data.customerMatch?.id || ''),
         summary: data.preserved ? (data.summary ?? f.summary) : (data.summary || ''),
         content: data.content || {},
         rawNotes: data.rawNotes || f.rawNotes,
@@ -347,7 +363,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs font-semibold text-slate-600">
               {t.visitDate}
-              <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => set('visitDate', e.target.value)} className="mt-1 min-w-0 max-w-full appearance-none" />
+              <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => { setDateTouched(true); set('visitDate', e.target.value) }} className="mt-1 min-w-0 max-w-full appearance-none" />
             </label>
             <div className="text-xs font-semibold text-slate-600">
               <div className="flex items-center justify-between">
@@ -364,12 +380,12 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                   disabled={readOnly}
                   placeholder={t.searchCustomerPlaceholder}
                   className="truncate pr-9"
-                  onChange={(e) => { setCustQuery(e.target.value); set('customerId', ''); setCustOpen(true) }}
+                  onChange={(e) => { setCustomerTouched(true); setCustQuery(e.target.value); set('customerId', ''); setCustOpen(true) }}
                   onFocus={() => setCustOpen(true)}
                   onBlur={() => setTimeout(() => setCustOpen(false), 150)}
                 />
                 {form.customerId && (
-                  <button type="button" onClick={() => { set('customerId', ''); setCustQuery('') }}
+                  <button type="button" onClick={() => { setCustomerTouched(true); set('customerId', ''); setCustQuery('') }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label={t.clear}>✕</button>
                 )}
                 {custOpen && !readOnly && custQuery.trim() && (
@@ -378,7 +394,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                       <li key={c.id}>
                         <button type="button"
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => { set('customerId', c.id); setCustQuery(c.name); setCustOpen(false) }}
+                          onClick={() => { setCustomerTouched(true); set('customerId', c.id); setCustQuery(c.name); setCustOpen(false) }}
                           className="block w-full truncate px-3 py-2 text-left text-sm text-slate-700 hover:bg-brand-50">
                           {c.name}
                         </button>
@@ -500,14 +516,19 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
 
           {showingOriginal ? (
             <div className="space-y-3">
-              {(form.content.extractionWarnings || []).length > 0 && (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">{t.extractionWarning}</p>
+              {warningMessages(form.content.extractionWarnings, t).length > 0 && (
+                <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                  {warningMessages(form.content.extractionWarnings, t).map((line) => <p key={line}>{line}</p>)}
+                </div>
               )}
               <label className="block text-xs font-semibold text-slate-600">
                 {t.originalReport}
                 <Textarea rows={12} value={form.content.originalBody || ''} onChange={(e) => setContent('originalBody', e.target.value)} className="mt-1 text-sm leading-relaxed" />
               </label>
-              <p className="text-xs leading-relaxed text-slate-500">{t.targetsSeparate}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs leading-relaxed text-slate-500">{t.targetsSeparate}</p>
+                <button type="button" onClick={addTarget} className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700">{t.addTarget}</button>
+              </div>
               {draftTargets.map((tg, i) => (
                 <div key={i} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 p-2 sm:grid-cols-3">
                   <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
@@ -522,6 +543,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                     {t.targetNote}
                     <Input value={tg.note || ''} onChange={(e) => setTarget(i, { note: e.target.value })} className="mt-1" />
                   </label>
+                  <button type="button" onClick={() => removeTarget(i)} className="text-left text-xs font-semibold text-slate-500 sm:col-span-3">{t.removeTarget}</button>
                 </div>
               ))}
             </div>

@@ -349,6 +349,12 @@ export function imageAttachments(attachments) {
   return sanitizeAttachmentList(attachments).filter((item) => item.storedName && item.kind === 'image');
 }
 
+// Every stored file, photos and the original Word document. Ownership checks
+// use this so one report cannot adopt, then delete, another report's file.
+export function storedAttachmentNames(attachments) {
+  return sanitizeAttachmentList(attachments).filter((item) => item.storedName).map((item) => item.storedName);
+}
+
 // Names already stored on some other report. A save may keep names this report
 // already owns, and names nobody owns yet (just generated), but not a file
 // that belongs to a different report.
@@ -356,7 +362,7 @@ export function storedNamesOwnedByOthers(reports, reportId) {
   const names = new Set();
   for (const report of reports || []) {
     if (reportId != null && report?.id === reportId) continue;
-    for (const item of imageAttachments(report?.attachments)) names.add(item.storedName);
+    for (const name of storedAttachmentNames(report?.attachments)) names.add(name);
   }
   return names;
 }

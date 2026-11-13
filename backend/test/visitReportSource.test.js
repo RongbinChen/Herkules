@@ -9,15 +9,23 @@ import { deflateRawSync } from 'node:zlib';
 import { reportToMarkdown } from '../src/services/visitReportExport.js';
 import { targetsFromReply } from '../src/services/visitReport.js';
 import { sanitizeAttachment } from '../src/services/visitReportPhotos.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   assembleFromDocx,
   assembleOriginalBody,
+  assertPreservedContent,
+  enrichPreservedPhotos,
   isPreservedBody,
+  MAX_ORIGINAL_CHARS,
+  parseSourceDate,
   preservedDraft,
   reminderTargets,
   reprocessPreservedFromRawNotes,
   sanitizeOriginalBody,
+  sourceMeta,
 } from '../src/services/visitReportSource.js';
+import { retainSavableAttachments, storedNamesOwnedByOthers } from '../src/services/visitReportPhotos.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -117,14 +125,14 @@ function sourceDocx() {
   ]);
 }
 
-test('a text box the markdown missed is appended, and script tags are stripped', () => {
+test('a text box the markdown missed is appended, and angle brackets stay as text', () => {
   const packed = assembleOriginalBody({
     markdown: 'X axis driven system is with problem\n\n<script>alert(1)</script>Beijing No.1 people working on this matter',
     documentXml: `<w:document><w:body><w:p><w:r><w:pict><w:txbxContent><w:p><w:r><w:t>full hydrostatic, full casted part, sufficient reference</w:t></w:r></w:p></w:txbxContent></w:pict></w:r></w:p></w:body></w:document>`,
   });
   assert.match(packed.originalBody, /full hydrostatic, full casted part, sufficient reference/);
   assert.match(packed.originalBody, /X axis driven system is with problem/);
-  assert.doesNotMatch(packed.originalBody, /<script>/);
+  assert.match(packed.originalBody, /<script>alert\(1\)<\/script>/);
   assert.ok(packed.warnings.length > 0);
 });
 
@@ -210,6 +218,98 @@ test('export prints the retained body and does not add a second structured copy'
   });
   assert.match(legacy, /## Customer Needs/);
   assert.equal(isPreservedBody({ needs: 'Capacity is short.' }), false);
+});
+
+test('literal angle-bracket notation is kept, and an oversized body is rejected', () => {
+  assert.equal(sanitizeOriginalBody('gap <X> and <10 mm>'), 'gap <X> and <10 mm>');
+  assert.throws(() => sanitizeOriginalBody('x'.repeat(MAX_ORIGINAL_CHARS + 1)), (err) => err.code === 'BODY_TOO_LARGE');
+  assert.throws(
+    () => assertPreservedContent({ bodySource: 'original', originalBody: 12 }),
+    (err) => err.code === 'BODY_TYPE',
+  );
+  const kept = assertPreservedContent({ bodySource: 'original', originalBody: 'gap <X>' });
+  assert.equal(kept.originalBody, 'gap <X>');
+  assert.equal(assertPreservedContent({ needs: 'legacy' }).needs, 'legacy');
+});
+
+test('a source date and company are read only when the line is unambiguous', () => {
+  const meta = sourceMeta('Date of Visit: 14 July 2026\nCompany: Northline Works\n\nX axis driven system is with problem');
+  assert.equal(meta.visitDate, '2026-07-14');
+  assert.equal(meta.customerName, 'Northline Works');
+  assert.equal(parseSourceDate('07/14/2026'), null);
+  assert.equal(sourceMeta('No header here').visitDate, null);
+  assert.equal(sourceMeta('No header here').customerName, null);
+});
+
+test('reprocess does not replace a preserved body the user has edited', () => {
+  const edited = 'Edited body that must stay. X axis driven system is with problem';
+  const update = reprocessPreservedFromRawNotes({
+    rawNotes: 'Older import source',
+    content: {
+      bodySource: 'original',
+      originalBody: edited,
+      targets: [{ title: 'Follow the L/C terms', date: '2026-11-30' }],
+    },
+  });
+  assert.equal(update.applied, false);
+  assert.equal(update.reason, 'already-preserved');
+  assert.equal(update.content.originalBody, edited);
+  assert.equal(update.rawNotes, undefined);
+});
+
+test('caption and photo failures do not drop the body or invent a caption', async () => {
+  const body = 'X axis driven system is with problem';
+  const absent = await enrichPreservedPhotos(
+    [{ name: 'a.jpg', buffer: Buffer.from('img') }],
+    { geminiConfigured: false, captionImage: async () => 'should not run', writePhoto: async (photo) => ({ storedName: 'a.jpg', caption: photo.caption, kind: 'image' }) },
+  );
+  assert.equal(absent.photos[0].caption, '');
+  assert.equal(absent.warnings[0].code, 'caption-unavailable');
+
+  const rejected = await enrichPreservedPhotos(
+    [{ name: 'a.jpg' }],
+    { geminiConfigured: true, captionImage: async () => { throw new Error('timeout'); }, writePhoto: async (photo) => ({ storedName: 'a.jpg', caption: photo.caption }) },
+  );
+  assert.equal(rejected.photos[0].caption, '');
+  assert.equal(rejected.warnings[0].code, 'caption-failed');
+
+  const stored = await enrichPreservedPhotos(
+    [{ name: 'a.jpg' }],
+    { geminiConfigured: true, captionImage: async () => { throw new Error('rejected'); }, writePhoto: async () => { throw new Error('disk'); } },
+  );
+  assert.equal(stored.photos.length, 0);
+  assert.ok(stored.warnings.some((warning) => warning.code === 'photo-not-stored'));
+  assert.equal(preservedDraft({ originalBody: body, warnings: stored.warnings, summaryError: 'down', targetsError: 'down' }).content.originalBody, body);
+});
+
+test('another report cannot claim this report\'s original Word file', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'vr-own-'));
+  const storedName = '11111111-1111-4111-8111-111111111111.docx';
+  try {
+    await writeFile(path.join(root, storedName), 'docx-bytes');
+    const owner = { id: 1, attachments: [{ name: 'visit.docx', kind: 'document', storedName }] };
+    const taken = storedNamesOwnedByOthers([owner], 2);
+    assert.equal(taken.has(storedName), true);
+    assert.equal(retainSavableAttachments(
+      [{ name: 'visit.docx', kind: 'document', storedName }],
+      { storageRoot: root, takenNames: taken, ownedNames: [] },
+    ), null);
+    const kept = retainSavableAttachments(
+      [{ name: 'visit.docx', kind: 'document', storedName }],
+      { storageRoot: root, takenNames: taken, ownedNames: [storedName] },
+    );
+    assert.equal(kept[0].kind, 'document');
+    assert.equal(kept[0].storedName, storedName);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+  const route = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/routes/visitReports.js'), 'utf8');
+  const save = route.slice(route.indexOf('router.put'), route.indexOf('router.get(\'/:id/attachments'));
+  assert.match(save, /storedAttachmentNames\(existing\.attachments\)/);
+  assert.doesNotMatch(save, /imageAttachments\(existing\.attachments\)\.map/);
+  const importer = route.slice(route.indexOf('async function respondPreservedImport'), route.indexOf('router.post(\'/generate\''));
+  assert.doesNotMatch(importer, /status\(503\)/);
+  assert.match(importer, /enrichPreservedPhotos/);
 });
 
 test('a stored Word file stays a document, not a photo', () => {

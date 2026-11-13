@@ -7,6 +7,7 @@ import VisitReportModal from './VisitReportModal'
 import { useVRLang, STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
+import { warningMessages } from '../utils/visitReportImport'
 import ReportPhotos from './visit-report/ReportPhotos'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
@@ -227,8 +228,10 @@ export default function VisitReportDetail() {
                 )}
               </div>
               <p className="mb-2 text-xs leading-relaxed text-slate-500">{t.originalReportNote}</p>
-              {(content.extractionWarnings || []).length > 0 && (
-                <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">{t.extractionWarning}</p>
+              {warningMessages(content.extractionWarnings, t).length > 0 && (
+                <div className="mb-3 space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                  {warningMessages(content.extractionWarnings, t).map((line) => <p key={line}>{line}</p>)}
+                </div>
               )}
               <OriginalBody markdown={content.originalBody} />
             </section>

@@ -79,3 +79,22 @@ test('an imported report shows the original body and its targets, not a rewritte
   assert.doesNotMatch(html, /This rewritten section must not appear/)
   assert.doesNotMatch(html, /<textarea/)
 })
+
+test('editing an imported report can add a target when extraction found none', async () => {
+  const { default: VisitReportModal } = await loadJsxModule(path.join(here, '../VisitReportModal.jsx'))
+  const report = {
+    id: 8,
+    title: 'Northline visit',
+    status: 'DRAFT',
+    visitDate: '2026-11-12T00:00:00.000Z',
+    canEdit: true,
+    author: { id: 1, name: 'Ada North' },
+    content: { bodySource: 'original', originalBody: 'X axis driven system is with problem', targets: [] },
+  }
+  const html = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, startEditing: true, lang: 'en', onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(html, /Add target/)
+  assert.match(html, /X axis driven system is with problem/)
+  assert.doesNotMatch(html, /Regenerate caption/)
+})

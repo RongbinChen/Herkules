@@ -22,17 +22,29 @@ export function isPreservedBody(content) {
   );
 }
 
+// Null bytes only. Angle brackets such as "<X>" are technical text. The page
+// renders them as text, and the Word export is asked not to treat them as HTML.
 export function sanitizeOriginalBody(text) {
-  let s = String(text ?? '').replace(/\u0000/g, '');
-  s = s.replace(/<script[\s\S]*?<\/script>/gi, '');
-  s = s.replace(/<style[\s\S]*?<\/style>/gi, '');
-  s = s.replace(/<\/?[a-zA-Z!][^>\n]*>/g, '');
+  if (typeof text !== 'string') {
+    const err = new Error('Original report text must be text.');
+    err.code = 'BODY_TYPE';
+    throw err;
+  }
+  const s = text.replace(/\u0000/g, '');
   if (s.length > MAX_ORIGINAL_CHARS) {
     const err = new Error('The report text is too large to store.');
     err.code = 'BODY_TOO_LARGE';
     throw err;
   }
-  return s.replace(/\n{4,}/g, '\n\n\n').trim();
+  return s;
+}
+
+// Legacy structured content passes through. A preserved body is checked on
+// create and update so a huge or non-text body is rejected instead of cut.
+export function assertPreservedContent(content) {
+  if (content == null || typeof content !== 'object' || Array.isArray(content)) return content;
+  if (content.bodySource !== BODY_SOURCE) return content;
+  return { ...content, originalBody: sanitizeOriginalBody(content.originalBody) };
 }
 
 export function normalizeSpace(value) {
@@ -110,7 +122,11 @@ export function assembleOriginalBody({ markdown = '', documentXml = '', headerXm
     warnings.push({ code: 'footer', count: missingFooters.length });
     body = appendRecovered(body, missingFooters, 'footer');
   }
-  body = sanitizeOriginalBody(body);
+  if (body.length > MAX_ORIGINAL_CHARS) {
+    const err = new Error('The report text is too large to store.');
+    err.code = 'BODY_TOO_LARGE';
+    throw err;
+  }
   if (!normalizeSpace(body)) {
     const err = new Error('No report text could be read from this Word file.');
     err.code = 'EMPTY_BODY';
@@ -153,6 +169,58 @@ export function preservedContent({
 }
 
 // Summary and targets are optional. A failure there must not drop the body.
+const MONTHS = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+function isoDate(year, month, day) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+// Only unambiguous dates. A slash date such as 07/14/2026 is left unset
+// rather than guessed, and nothing here invents "today".
+export function parseSourceDate(raw) {
+  const text = normalizeSpace(raw).replace(/[,.]/g, '');
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) return isoDate(Number(match[1]), Number(match[2]), Number(match[3]));
+  match = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (match) return isoDate(Number(match[1]), Number(match[2]), Number(match[3]));
+  match = text.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (match && MONTHS[match[2].toLowerCase()]) {
+    return isoDate(Number(match[3]), MONTHS[match[2].toLowerCase()], Number(match[1]));
+  }
+  match = text.match(/^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})$/);
+  if (match && MONTHS[match[1].toLowerCase()]) {
+    return isoDate(Number(match[3]), MONTHS[match[1].toLowerCase()], Number(match[2]));
+  }
+  return null;
+}
+
+// Header lines only. The body text is not rewritten to match them.
+export function sourceMeta(text) {
+  const lines = String(text || '').split(/\n/).slice(0, 80);
+  let visitDate = null;
+  let customerName = null;
+  for (const line of lines) {
+    if (!visitDate) {
+      const date = line.match(/^\s*(?:date of visit|visit date|日期|拜访日期)\s*[:：]\s*(.+)$/i);
+      if (date) visitDate = parseSourceDate(date[1]);
+    }
+    if (!customerName) {
+      const company = line.match(/^\s*(?:company|customer|公司|客户)\s*[:：]\s*(.+)$/i);
+      const name = company ? normalizeSpace(company[1]) : '';
+      if (name.length >= 2 && name.length <= 180) customerName = name;
+    }
+  }
+  return { visitDate, customerName };
+}
+
 export function preservedDraft({
   originalBody,
   warnings = [],
@@ -161,6 +229,8 @@ export function preservedDraft({
   targets = [],
   targetsError = null,
   title = null,
+  visitDate = null,
+  customerName = null,
 }) {
   const targetsOk = !targetsError;
   return {
@@ -169,8 +239,8 @@ export function preservedDraft({
     summary: summary || null,
     summaryError: summaryError || null,
     targetsError: targetsError || null,
-    visitDate: null,
-    customerName: null,
+    visitDate: visitDate || null,
+    customerName: customerName || null,
     aiModel: null,
     content: preservedContent({
       originalBody,
@@ -196,19 +266,26 @@ export function titleFromSource(markdown) {
   return null;
 }
 
-// Restore a saved report's body from its stored source text. Keeps the targets
-// already on the row. Does not return customer, date, title, status, summary,
-// or attachments, and does not create or delete reminders. Not run automatically.
+// First conversion copies rawNotes into the body and keeps the targets already
+// saved. rawNotes stays the import evidence. Once a report is preserved, this
+// does not replace originalBody, including when someone has edited it.
+// It does not return customer, date, title, status, summary, rawNotes, or
+// attachments, and it does not create or delete reminders. Not run automatically.
 export function reprocessPreservedFromRawNotes(report) {
-  const originalBody = sanitizeOriginalBody(report?.rawNotes || '');
+  const prev = report?.content && typeof report.content === 'object' ? report.content : {};
+  const targets = Array.isArray(prev.targets) ? prev.targets : [];
+  if (isPreservedBody(prev)) {
+    return { applied: false, reason: 'already-preserved', content: prev };
+  }
+  const originalBody = sanitizeOriginalBody(typeof report?.rawNotes === 'string' ? report.rawNotes : '');
   if (!normalizeSpace(originalBody)) {
     const err = new Error('Stored source text is empty.');
     err.code = 'NO_SOURCE';
     throw err;
   }
-  const prev = report?.content && typeof report.content === 'object' ? report.content : {};
-  const targets = Array.isArray(prev.targets) ? prev.targets : [];
   return {
+    applied: true,
+    reason: 'restored-from-source',
     content: preservedContent({
       originalBody,
       targets,
@@ -221,6 +298,34 @@ export function reprocessPreservedFromRawNotes(report) {
       targetsModel: prev.targetsModel || null,
     }),
   };
+}
+
+// Captions are optional. A missing key, a rejection, or a timeout must not
+// drop the body. Empty caption means none was written. Nothing is invented.
+export async function enrichPreservedPhotos(fresh, { captionImage, writePhoto, geminiConfigured }) {
+  const warnings = [];
+  const saved = [];
+  const list = Array.isArray(fresh) ? fresh : [];
+  if (list.length && !geminiConfigured) {
+    warnings.push({ code: 'caption-unavailable', count: list.length });
+  }
+  for (const photo of list) {
+    let caption = '';
+    if (geminiConfigured) {
+      try {
+        caption = String(await captionImage(photo) || '').trim();
+      } catch {
+        warnings.push({ code: 'caption-failed', count: 1 });
+      }
+    }
+    try {
+      const meta = await writePhoto({ ...photo, caption });
+      if (meta) saved.push(meta);
+    } catch {
+      warnings.push({ code: 'photo-not-stored', count: 1 });
+    }
+  }
+  return { photos: saved, warnings };
 }
 
 // Dated targets become calendar reminders on create. Updates do not call this.

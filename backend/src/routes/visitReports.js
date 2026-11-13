@@ -23,6 +23,7 @@ import {
   fitImageForDocx,
   gatherPhotoCandidates,
   imageAttachments,
+  storedAttachmentNames,
   mapPool,
   mergeAttachmentUpdate,
   mergeGeneratedPhotos,
@@ -37,9 +38,13 @@ import {
 } from '../services/visitReportPhotos.js';
 import {
   assembleFromDocx,
+  assertPreservedContent,
+  enrichPreservedPhotos,
   preservedDraft,
   reminderTargets,
+  sourceMeta,
   titleFromSource,
+  isPreservedBody,
 } from '../services/visitReportSource.js';
 import { normalizeCompany } from '../services/companyName.js';
 import {
@@ -335,31 +340,37 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
     docxBuffer: doc.buffer,
     existing: parseExistingAttachments(req.body.existingAttachments),
   });
-  if (files.length > 0 && !isGeminiConfigured()) {
-    return res.status(503).json({ error: GEMINI_MISSING });
-  }
-
   const language = sourceLanguage(packed.originalBody);
-  const captionOne = async (buffer, mimeType, extra) => {
-    const prompt = buildCaptionPrompt({
-      language,
-      context: captionContext({
-        visitDate,
-        nearby: extra.nearby,
-        ocrText: extra.ocrText,
-        draft: { summary: packed.originalBody.slice(0, 500) },
-      }),
-    });
-    return captionVisitPhoto(buffer, mimeType, prompt);
-  };
-  const captioned = await mapPool(gathered.fresh, 3, async (photo) => ({
-    ...photo,
-    caption: await captionOne(photo.buffer, photo.mimeType, { nearby: photo.nearby, ocrText: '' }),
-  }));
-  const savedPhotos = await writePhotoFiles(captioned, visitReportStorageRoot());
-  let attachments = mergeGeneratedPhotos(gathered.existing, savedPhotos) || [];
-  const original = await writeOriginalDocument(doc.buffer, doc.originalname, visitReportStorageRoot());
-  if (original) attachments = [...attachments, original];
+  const enriched = await enrichPreservedPhotos(gathered.fresh, {
+    geminiConfigured: isGeminiConfigured(),
+    captionImage: async (photo) => {
+      const prompt = buildCaptionPrompt({
+        language,
+        context: captionContext({
+          visitDate,
+          nearby: photo.nearby,
+          draft: { summary: packed.originalBody.slice(0, 500) },
+        }),
+      });
+      const text = await captionVisitPhoto(photo.buffer, photo.mimeType, prompt);
+      if (!String(text || '').trim()) throw new Error('caption failed');
+      return text;
+    },
+    writePhoto: async (photo) => {
+      const [meta] = await writePhotoFiles([photo], visitReportStorageRoot());
+      return meta || null;
+    },
+  });
+  let attachments = mergeGeneratedPhotos(gathered.existing, enriched.photos) || [];
+  let originalWarning = null;
+  try {
+    const original = await writeOriginalDocument(doc.buffer, doc.originalname, visitReportStorageRoot());
+    if (original) attachments = [...attachments, original];
+  } catch (err) {
+    originalWarning = { code: 'original-file-failed', count: 1 };
+    console.error('[visit-report] original file not stored:', err.message);
+  }
+  const warnings = [...packed.warnings, ...enriched.warnings, ...(originalWarning ? [originalWarning] : [])];
 
   let summary = null;
   let summaryError = null;
@@ -378,14 +389,17 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
     console.error('[visit-report] targets kept off the body:', err.message);
   }
 
+  const meta = sourceMeta(packed.originalBody);
   const draft = preservedDraft({
     originalBody: packed.originalBody,
-    warnings: packed.warnings,
+    warnings,
     summary,
     summaryError,
     targets,
     targetsError,
     title: titleFromSource(packed.originalBody),
+    visitDate: meta.visitDate,
+    customerName: meta.customerName,
   });
   let customerMatch = null;
   if (!customerId && draft.customerName) {
@@ -396,7 +410,7 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
     customerMatch,
     rawNotes: packed.originalBody,
     attachments,
-    warnings: packed.warnings,
+    warnings,
   });
 }
 
@@ -560,7 +574,17 @@ router.post('/', async (req, res) => {
     if (!title || !visitDate) return res.status(400).json({ error: 'title 与 visitDate 必填' });
     // Imported reports are often written by someone else — credit the "From"
     // person when they map to a system user (uploader stays the fallback).
-    const authorId = await resolveAuthorId(content, req.user.userId);
+    let storedContent = content ?? null;
+    try {
+      storedContent = assertPreservedContent(storedContent);
+    } catch (err) {
+      const status = err.code === 'BODY_TOO_LARGE' ? 413 : 400;
+      if (err.code === 'BODY_TOO_LARGE' || err.code === 'BODY_TYPE') {
+        return res.status(status).json({ error: err.message });
+      }
+      throw err;
+    }
+    const authorId = await resolveAuthorId(storedContent, req.user.userId);
     const storedAttachments = await attachmentsFromClient(attachments);
     const report = await prisma.visitReport.create({
       data: {
@@ -570,7 +594,7 @@ router.post('/', async (req, res) => {
         threadKey: threadKey || null,
         authorId,
         summary: summary || null,
-        content: content ?? null,
+        content: storedContent,
         rawNotes: rawNotes || null,
         attachments: storedAttachments,
         status: status === 'FINAL' ? 'FINAL' : 'DRAFT',
@@ -581,7 +605,7 @@ router.post('/', async (req, res) => {
     // AI-extracted targets with a concrete date → REMINDER calendar events for
     // the author (create only — updates never duplicate reminders).
     let remindersCreated = 0;
-    const targets = reminderTargets(content);
+    const targets = reminderTargets(storedContent);
     for (const tg of targets) {
       if (!tg?.title || !/^\d{4}-\d{2}-\d{2}$/.test(String(tg.date || ''))) continue;
       try {
@@ -626,15 +650,29 @@ router.put('/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Not found' });
     if (!canEdit(existing, req.user)) return res.status(403).json({ error: '只有创建人或管理员可编辑' });
     const { title, visitDate, customerId, threadKey, summary, content, rawNotes, status, attachments } = req.body;
+    let storedContent = content;
+    if (content !== undefined) {
+      try {
+        storedContent = assertPreservedContent(content);
+      } catch (err) {
+        const statusCode = err.code === 'BODY_TOO_LARGE' ? 413 : 400;
+        if (err.code === 'BODY_TOO_LARGE' || err.code === 'BODY_TYPE') {
+          return res.status(statusCode).json({ error: err.message });
+        }
+        throw err;
+      }
+    }
     let storedAttachments;
     if (attachments !== undefined) {
       const merged = mergeAttachmentUpdate(existing.attachments, attachments);
-      const owned = imageAttachments(existing.attachments).map((item) => item.storedName);
+      const owned = storedAttachmentNames(existing.attachments);
       storedAttachments = await attachmentsFromClient(merged || [], {
         reportId: existing.id,
         ownedNames: owned,
       });
     }
+    // rawNotes is the import evidence. Editing the displayed body does not replace it.
+    const keepSource = isPreservedBody(existing.content) && typeof existing.rawNotes === 'string' && existing.rawNotes;
     const report = await prisma.visitReport.update({
       where: { id: existing.id },
       data: {
@@ -643,8 +681,8 @@ router.put('/:id', async (req, res) => {
         ...(customerId !== undefined ? { customerId: customerId ? parseInt(customerId) : null } : {}),
         ...(threadKey !== undefined ? { threadKey: threadKey || null } : {}),
         ...(summary !== undefined ? { summary: summary || null } : {}),
-        ...(content !== undefined ? { content } : {}),
-        ...(rawNotes !== undefined ? { rawNotes: rawNotes || null } : {}),
+        ...(content !== undefined ? { content: storedContent } : {}),
+        ...(keepSource ? { rawNotes: existing.rawNotes } : (rawNotes !== undefined ? { rawNotes: rawNotes || null } : {})),
         ...(status !== undefined ? { status: status === 'FINAL' ? 'FINAL' : 'DRAFT' } : {}),
         ...(attachments !== undefined ? { attachments: storedAttachments } : {}),
       },
@@ -751,7 +789,7 @@ router.post('/:id/photos/:storedName/caption', async (req, res) => {
 // ── Export to Word (.docx via pandoc) ───────────────────────────────────────────
 const runPandoc = (mdPath, docxPath, cwd) =>
   new Promise((resolve, reject) => {
-    execFile('pandoc', [mdPath, '-f', 'markdown', '-t', 'docx', '-o', docxPath], { cwd }, (err) =>
+    execFile('pandoc', [mdPath, '-f', 'markdown-raw_html', '-t', 'docx', '-o', docxPath], { cwd }, (err) =>
       err ? reject(err) : resolve());
   });
 
