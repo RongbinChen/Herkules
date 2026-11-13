@@ -12,7 +12,7 @@ import { requireUnlock } from './contracts.js';
 import { readContractUnlock } from '../services/contractUnlock.js';
 import { maySuggestContractValue, presentContractValue, viewerMaySeeValue } from '../services/followUpValue.js';
 import {
-  MILESTONES, MILESTONE_BY_KIND, MILESTONE_KINDS, chinaDay, reminderDue,
+  MILESTONES, MILESTONE_BY_KIND, MILESTONE_KINDS, chinaDay, milestoneStanding,
   reminderRecipients,
 } from '../services/followUps.js';
 import { milestoneReminderMail } from '../services/followUpMail.js';
@@ -432,10 +432,12 @@ router.post('/:id/milestones/:kind/notify', async (req, res) => {
     if (!person?.email) return res.status(400).json({ error: 'Nobody with an email address is assigned to this milestone' });
 
     const { cc, bcc } = await reminderRecipients(person.email);
-    // A manual send reports the real standing of the date, not a fixed
-    // "reminder" wording — asking for it the day after it slipped should say
-    // so. reminderDue() returns null when nothing is due, so fall back.
-    const due = reminderDue({ ...m, lastRemindedOn: null }) || { urgency: 'upcoming', delta: 0 };
+    // A manual send reports the real China-calendar standing, including on
+    // days the 08:00 sweep stays quiet. reminderDue() is that sweep's send
+    // policy and returns null off the lead-day list; it is not the wording,
+    // and a quiet day is not "due in 0 days".
+    const due = milestoneStanding(m);
+    if (!due) return res.status(400).json({ error: 'This milestone has no date yet' });
     const ok = await milestoneReminderMail({
       to: person.email, cc, bcc,
       milestone: m, followUp: m.followUp,
