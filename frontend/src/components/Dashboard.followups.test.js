@@ -78,16 +78,28 @@ const soon = {
   ownerName: 'Becky Chen',
 }
 
-test('a follow-up row leads with the serial, the next action, and the overdue list', async () => {
-  const { FollowUpStatusRow } = await loadJsxModule(path.join(here, 'DashboardFollowUps.jsx'))
+test('a follow-up row leads with the customer, then a gray serial, the next action, and the overdue list', async () => {
+  const { FollowUpStatusRow, followUpStripIdentity } = await loadJsxModule(path.join(here, 'DashboardFollowUps.jsx'))
+  const identity = followUpStripIdentity(chase)
+  assert.equal(identity.primary, 'Baowu Steel')
+  assert.equal(identity.serial, '5.1022')
+  assert.equal(identity.showSerial, true)
+  assert.equal(identity.hint, '')
+  assert.equal(identity.tooltip, 'Baowu Steel · Serial 5.1022 · #HRC-9 · Roll grinder')
+
   const html = render(createElement(FollowUpStatusRow, { item: chase }))
 
   assert.match(html, /href="\/followups\/2"/)
-  assert.match(html, /Serial/)
-  assert.match(html, /5\.1022/)
-  // Customer once, as orientation. The project title stays in the tooltip.
-  assert.equal(html.split('Baowu Steel').length - 1, 2) // visible hint + title attribute
-  assert.match(html, /title="Serial 5\.1022 · Baowu Steel · #HRC-9 · Roll grinder"/)
+  // Customer is the title. The serial follows it, in the muted color, and is
+  // not the semibold title. The project title stays in the tooltip.
+  assert.match(html, /font-semibold text-slate-900">Baowu Steel</)
+  assert.match(html, /text-xs font-normal text-slate-500"[^>]*>[\s\S]*Serial[\s\S]*5\.1022/)
+  const nameAt = html.indexOf('font-semibold text-slate-900">Baowu Steel')
+  const serialAt = html.indexOf('text-slate-500')
+  assert.ok(nameAt > -1 && serialAt > nameAt)
+  assert.doesNotMatch(html.slice(nameAt, serialAt), /Serial|5\.1022/)
+  assert.equal(html.split('Baowu Steel').length - 1, 2) // visible title + title attribute
+  assert.match(html, /title="Baowu Steel · Serial 5\.1022 · #HRC-9 · Roll grinder"/)
   assert.doesNotMatch(html, /Baowu Steel · Baowu Steel/)
   assert.doesNotMatch(html, /Baowu Steel —/)
   assert.match(html, />Overdue</)
@@ -159,6 +171,7 @@ test('the title line does not repeat the customer when the order title already c
 
   const identity = followUpStripIdentity(item)
   assert.equal(identity.serial, '')
+  assert.equal(identity.showSerial, false)
   assert.equal(identity.primary, name)
   assert.equal(identity.hint, '#GRG-FCJM-202608A')
   assert.equal(identity.tooltip, `${name} · #GRG-FCJM-202608A`)
@@ -166,6 +179,9 @@ test('the title line does not repeat the customer when the order title already c
 
   const html = render(createElement(FollowUpStatusRow, { item }))
   assert.equal(html.split(name).length - 1, 2) // visible name + the same name in the title attribute
+  assert.match(html, /font-semibold text-slate-900">[^<]*Ltd\.</)
+  assert.doesNotMatch(html, /Serial/)
+  assert.doesNotMatch(html, /Ltd\.\s*·\s*·/)
   assert.doesNotMatch(html, /Ltd\.\s*·\s*Shenyang/)
   assert.doesNotMatch(html, /Ltd\.\s*—\s*GRG/)
   assert.match(html, /#GRG-FCJM-202608A/)
@@ -199,9 +215,9 @@ test('a serial with nothing overdue shows the next action and no overdue list', 
       moreDates: 0,
     },
   }))
-  assert.match(html, /Serial/)
-  assert.match(html, /SN-88/)
-  assert.match(html, /Ansteel/)
+  assert.match(html, /font-semibold text-slate-900">Ansteel</)
+  assert.match(html, /text-slate-500"[^>]*>[\s\S]*Serial[\s\S]*SN-88/)
+  assert.ok(html.indexOf('Ansteel') < html.indexOf('>Serial<'))
   assert.match(html, /L\/C to be opened by/)
   assert.match(html, /in 5d/)
   assert.doesNotMatch(html, />Overdue</)
@@ -245,6 +261,26 @@ test('a serial with nothing overdue shows the next action and no overdue list', 
   assert.match(only, /L\/C to be opened by/)
   assert.doesNotMatch(only, /Also overdue/)
   assert.equal(only.split('L/C open').length - 1, 0)
+
+  // No customer: the serial is the title, with no second gray "Serial" and no empty name.
+  const serialOnly = render(createElement(FollowUpStatusRow, {
+    item: {
+      id: 6,
+      title: 'No customer yet',
+      orderNo: 'HRC-6',
+      machineSerial: '9.0001',
+      status: 'ACTIVE',
+      customerName: '',
+      ownerName: 'Ada',
+      next: soon,
+      overdue: [],
+      dates: [soon],
+    },
+  }))
+  assert.match(serialOnly, /font-semibold text-slate-900">9\.0001</)
+  assert.equal(serialOnly.split('>Serial<').length - 1, 0)
+  assert.match(serialOnly, /#HRC-6/)
+  assert.doesNotMatch(serialOnly, /·\s*·/)
 })
 
 test('on hold and an empty timeline stay one short line', async () => {

@@ -2,9 +2,11 @@ import { Link } from 'react-router-dom'
 
 // What the home-page row is allowed to lead with. The stored title is often
 // "customer — order number", and joining that to the customer name printed
-// the customer twice and pushed the order number off the line. The serial is
-// the name of the machine. Without one, the customer (once) or the order
-// number still identifies the row. A title that only repeats those is dropped.
+// the customer twice and pushed the order number off the line. The customer
+// is the name of the row. The serial stays beside it, quieter, and is left
+// off entirely when blank so the line does not keep an empty "Serial" or a
+// dangling separator. Without a customer, the serial or the order number
+// still identifies the row. A title that only repeats those is dropped.
 function titleEchoes(title, customer, orderNo) {
   if (!title) return true
   if (customer && title === customer) return true
@@ -22,11 +24,15 @@ export function followUpStripIdentity(item) {
 
   let primary = 'Order'
   let hint = ''
-  if (serial) {
-    primary = serial
-    hint = customer || orderLabel
-  } else if (customer) {
+  // The customer leads. A serial is drawn next to it, in gray, and does not
+  // take the title slot. The order number only fills that secondary slot
+  // when there is no serial to show. With no customer, the serial itself is
+  // the title.
+  if (customer) {
     primary = customer
+    hint = serial ? '' : orderLabel
+  } else if (serial) {
+    primary = serial
     hint = orderLabel
   } else if (orderLabel) {
     primary = orderLabel
@@ -38,21 +44,31 @@ export function followUpStripIdentity(item) {
   const push = (part) => {
     if (part && !tooltip.includes(part)) tooltip.push(part)
   }
+  if (customer) push(customer)
   if (serial) push(`Serial ${serial}`)
   else push(primary)
-  push(customer)
   push(orderLabel)
   if (!titleEchoes(title, customer, orderNo)) push(title)
 
-  return { serial, primary, hint, tooltip: tooltip.join(' · ') }
+  return {
+    serial,
+    primary,
+    hint,
+    // Gray serial sits beside the customer. It is not repeated when the
+    // serial itself is the only name on the line.
+    showSerial: Boolean(serial && customer),
+    tooltip: tooltip.join(' · '),
+  }
 }
 
 // One live order on the home page. The follow-up record is one click away.
-// The row leads with the machine serial (or a short fallback), then the next
-// action, then the overdue milestones when there are any. Upcoming dates that
-// are not late stay off this strip. Desktop keeps the next due date on the
-// title line. On a phone the date sits with the badge, and the name gets the
-// full width so it cannot be pushed out of the row.
+// The row leads with the customer (or a short fallback). A machine serial,
+// when there is one, sits next to that name in gray. Then the next action,
+// then the overdue milestones when there are any. Upcoming dates that are
+// not late stay off this strip. Desktop keeps the next due date on the title
+// line. On a phone the date sits with the badge, and the name gets the full
+// width so it cannot be pushed out of the row. The title markup is the same
+// at both widths.
 export function FollowUpStatusRow({ item }) {
   const next = item.next
   const badge = badgeFor(item)
@@ -90,20 +106,19 @@ export function FollowUpStatusRow({ item }) {
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
             <span className="min-w-0 flex-1 text-sm leading-snug text-slate-800" title={identity.tooltip}>
-              {identity.serial ? (
-                <span className="flex min-w-0 items-baseline gap-x-1.5">
-                  <span className="shrink-0 whitespace-nowrap font-semibold text-slate-900">
-                    <span className="mr-1.5 align-middle text-[10px] font-bold uppercase tracking-wider text-slate-400">Serial</span>
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
+                <span className="max-w-full break-words font-semibold text-slate-900">{identity.primary}</span>
+                {identity.showSerial && (
+                  <span className="max-w-full whitespace-nowrap text-xs font-normal text-slate-500">
+                    <span aria-hidden="true">· </span>
+                    <span className="mr-1 align-middle text-[10px] font-bold uppercase tracking-wider">Serial</span>
                     {identity.serial}
                   </span>
-                  {identity.hint && <span className="min-w-0 truncate text-xs font-normal text-slate-400">· {identity.hint}</span>}
-                </span>
-              ) : (
-                <span className="font-medium">
-                  {identity.primary}
-                  {identity.hint && <span className="text-xs font-normal text-slate-400"> · {identity.hint}</span>}
-                </span>
-              )}
+                )}
+                {identity.hint && (
+                  <span className="min-w-0 truncate text-xs font-normal text-slate-400">· {identity.hint}</span>
+                )}
+              </span>
             </span>
             {next?.dueDate && (
               <span className={`hidden max-w-full rounded px-1.5 py-0.5 text-[11px] font-bold sm:inline sm:shrink-0 ${toneCls(next.tone)}`}>
