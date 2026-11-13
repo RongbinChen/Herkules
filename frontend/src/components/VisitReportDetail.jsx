@@ -6,6 +6,7 @@ import { Button, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
 import { useVRLang, STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 import SectionBody from './visit-report/SectionBody'
+import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
@@ -79,7 +80,7 @@ export default function VisitReportDetail() {
   const summarize = async () => {
     if (!report) return
     const c = report.content || {}
-    const parts = [report.rawNotes]
+    const parts = [report.content?.bodySource === 'original' ? report.content.originalBody : report.rawNotes]
     for (const s of SECTIONS_I18N) if (c[s.key]) parts.push(`${s.en}: ${c[s.key]}`)
     const text = parts.filter(Boolean).join('\n\n')
     if (!text.trim()) return
@@ -123,7 +124,24 @@ export default function VisitReportDetail() {
   const meta = content.meta || {}
   const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
   const tables = Array.isArray(content.tables) ? content.tables : []
+  const preserved = content.bodySource === 'original' && content.originalBody
+  const originalFile = (Array.isArray(report.attachments) ? report.attachments : []).find((item) => item?.kind === 'document' && item.storedName)
   const canEdit = report.canEdit || report.author?.id === user?.id || user?.isAdmin
+
+  const downloadOriginal = async () => {
+    if (!originalFile) return
+    try {
+      const res = await visitReportsAPI.attachment(report.id, originalFile.storedName)
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = originalFile.name || 'original.docx'
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      window.alert(t.exportFailed)
+    }
+  }
 
   return (
     <div className={`min-h-screen bg-slate-50 ${focusId ? 'pb-[80vh]' : ''}`}>
@@ -198,20 +216,38 @@ export default function VisitReportDetail() {
             </dl>
           )}
 
-          {/* Sections */}
-          <div className="space-y-6">
-            {SECTIONS.filter((s) => content[s.key]).map((s) => (
-              <section key={s.key}>
-                <h2 className="mb-1.5 border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700">{s.label}</h2>
-                <SectionBody sectionKey={s.key} text={content[s.key]} />
-              </section>
-            ))}
-          </div>
+          {preserved ? (
+            <section className="mb-6">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700">{t.originalReport}</h2>
+                {originalFile && (
+                  <button type="button" onClick={downloadOriginal} className="text-xs font-semibold text-brand-600 hover:underline">
+                    {t.downloadOriginal}
+                  </button>
+                )}
+              </div>
+              <p className="mb-2 text-xs leading-relaxed text-slate-500">{t.originalReportNote}</p>
+              {(content.extractionWarnings || []).length > 0 && (
+                <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">{t.extractionWarning}</p>
+              )}
+              <OriginalBody markdown={content.originalBody} />
+            </section>
+          ) : (
+            <div className="space-y-6">
+              {SECTIONS.filter((s) => content[s.key]).map((s) => (
+                <section key={s.key}>
+                  <h2 className="mb-1.5 border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700">{s.label}</h2>
+                  <SectionBody sectionKey={s.key} text={content[s.key]} />
+                </section>
+              ))}
+            </div>
+          )}
 
           {/* Targets */}
           {targets.length > 0 && (
             <section className="mt-6">
               <h2 className="mb-2 border-l-[3px] border-rose-400 pl-2.5 text-sm font-bold text-slate-700">⏰ {t.targetsTitle}</h2>
+              {preserved && <p className="mb-2 text-xs leading-relaxed text-slate-500">{t.targetsSeparate}</p>}
               <ul className="space-y-1.5">
                 {targets.map((tg, i) => (
                   <li
@@ -230,8 +266,8 @@ export default function VisitReportDetail() {
             </section>
           )}
 
-          {/* Tables */}
-          {tables.length > 0 && (
+          {/* Tables from the older structured reports. A preserved import carries its tables inside the original text. */}
+          {!preserved && tables.length > 0 && (
             <div className="mt-6 space-y-4">
               {tables.map((tb, ti) => (
                 <div key={ti}>

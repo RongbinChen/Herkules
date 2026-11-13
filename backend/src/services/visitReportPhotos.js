@@ -309,10 +309,12 @@ export function sanitizeAttachment(item) {
     if (!name) return null;
     return { name, kind };
   }
-  const mimeType = normalizeMime(item.mimeType, storedName || name);
+  const mimeType = item.kind === 'document'
+    ? (String(item.mimeType || '').trim() || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    : normalizeMime(item.mimeType, storedName || name);
   const out = {
     name: name || storedName,
-    kind: 'image',
+    kind: item.kind === 'document' ? 'document' : 'image',
     storedName,
   };
   if (mimeType) out.mimeType = mimeType;
@@ -457,6 +459,21 @@ export async function writePhotoFiles(photos, storageRoot = visitReportStorageRo
     if (meta) saved.push(meta);
   }
   return saved;
+}
+
+// The uploaded .docx itself, so a later reader can open the file the text was taken from.
+export async function writeOriginalDocument(buffer, originalName, storageRoot = visitReportStorageRoot()) {
+  if (!buffer?.length) return null;
+  await mkdir(storageRoot, { recursive: true });
+  const storedName = `${randomUUID()}.docx`;
+  await writeFile(path.join(storageRoot, storedName), buffer);
+  return sanitizeAttachment({
+    name: originalName || 'original.docx',
+    kind: 'document',
+    storedName,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    sha256: sha256(buffer),
+  });
 }
 
 // Phone galleries sometimes hand us HEIC. Browsers and Word want JPEG/PNG.

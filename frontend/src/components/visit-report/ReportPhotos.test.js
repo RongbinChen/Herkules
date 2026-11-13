@@ -88,6 +88,7 @@ test('the detail page does not edit captions, and save keeps the latest draft', 
   assert.match(modal, /captionDraft/)
   assert.doesNotMatch(modal, /visitReportsAPI\.regenerateCaption/)
   assert.match(modal, /attachments: attachmentsRef\.current/)
+  assert.match(detail, /update\(report\.id, \{ summary: data\.summary \}\)/)
 })
 
 test('the photo block sits after the report body on the detail page and in the editor', () => {

@@ -1,5 +1,6 @@
 // Render a stored visit report into Markdown, which pandoc converts to .docx.
 // Keeping this separate from the route makes the layout easy to tweak.
+import { isPreservedBody } from './visitReportSource.js';
 
 const esc = (v) => String(v ?? '').replace(/\r?\n+/g, ' ').replace(/\|/g, '\\|').trim();
 const altText = (v) => String(v ?? '').replace(/[\[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Photo';
@@ -52,6 +53,14 @@ export function reportToMarkdown(report, options = {}) {
     lines.push('## Summary', '', String(report.summary).trim(), '');
   }
 
+  // Imported Word text is the body. The summary above is separate, and the
+  // old section buckets are not written out beside it.
+  if (isPreservedBody(c)) {
+    lines.push(String(c.originalBody).trim(), '');
+    appendPhotos(lines, options.photos);
+    return lines.join('\n');
+  }
+
   for (const [key, label] of SECTIONS) {
     const val = c[key];
     if (val) lines.push(`## ${label}`, '', String(val).trim(), '');
@@ -72,15 +81,17 @@ export function reportToMarkdown(report, options = {}) {
   }
 
   // Photos stay after the body: summary, sections, and tables above, gallery last.
-  const photos = Array.isArray(options.photos) ? options.photos : [];
-  const placed = photos.filter((photo) => photo?.markdownPath);
-  if (placed.length) {
-    lines.push('## Report photos', '');
-    for (const photo of placed) {
-      const caption = altText(photo.caption || photo.name || 'Photo');
-      lines.push(`![${caption}](${photo.markdownPath}){width=14cm}`, '');
-    }
-  }
+  appendPhotos(lines, options.photos);
 
   return lines.join('\n');
+}
+
+function appendPhotos(lines, photos) {
+  const placed = (Array.isArray(photos) ? photos : []).filter((photo) => photo?.markdownPath);
+  if (!placed.length) return;
+  lines.push('## Report photos', '');
+  for (const photo of placed) {
+    const caption = altText(photo.caption || photo.name || 'Photo');
+    lines.push(`![${caption}](${photo.markdownPath}){width=14cm}`, '');
+  }
 }

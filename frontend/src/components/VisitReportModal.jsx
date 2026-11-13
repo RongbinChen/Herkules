@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCaptionChange } from '../utils/visitReportCaptions'
 import SectionBody from './visit-report/SectionBody'
+import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
@@ -35,6 +36,11 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   // Latest captions, including a keystroke that has not re-rendered yet.
   // Save reads this. Cancel drops the component, so the saved report is unchanged.
   const attachmentsRef = useRef(form.attachments || [])
+  const contentRef = useRef(form.content || {})
+  const commitContent = (content) => {
+    contentRef.current = content || {}
+    setForm((current) => ({ ...current, content: contentRef.current }))
+  }
   const [photos, setPhotos] = useState([])
   const photoInputRef = useRef(null)
   const [docFile, setDocFile] = useState(null) // .docx to auto-import
@@ -103,9 +109,19 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const onDragLeave = (e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setDragging(false) }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
-  const setContent = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, [k]: v } }))
-  const setMeta = (k, v) => setForm((f) => ({ ...f, content: { ...f.content, meta: { ...(f.content?.meta || {}), [k]: v } } }))
+  const setContent = (k, v) => commitContent({ ...contentRef.current, [k]: v })
+  const setMeta = (k, v) => commitContent({
+    ...contentRef.current,
+    meta: { ...(contentRef.current.meta || {}), [k]: v },
+  })
   const tables = Array.isArray(form.content?.tables) ? form.content.tables : []
+  const showingOriginal = form.content?.bodySource === 'original' && form.content?.originalBody
+  const draftTargets = Array.isArray(form.content?.targets) ? form.content.targets : []
+  const setTarget = (index, patch) => {
+    const current = Array.isArray(contentRef.current.targets) ? contentRef.current.targets : []
+    const targets = current.map((target, i) => (i === index ? { ...target, ...patch } : target))
+    commitContent({ ...contentRef.current, targets })
+  }
   const meta = form.content?.meta || {}
   const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
 
@@ -143,16 +159,18 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
       const { data } = await visitReportsAPI.generate(fd)
       setForm((f) => ({
         ...f,
-        title: data.title || f.title,
-        // Prefer the visit date extracted from the source over the "today" default.
-        visitDate: data.visitDate || f.visitDate,
+        // A Word import must not replace a date or title the user already set.
+        // Notes-only generate still prefers the date read out of the notes.
+        title: data.preserved ? (f.title || data.title || '') : (data.title || f.title),
+        visitDate: data.preserved ? f.visitDate : (data.visitDate || f.visitDate),
         // Auto-link the customer the AI matched — only if none was chosen yet.
         customerId: f.customerId || data.customerMatch?.id || '',
-        summary: data.summary || '',
+        summary: data.preserved ? (data.summary ?? f.summary) : (data.summary || ''),
         content: data.content || {},
         rawNotes: data.rawNotes || f.rawNotes,
         attachments: Array.isArray(data.attachments) ? data.attachments : f.attachments,
       }))
+      contentRef.current = data.content || contentRef.current
       attachmentsRef.current = Array.isArray(data.attachments) ? data.attachments : attachmentsRef.current
       setPhotos([])
       if (photoInputRef.current) photoInputRef.current.value = ''
@@ -167,7 +185,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   // stay in English regardless of the UI toggle (stable input for the AI call).
   const sourceText = () => {
     const c = form.content || {}
-    const parts = [form.rawNotes]
+    const parts = [form.content?.bodySource === 'original' ? form.content.originalBody : form.rawNotes]
     for (const s of SECTIONS_I18N) if (c[s.key]) parts.push(`${s.en}: ${c[s.key]}`)
     return parts.filter(Boolean).join('\n\n')
   }
@@ -218,6 +236,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     try {
       const payload = {
         ...form,
+        content: contentRef.current,
         attachments: attachmentsRef.current,
         status: status || form.status,
         customerId: linkedCustomerId || null,
@@ -292,14 +311,32 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                 </dl>
               )}
 
-              {/* Sections as headed paragraphs */}
-              {SECTIONS.filter((s) => form.content?.[s.key]).map((s) => (
+              {showingOriginal ? (
+                <section>
+                  <h4 className="mb-1 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500">{t.originalReport}</h4>
+                  <p className="mb-2 text-xs leading-relaxed text-slate-500">{t.originalReportNote}</p>
+                  <OriginalBody markdown={form.content.originalBody} />
+                </section>
+              ) : SECTIONS.filter((s) => form.content?.[s.key]).map((s) => (
                 <section key={s.key}>
                   <h4 className="mb-1 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500">{s.label}</h4>
                   <SectionBody sectionKey={s.key} text={form.content[s.key]} />
                 </section>
               ))}
-              {!form.summary && SECTIONS.every((s) => !form.content?.[s.key]) && (
+              {draftTargets.length > 0 && (
+                <section>
+                  <h4 className="mb-1 border-l-2 border-rose-400 pl-2 text-xs font-bold text-slate-500">⏰ {t.targetsTitle}</h4>
+                  <ul className="space-y-1.5">
+                    {draftTargets.map((tg, i) => (
+                      <li key={i} className="text-sm leading-relaxed text-slate-700">
+                        <span className="mr-2 text-xs font-bold text-rose-600">{tg.date || t.targetNoDate}</span>
+                        {tg.title}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {!form.summary && !showingOriginal && SECTIONS.every((s) => !form.content?.[s.key]) && (
                 <p className="py-6 text-center text-sm text-slate-400">{t.noContent}</p>
               )}
             </div>
@@ -461,7 +498,34 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
             </div>
           )}
 
-          {/* Structured sections */}
+          {showingOriginal ? (
+            <div className="space-y-3">
+              {(form.content.extractionWarnings || []).length > 0 && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">{t.extractionWarning}</p>
+              )}
+              <label className="block text-xs font-semibold text-slate-600">
+                {t.originalReport}
+                <Textarea rows={12} value={form.content.originalBody || ''} onChange={(e) => setContent('originalBody', e.target.value)} className="mt-1 text-sm leading-relaxed" />
+              </label>
+              <p className="text-xs leading-relaxed text-slate-500">{t.targetsSeparate}</p>
+              {draftTargets.map((tg, i) => (
+                <div key={i} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 p-2 sm:grid-cols-3">
+                  <label className="text-xs font-semibold text-slate-600 sm:col-span-2">
+                    {t.targetTitle}
+                    <Input value={tg.title || ''} onChange={(e) => setTarget(i, { title: e.target.value })} className="mt-1" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    {t.targetDate}
+                    <Input type="date" value={tg.date || ''} onChange={(e) => setTarget(i, { date: e.target.value || null })} className="mt-1" />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600 sm:col-span-3">
+                    {t.targetNote}
+                    <Input value={tg.note || ''} onChange={(e) => setTarget(i, { note: e.target.value })} className="mt-1" />
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="grid grid-cols-1 gap-3">
             {SECTIONS.map((s) => (
               <label key={s.key} className="block text-xs font-semibold text-slate-600">
@@ -472,10 +536,11 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
               </label>
             ))}
           </div>
+          )}
           </>)}
 
           {/* Structured tables (AI-extracted, read-only) */}
-          {tables.length > 0 && (
+          {!showingOriginal && tables.length > 0 && (
             <div className="space-y-3">
               {tables.map((t2, ti) => (
                 <div key={ti}>

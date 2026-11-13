@@ -88,6 +88,10 @@ export const visitReportsAPI = {
   // Download the report as a .docx (pandoc-rendered on the server).
   exportDocx: (id) => api.get(`/visit-reports/${id}/export`, { responseType: 'blob' }),
   // Authenticated. <img src> cannot send the bearer token, so callers fetch a blob.
+  attachment: (id, storedName) => api.get(
+    `/visit-reports/${id}/attachments/${encodeURIComponent(storedName)}`,
+    { responseType: 'blob' },
+  ),
   photo: (id, storedName) => api.get(
     `/visit-reports/${id}/photos/${encodeURIComponent(storedName)}`,
     { responseType: 'blob' },

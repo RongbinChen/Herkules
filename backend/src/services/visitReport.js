@@ -139,6 +139,40 @@ export async function summarizeVisitReport(text) {
   return String(reply || '').trim();
 }
 
+const TARGET_SYSTEM = `你只从拜访报告原文中提取“带明确时间节点的行动/承诺/截止”。不要改写正文，不要翻译，不要总结，不要软化或加强原文的判断（is with problem 必须保持为有问题，不要改成 suspected）。
+只输出 JSON，不要 markdown：
+{"targets":[{"title":"短句，保留原文语言和措辞","date":"YYYY-MM-DD 或 null","note":"原文摘录，必须能在原文中对上"}]}
+date 规则：能确定到具体某天就用那天；只确定到月份就用该月最后一天；年份结合拜访日期推断；完全说不准（如下半年、尽快）就填 null。
+没有则 targets 为 []。最多 10 条。`;
+
+export const SUMMARY_MODEL = 'deepseek-v4-flash';
+
+// Targets only. The caller keeps the source text as the body. Throws DeepSeekError.
+export async function extractVisitTargets(text, { visitDate = '' } = {}) {
+  const clean = String(text || '').trim();
+  if (!clean) return [];
+  const when = visitDate ? `拜访日期：${visitDate}\n\n` : '';
+  const reply = await callDeepSeek(
+    [{ role: 'system', content: TARGET_SYSTEM }, { role: 'user', content: `${when}原文：\n${clean}` }],
+    800,
+  );
+  return targetsFromReply(reply);
+}
+
+export function targetsFromReply(reply) {
+  const parsed = extractJson(reply) || {};
+  const list = Array.isArray(parsed.targets) ? parsed.targets : (Array.isArray(parsed) ? parsed : []);
+  const pick = (v) => (v == null || v === 'null' || v === '' ? null : String(v).trim());
+  return list
+    .map((tg) => ({
+      title: pick(tg?.title),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(tg?.date || '')) ? tg.date : null,
+      note: pick(tg?.note),
+    }))
+    .filter((tg) => tg.title)
+    .slice(0, 10);
+}
+
 // Returns { title, summary, content, aiModel }. Throws DeepSeekError on API failure.
 export async function structureVisitReport(rawNotes, { customerName = '', projectName = '', visitDate = '' } = {}) {
   const ctx = [

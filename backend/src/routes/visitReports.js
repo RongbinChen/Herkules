@@ -9,6 +9,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import {
   blankVisitDraft,
   sourceLanguage,
+  extractVisitTargets,
   structureVisitReport,
   summarizeVisitReport,
 } from '../services/visitReport.js';
@@ -31,8 +32,15 @@ import {
   sha256,
   storedNamesOwnedByOthers,
   visitReportStorageRoot,
+  writeOriginalDocument,
   writePhotoFiles,
 } from '../services/visitReportPhotos.js';
+import {
+  assembleFromDocx,
+  preservedDraft,
+  reminderTargets,
+  titleFromSource,
+} from '../services/visitReportSource.js';
 import { normalizeCompany } from '../services/companyName.js';
 import {
   canDeleteVisitReport,
@@ -269,22 +277,127 @@ async function matchCustomerByName(name) {
   return hits.length === 1 ? hits[0] : null;
 }
 
-// Convert an uploaded .docx buffer to plain text via pandoc (same toolchain as export).
-async function docxToText(buffer) {
+// Pandoc markdown keeps paragraphs, lists, and tables. Raw HTML is turned off
+// so a crafted document cannot embed markup. This is still not a lossless copy.
+function pandocTo(buffer, to, ext) {
   const stamp = `${Date.now()}-${Math.round(process.hrtime()[1] % 1e6)}`;
   const inPath = join(tmpdir(), `vr-in-${stamp}.docx`);
-  const outPath = join(tmpdir(), `vr-in-${stamp}.txt`);
+  const outPath = join(tmpdir(), `vr-in-${stamp}.${ext}`);
+  return (async () => {
+    try {
+      await writeFile(inPath, buffer);
+      await new Promise((resolve, reject) => {
+        execFile('pandoc', [inPath, '-f', 'docx', '-t', to, '--wrap=none', '-o', outPath], (err) =>
+          err ? reject(err) : resolve());
+      });
+      return await readFile(outPath, 'utf8');
+    } finally {
+      unlink(inPath).catch(() => {});
+      unlink(outPath).catch(() => {});
+    }
+  })();
+}
+
+function docxToMarkdown(buffer) {
+  return pandocTo(buffer, 'markdown-raw_html-native_divs-native_spans', 'md');
+}
+
+// Word import: the file's text is the body. Summary and targets are separate
+// calls and may fail without discarding that text. Reminders are not created
+// here; the existing create route does that when the user saves.
+async function respondPreservedImport(req, res, { doc, files, customerId, visitDate }) {
+  let markdown = '';
   try {
-    await writeFile(inPath, buffer);
-    await new Promise((resolve, reject) => {
-      execFile('pandoc', [inPath, '-f', 'docx', '-t', 'plain', '-o', outPath], (err) =>
-        err ? reject(err) : resolve());
-    });
-    return await readFile(outPath, 'utf8');
-  } finally {
-    unlink(inPath).catch(() => {});
-    unlink(outPath).catch(() => {});
+    markdown = await docxToMarkdown(doc.buffer);
+  } catch (err) {
+    console.error('[visit-report] docx convert error:', err.message);
+    return res.status(422).json({ error: 'Word 文档解析失败，请确认文件未损坏' });
   }
+  let packed;
+  try {
+    packed = assembleFromDocx(doc.buffer, markdown);
+  } catch (err) {
+    if (err.code === 'EMPTY_BODY') {
+      return res.status(422).json({ error: '未能从 Word 中读出正文。请换一个 .docx，或改用手动输入。' });
+    }
+    if (err.code === 'BODY_TOO_LARGE') {
+      return res.status(413).json({ error: '报告正文过长，无法保存。' });
+    }
+    throw err;
+  }
+
+  const gathered = gatherPhotoCandidates({
+    uploads: files.map((f) => ({
+      buffer: f.buffer,
+      mimeType: f.mimetype || 'image/jpeg',
+      name: f.originalname || 'photo',
+    })),
+    docxBuffer: doc.buffer,
+    existing: parseExistingAttachments(req.body.existingAttachments),
+  });
+  if (files.length > 0 && !isGeminiConfigured()) {
+    return res.status(503).json({ error: GEMINI_MISSING });
+  }
+
+  const language = sourceLanguage(packed.originalBody);
+  const captionOne = async (buffer, mimeType, extra) => {
+    const prompt = buildCaptionPrompt({
+      language,
+      context: captionContext({
+        visitDate,
+        nearby: extra.nearby,
+        ocrText: extra.ocrText,
+        draft: { summary: packed.originalBody.slice(0, 500) },
+      }),
+    });
+    return captionVisitPhoto(buffer, mimeType, prompt);
+  };
+  const captioned = await mapPool(gathered.fresh, 3, async (photo) => ({
+    ...photo,
+    caption: await captionOne(photo.buffer, photo.mimeType, { nearby: photo.nearby, ocrText: '' }),
+  }));
+  const savedPhotos = await writePhotoFiles(captioned, visitReportStorageRoot());
+  let attachments = mergeGeneratedPhotos(gathered.existing, savedPhotos) || [];
+  const original = await writeOriginalDocument(doc.buffer, doc.originalname, visitReportStorageRoot());
+  if (original) attachments = [...attachments, original];
+
+  let summary = null;
+  let summaryError = null;
+  try {
+    summary = await summarizeVisitReport(packed.originalBody);
+  } catch (err) {
+    summaryError = err.message || 'summary failed';
+    console.error('[visit-report] summary kept off the body:', err.message);
+  }
+  let targets = [];
+  let targetsError = null;
+  try {
+    targets = await extractVisitTargets(packed.originalBody, { visitDate });
+  } catch (err) {
+    targetsError = err.message || 'targets failed';
+    console.error('[visit-report] targets kept off the body:', err.message);
+  }
+
+  const draft = preservedDraft({
+    originalBody: packed.originalBody,
+    warnings: packed.warnings,
+    summary,
+    summaryError,
+    targets,
+    targetsError,
+    title: titleFromSource(packed.originalBody),
+  });
+  let customerMatch = null;
+  if (!customerId && draft.customerName) {
+    customerMatch = await matchCustomerByName(draft.customerName);
+  }
+  return res.json({
+    ...draft,
+    customerMatch,
+    rawNotes: packed.originalBody,
+    attachments,
+    warnings: packed.warnings,
+  });
 }
 
 // ── AI generate (does NOT save the report row) ─────────────────────────────────
@@ -297,21 +410,16 @@ router.post('/generate', upload.fields([{ name: 'images', maxCount: 10 }, { name
     const { rawNotes = '', customerId, threadKey, visitDate } = req.body;
     const files = (req.files?.images || []).filter((f) => IMAGE_RE.test(f.originalname || '') || (f.mimetype || '').startsWith('image/'));
 
-    // Optional Word document → plain text (auto-import an existing report).
-    let docText = '';
+    // A Word file keeps its own text. Notes-only generate still structures below.
     const doc = (req.files?.document || [])[0];
     if (doc) {
       if (!/\.docx$/i.test(doc.originalname || '')) {
         return res.status(400).json({ error: '文档导入目前支持 .docx（Word 2007+）格式' });
       }
-      try {
-        docText = (await docxToText(doc.buffer)).trim();
-      } catch (err) {
-        console.error('[visit-report] docx convert error:', err.message);
-        return res.status(422).json({ error: 'Word 文档解析失败，请确认文件未损坏' });
-      }
+      return await respondPreservedImport(req, res, { doc, files, customerId, visitDate });
     }
 
+    const docText = '';
     const gathered = gatherPhotoCandidates({
       uploads: files.map((f) => ({
         buffer: f.buffer,
@@ -473,7 +581,7 @@ router.post('/', async (req, res) => {
     // AI-extracted targets with a concrete date → REMINDER calendar events for
     // the author (create only — updates never duplicate reminders).
     let remindersCreated = 0;
-    const targets = Array.isArray(content?.targets) ? content.targets : [];
+    const targets = reminderTargets(content);
     for (const tg of targets) {
       if (!tg?.title || !/^\d{4}-\d{2}-\d{2}$/.test(String(tg.date || ''))) continue;
       try {
@@ -554,6 +662,35 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating visit report:', error);
     res.status(500).json({ error: 'Failed to update visit report' });
+  }
+});
+
+// Original Word file, or a photo, only when this report lists that stored name.
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+router.get('/:id/attachments/:storedName', async (req, res) => {
+  try {
+    const report = await prisma.visitReport.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!report) return res.status(404).json({ error: 'Not found' });
+    const list = Array.isArray(report.attachments) ? report.attachments : [];
+    const item = list.find((entry) => entry && entry.storedName === req.params.storedName);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    const abs = resolveStoredFile(item.storedName, visitReportStorageRoot());
+    if (!abs) return res.status(404).json({ error: 'Not found' });
+    const buffer = await readFile(abs);
+    const isDoc = item.kind === 'document' || /\.docx$/i.test(item.storedName);
+    if (isDoc) {
+      const safe = String(item.name || 'original.docx').replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'original.docx';
+      res.setHeader('Content-Type', DOCX_MIME);
+      res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.send(buffer);
+    }
+    return sendImage(res, buffer, item.name || item.storedName, item.mimeType);
+  } catch (error) {
+    if (error.code === 'ENOENT') return res.status(404).json({ error: 'Not found' });
+    console.error('Error reading visit report attachment:', error);
+    return res.status(500).json({ error: 'Failed to load attachment' });
   }
 });
 
