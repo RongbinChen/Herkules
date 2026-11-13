@@ -6,6 +6,7 @@ import { Button, Badge } from './ui'
 import VisitReportModal from './VisitReportModal'
 import { useVRLang, STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
 import SectionBody from './visit-report/SectionBody'
+import ReportPhotos from './visit-report/ReportPhotos'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
 
@@ -123,6 +124,27 @@ export default function VisitReportDetail() {
   const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
   const tables = Array.isArray(content.tables) ? content.tables : []
   const canEdit = report.canEdit || report.author?.id === user?.id || user?.isAdmin
+
+  const saveCaption = async (photo, caption) => {
+    const attachments = (report.attachments || []).map((item) => (
+      item?.storedName === photo.storedName ? { ...item, caption, captionEdited: true } : item
+    ))
+    try {
+      const { data } = await visitReportsAPI.update(report.id, { attachments })
+      setReport((current) => ({ ...current, attachments: data.attachments ?? attachments }))
+    } catch {
+      window.alert(t.captionSaveFailed)
+    }
+  }
+
+  const regenerateCaption = async (photo) => {
+    try {
+      const { data } = await visitReportsAPI.regenerateCaption(report.id, photo.storedName)
+      setReport((current) => ({ ...current, attachments: data.attachments ?? current.attachments }))
+    } catch {
+      window.alert(t.captionFailed)
+    }
+  }
 
   return (
     <div className={`min-h-screen bg-slate-50 ${focusId ? 'pb-[80vh]' : ''}`}>
@@ -259,6 +281,15 @@ export default function VisitReportDetail() {
               ))}
             </div>
           )}
+
+          <ReportPhotos
+            lang={lang}
+            reportId={report.id}
+            photos={report.attachments}
+            editable={canEdit}
+            onCaptionChange={saveCaption}
+            onRegenerate={canEdit ? regenerateCaption : undefined}
+          />
         </article>
       </div>
 

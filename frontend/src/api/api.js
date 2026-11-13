@@ -87,6 +87,22 @@ export const visitReportsAPI = {
   summarize: (text) => api.post('/visit-reports/summarize', { text }),
   // Download the report as a .docx (pandoc-rendered on the server).
   exportDocx: (id) => api.get(`/visit-reports/${id}/export`, { responseType: 'blob' }),
+  // Authenticated. <img src> cannot send the bearer token, so callers fetch a blob.
+  photo: (id, storedName) => api.get(
+    `/visit-reports/${id}/photos/${encodeURIComponent(storedName)}`,
+    { responseType: 'blob' },
+  ),
+  photoFile: (storedName) => api.get(
+    `/visit-reports/files/${encodeURIComponent(storedName)}`,
+    { responseType: 'blob' },
+  ),
+  regenerateCaption: (id, storedName) => api.post(
+    `/visit-reports/${id}/photos/${encodeURIComponent(storedName)}/caption`,
+  ),
+  captionDraft: (storedName, data) => api.post(
+    `/visit-reports/photos/${encodeURIComponent(storedName)}/caption`,
+    data,
+  ),
 }
 
 // Unified command search (/customer /project /report).

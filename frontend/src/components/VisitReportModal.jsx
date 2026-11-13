@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import SectionBody from './visit-report/SectionBody'
+import ReportPhotos from './visit-report/ReportPhotos'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
@@ -27,9 +28,11 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     summary: report?.summary || '',
     content: report?.content || {},
     rawNotes: report?.rawNotes || '',
+    attachments: Array.isArray(report?.attachments) ? report.attachments : [],
     status: report?.status || 'DRAFT',
   }))
   const [photos, setPhotos] = useState([])
+  const photoInputRef = useRef(null)
   const [docFile, setDocFile] = useState(null) // .docx to auto-import
   const [generating, setGenerating] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
@@ -132,6 +135,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
       if (form.visitDate) fd.append('visitDate', form.visitDate)
       photos.forEach((p) => fd.append('images', p))
       if (docFile) fd.append('document', docFile)
+      if (form.attachments?.length) fd.append('existingAttachments', JSON.stringify(form.attachments))
       const { data } = await visitReportsAPI.generate(fd)
       setForm((f) => ({
         ...f,
@@ -143,7 +147,10 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
         summary: data.summary || '',
         content: data.content || {},
         rawNotes: data.rawNotes || f.rawNotes,
+        attachments: Array.isArray(data.attachments) ? data.attachments : f.attachments,
       }))
+      setPhotos([])
+      if (photoInputRef.current) photoInputRef.current.value = ''
       if (!form.customerId && data.customerMatch) setCustQuery(data.customerMatch.name)
     } catch (e) {
       setErr(e.response?.data?.error || t.errGenerateFailed)
@@ -175,6 +182,35 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     } catch (e) {
       setErr(e.response?.data?.error || t.errSummarizeFailed)
     } finally { setSummarizing(false) }
+  }
+
+  const setCaption = (photo, caption, edited) => {
+    setForm((current) => ({
+      ...current,
+      attachments: (current.attachments || []).map((item) => (
+        item?.storedName === photo.storedName
+          ? { ...item, caption, captionEdited: edited }
+          : item
+      )),
+    }))
+  }
+
+  const regenerateCaption = async (photo) => {
+    try {
+      // A photo from this generate call is not on the saved row yet, so the
+      // report-scoped route would 404. Only photos already stored on the report
+      // are overwritten in the database; the form still updates either way.
+      const alreadySaved = Array.isArray(report?.attachments)
+        && report.attachments.some((item) => item?.storedName === photo.storedName)
+      const { data } = alreadySaved
+        ? await visitReportsAPI.regenerateCaption(report.id, photo.storedName)
+        : await visitReportsAPI.captionDraft(photo.storedName, { context: sourceText() })
+      // One photo only. Replacing the whole list would drop captions or new
+      // photos that are still only in this form.
+      setCaption(photo, data.caption || '', false)
+    } catch (e) {
+      setErr(e.response?.data?.error || t.captionFailed)
+    }
   }
 
   const save = async (status) => {
@@ -370,7 +406,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                 {!isImportCreate && (
                   <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                     {t.addPhoto}
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setPhotos([...photos, ...Array.from(e.target.files)])} />
+                    <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { setPhotos([...photos, ...Array.from(e.target.files || [])]); e.target.value = '' }} />
                   </label>
                 )}
                 {/* Word upload: only in the "import" create path, or when editing an existing report. */}
@@ -467,6 +503,16 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
               ))}
             </div>
           )}
+
+          <ReportPhotos
+            compact
+            draft
+            lang={lang}
+            photos={form.attachments}
+            editable={editing && canEdit}
+            onCaptionChange={(photo, caption) => setCaption(photo, caption, true)}
+            onRegenerate={editing && canEdit ? regenerateCaption : undefined}
+          />
 
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
         </div>

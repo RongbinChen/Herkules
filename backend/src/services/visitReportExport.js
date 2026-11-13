@@ -2,6 +2,7 @@
 // Keeping this separate from the route makes the layout easy to tweak.
 
 const esc = (v) => String(v ?? '').replace(/\r?\n+/g, ' ').replace(/\|/g, '\\|').trim();
+const altText = (v) => String(v ?? '').replace(/[\[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Photo';
 
 const SECTIONS = [
   ['attendees', 'Attendees'],
@@ -27,7 +28,7 @@ const fmtDate = (d) => {
   try { return new Date(d).toISOString().slice(0, 10); } catch { return ''; }
 };
 
-export function reportToMarkdown(report) {
+export function reportToMarkdown(report, options = {}) {
   const c = report.content || {};
   const meta = c.meta || {};
   const lines = [];
@@ -68,6 +69,17 @@ export function reportToMarkdown(report) {
       lines.push(`| ${cells.join(' | ')} |`);
     }
     lines.push('');
+  }
+
+  // Photos stay after the body: summary, sections, and tables above, gallery last.
+  const photos = Array.isArray(options.photos) ? options.photos : [];
+  const placed = photos.filter((photo) => photo?.markdownPath);
+  if (placed.length) {
+    lines.push('## Report photos', '');
+    for (const photo of placed) {
+      const caption = altText(photo.caption || photo.name || 'Photo');
+      lines.push(`![${caption}](${photo.markdownPath}){width=14cm}`, '');
+    }
   }
 
   return lines.join('\n');
