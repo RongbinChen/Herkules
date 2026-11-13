@@ -57,12 +57,10 @@ export function parseReportId(raw) {
   return Number.isSafeInteger(id) ? id : null;
 }
 
-// Attachment JSON on a visit report is metadata (`{ name, kind }`). Photos and
-// Word files are read in memory and not kept. If a row does name a blob via
-// `storedName`, it lives as a single path segment under VISIT_REPORT_STORAGE_DIR
-// — the same shape contract files use. Anything else (no root, no storedName,
-// a path with a slash or `..`) is ignored so delete cannot be pointed at an
-// arbitrary file.
+// Attachment JSON is metadata. Image rows also name a blob via `storedName`:
+// one path segment under VISIT_REPORT_STORAGE_DIR (see visitReportPhotos).
+// Anything else (no root, no storedName, a path with a slash or `..`) is
+// ignored so delete cannot be pointed at an arbitrary file.
 export function storedAttachmentTargets(attachments, storageRoot) {
   if (!storageRoot || !Array.isArray(attachments)) return [];
   const root = path.resolve(storageRoot);

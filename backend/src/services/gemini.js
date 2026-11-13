@@ -115,22 +115,24 @@ export async function extractBidOpeningsFromImage(buffer, mimeType) {
   return recordsFromParsed(parsed);
 }
 
-// Generic image → text: read all legible text and briefly describe the picture.
-// Used by visit reports to fold on-site photos (whiteboards, docs, equipment) into notes.
-export async function ocrImage(buffer, mimeType) {
+// One vision call. Same model fallback as bid-opening extraction: 503 tries the
+// next model, quota and key errors fail immediately.
+async function geminiVisionText(userText, buffer, mimeType, { maxOutputTokens, timeoutMessage }) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new GeminiError(geminiMessage(403), 403);
   const body = {
     contents: [{
       parts: [
-        { text: '请读出图片中所有可辨认的文字（原样，保留中英文），并用一句话描述图片内容。只输出文字内容，不要解释。' },
+        { text: userText },
         { inline_data: { mime_type: mimeType, data: buffer.toString('base64') } },
       ],
     }],
-    generationConfig: { maxOutputTokens: 4096 },
+    generationConfig: { maxOutputTokens },
   };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  let res = null, lastStatus = 503, lastBody = '';
+  let res = null;
+  let lastStatus = 503;
+  let lastBody = '';
   outer: for (const model of MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) await sleep(1200);
@@ -139,12 +141,16 @@ export async function ocrImage(buffer, mimeType) {
       let r;
       try {
         r = await fetch(`${urlFor(model)}?key=${key}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body), signal: controller.signal,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
         });
       } catch (err) {
         clearTimeout(timer);
-        throw new GeminiError(err?.name === 'AbortError' ? 'Image OCR timed out.' : 'Cannot reach Google Gemini.');
+        throw new GeminiError(
+          err?.name === 'AbortError' ? timeoutMessage : 'Cannot reach Google Gemini.',
+        );
       }
       clearTimeout(timer);
       if (r.ok) { res = r; break outer; }
@@ -156,4 +162,31 @@ export async function ocrImage(buffer, mimeType) {
   if (!res) throw new GeminiError(geminiMessage(lastStatus, lastBody), lastStatus);
   const data = await res.json();
   return (data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '').trim();
+}
+
+// Generic image → text: read all legible text and briefly describe the picture.
+// Used by visit reports to fold on-site photos (whiteboards, docs, equipment) into notes.
+export async function ocrImage(buffer, mimeType) {
+  return geminiVisionText(
+    '请读出图片中所有可辨认的文字（原样，保留中英文），并用一句话描述图片内容。只输出文字内容，不要解释。',
+    buffer,
+    mimeType,
+    { maxOutputTokens: 4096, timeoutMessage: 'Image OCR timed out.' },
+  );
+}
+
+// Short on-site caption. `prompt` already carries the report language and the
+// "do not invent" rule (see visitReportPhotos.buildCaptionPrompt). Empty string
+// when Gemini is not configured or the call fails — the photo is still kept.
+export async function captionVisitPhoto(buffer, mimeType, prompt) {
+  if (!isGeminiConfigured() || !prompt || !buffer?.length) return '';
+  try {
+    return await geminiVisionText(prompt, buffer, mimeType || 'image/jpeg', {
+      maxOutputTokens: 256,
+      timeoutMessage: 'Image caption timed out.',
+    });
+  } catch (err) {
+    console.error('[visit-report] caption error:', err.message);
+    return '';
+  }
 }

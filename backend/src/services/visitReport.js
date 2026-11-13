@@ -59,6 +59,69 @@ const SUMMARY_SYSTEM = `你是 Herkules 中国销售团队的拜访报告助手�
 - 忠于原文，不臆造、不添加原文没有的信息
 只输出总结文本，不要标题、不要 markdown 代码块。`;
 
+// Report language follows the source text, same rule as the summary: more CJK
+// than Latin → Chinese, otherwise English (a tie stays English).
+export function sourceLanguage(text) {
+  const clean = String(text || '');
+  const cjk = (clean.match(/[一-鿿]/g) || []).length;
+  const latin = (clean.match(/[A-Za-z]/g) || []).length;
+  return cjk > latin ? 'zh' : 'en';
+}
+
+export function reportSourceLanguage(report, extra = '') {
+  const content = report?.content || {};
+  const meta = content.meta || {};
+  return sourceLanguage([
+    report?.title,
+    report?.summary,
+    report?.rawNotes,
+    meta.machineType,
+    meta.location,
+    meta.industry,
+    content.attendees,
+    content.needs,
+    content.equipment,
+    content.competitors,
+    content.budgetTimeline,
+    content.nextSteps,
+    content.risks,
+    extra,
+  ].filter(Boolean).join('\n'));
+}
+
+// A photo-only generate (OCR returned nothing and the notes were empty) still
+// needs a draft object the form can save. It does not invent a narrative.
+export function blankVisitDraft(visitDate = '') {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(visitDate || '')) ? visitDate : null;
+  return {
+    title: '拜访报告',
+    summary: null,
+    visitDate: day,
+    customerName: null,
+    content: {
+      meta: {
+        author: null,
+        recipients: null,
+        cc: null,
+        location: null,
+        industry: null,
+        machineType: null,
+        quotationNo: null,
+      },
+      attendees: null,
+      needs: null,
+      equipment: null,
+      competitors: null,
+      budgetTimeline: null,
+      nextSteps: null,
+      risks: null,
+      tables: [],
+      targets: [],
+    },
+    aiModel: null,
+  };
+}
+
 // Concise, faithful summary of a report — keeps the source language, does NOT
 // restructure or paraphrase the body. Throws DeepSeekError on API failure.
 export async function summarizeVisitReport(text) {
@@ -66,9 +129,7 @@ export async function summarizeVisitReport(text) {
   if (!clean) return '';
   // Match the summary's language to the report body — a Chinese system prompt
   // otherwise biases the model to Chinese even for an English report.
-  const cjk = (clean.match(/[一-鿿]/g) || []).length;
-  const latin = (clean.match(/[A-Za-z]/g) || []).length;
-  const directive = cjk > latin
+  const directive = sourceLanguage(clean) === 'zh'
     ? '请用中文输出总结。\n\n'
     : 'Write the summary in English (the report body is in English).\n\n';
   const reply = await callDeepSeek(
