@@ -12,8 +12,12 @@ export function chooseImportedCustomer({ touched = false, currentId = '', matche
   return currentId || matchedId || ''
 }
 
-export function warningMessages(warnings, t) {
+export function warningMessages(warnings, t, { hasOriginalFile = false } = {}) {
   const lines = []
+  // The extraction note only promises the Word download when a stored
+  // `kind: 'document'` attachment actually exists, so the text and the
+  // conditional download button stay in agreement.
+  const extractionText = (hasOriginalFile && t.extractionWarningDownload) || t.extractionWarning
   for (const warning of warnings || []) {
     const code = warning?.code || 'extraction'
     const text = {
@@ -21,11 +25,11 @@ export function warningMessages(warnings, t) {
       'caption-failed': t.captionFailed,
       'photo-not-stored': t.photoNotStored,
       'original-file-failed': t.originalFileFailed,
-      'text-box': t.extractionWarning,
-      'body-gap': t.extractionWarning,
-      header: t.extractionWarning,
-      footer: t.extractionWarning,
-    }[code] || t.extractionWarning
+      'text-box': extractionText,
+      'body-gap': extractionText,
+      header: extractionText,
+      footer: extractionText,
+    }[code] || extractionText
     if (text && !lines.includes(text)) lines.push(text)
   }
   return lines

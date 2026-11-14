@@ -32,6 +32,22 @@ test('caption and extraction warnings stay distinct and do not invent a caption'
     captionUnavailable: 'No captions',
     captionFailed: 'Caption failed',
     extractionWarning: 'Text recovered',
+    extractionWarningDownload: 'Text recovered and the Word file can be downloaded',
   })
   assert.deepEqual(lines, ['No captions', 'Caption failed', 'Text recovered'])
+})
+
+test('the extraction warning only promises a download when a stored Word file exists', () => {
+  const t = {
+    extractionWarning: 'Text recovered',
+    extractionWarningDownload: 'Text recovered and the Word file can be downloaded',
+  }
+  const warnings = [{ code: 'text-box', count: 1 }]
+  const withoutFile = warningMessages(warnings, t, { hasOriginalFile: false })
+  assert.deepEqual(withoutFile, ['Text recovered'])
+  assert.doesNotMatch(withoutFile[0], /download|Word file/i)
+
+  const withFile = warningMessages(warnings, t, { hasOriginalFile: true })
+  assert.deepEqual(withFile, ['Text recovered and the Word file can be downloaded'])
+  assert.match(withFile[0], /download/)
 })
