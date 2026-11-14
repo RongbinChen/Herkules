@@ -309,10 +309,12 @@ export function sanitizeAttachment(item) {
     if (!name) return null;
     return { name, kind };
   }
-  const mimeType = normalizeMime(item.mimeType, storedName || name);
+  const mimeType = item.kind === 'document'
+    ? (String(item.mimeType || '').trim() || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    : normalizeMime(item.mimeType, storedName || name);
   const out = {
     name: name || storedName,
-    kind: 'image',
+    kind: item.kind === 'document' ? 'document' : 'image',
     storedName,
   };
   if (mimeType) out.mimeType = mimeType;
@@ -347,6 +349,12 @@ export function imageAttachments(attachments) {
   return sanitizeAttachmentList(attachments).filter((item) => item.storedName && item.kind === 'image');
 }
 
+// Every stored file, photos and the original Word document. Ownership checks
+// use this so one report cannot adopt, then delete, another report's file.
+export function storedAttachmentNames(attachments) {
+  return sanitizeAttachmentList(attachments).filter((item) => item.storedName).map((item) => item.storedName);
+}
+
 // Names already stored on some other report. A save may keep names this report
 // already owns, and names nobody owns yet (just generated), but not a file
 // that belongs to a different report.
@@ -354,7 +362,7 @@ export function storedNamesOwnedByOthers(reports, reportId) {
   const names = new Set();
   for (const report of reports || []) {
     if (reportId != null && report?.id === reportId) continue;
-    for (const item of imageAttachments(report?.attachments)) names.add(item.storedName);
+    for (const name of storedAttachmentNames(report?.attachments)) names.add(name);
   }
   return names;
 }
@@ -457,6 +465,21 @@ export async function writePhotoFiles(photos, storageRoot = visitReportStorageRo
     if (meta) saved.push(meta);
   }
   return saved;
+}
+
+// The uploaded .docx itself, so a later reader can open the file the text was taken from.
+export async function writeOriginalDocument(buffer, originalName, storageRoot = visitReportStorageRoot()) {
+  if (!buffer?.length) return null;
+  await mkdir(storageRoot, { recursive: true });
+  const storedName = `${randomUUID()}.docx`;
+  await writeFile(path.join(storageRoot, storedName), buffer);
+  return sanitizeAttachment({
+    name: originalName || 'original.docx',
+    kind: 'document',
+    storedName,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    sha256: sha256(buffer),
+  });
 }
 
 // Phone galleries sometimes hand us HEIC. Browsers and Word want JPEG/PNG.
