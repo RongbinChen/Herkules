@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { visitReportsAPI } from '../../api/api'
 import { STRINGS } from '../../i18n/visitReports'
+import { PhotoLightbox } from './PhotoMedia'
+import useReportPhotoSrcs from './useReportPhotoSrcs'
 
 // End-of-report gallery. Parents place this after the body (summary, sections,
-// tables). No photos → render nothing, so an empty report does not grow a box.
+// tables). Photos already shown at in-body `[]` marks should be omitted by
+// the parent, so they are not repeated. No photos → render nothing.
 //
 // Reading (the detail page, and the modal before Edit) is static text.
 // Caption fields and Regenerate exist only while the whole report is being edited.
-function displayable(photos) {
-  if (!Array.isArray(photos)) return []
-  return photos.filter((photo) => photo && photo.storedName && photo.kind !== 'document')
-}
-
 export default function ReportPhotos({
   lang = 'en',
   photos,
@@ -23,48 +20,9 @@ export default function ReportPhotos({
   onRegenerate,
 }) {
   const t = STRINGS[lang] || STRINGS.en
-  const items = displayable(photos)
-  const [srcs, setSrcs] = useState({})
+  const { items, srcs } = useReportPhotoSrcs(photos, { reportId, draft })
   const [active, setActive] = useState(null)
   const [busy, setBusy] = useState('')
-  const key = items.map((photo) => photo.storedName).join('\n')
-
-  useEffect(() => {
-    if (!key || (!reportId && !draft)) return undefined
-    let cancelled = false
-    const created = []
-    const names = key.split('\n')
-    ;(async () => {
-      const next = {}
-      for (const storedName of names) {
-        try {
-          const res = draft
-            ? await visitReportsAPI.photoFile(storedName)
-            : await visitReportsAPI.photo(reportId, storedName)
-          if (cancelled) return
-          const url = URL.createObjectURL(res.data)
-          created.push(url)
-          next[storedName] = url
-        } catch {
-          // A missing file leaves a blank tile; the caption is still shown.
-        }
-      }
-      if (!cancelled) setSrcs(next)
-    })()
-    return () => {
-      cancelled = true
-      created.forEach((url) => URL.revokeObjectURL(url))
-    }
-  }, [key, reportId, draft])
-
-  useEffect(() => {
-    if (!active) return undefined
-    const onKey = (event) => {
-      if (event.key === 'Escape') setActive(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [active])
 
   if (!items.length) return null
 
@@ -101,35 +59,13 @@ export default function ReportPhotos({
         ))}
       </ul>
 
-      {active && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t.reportPhotos}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 p-4"
-          onClick={() => setActive(null)}
-        >
-          <figure className="max-w-4xl" onClick={(event) => event.stopPropagation()}>
-            {srcs[active.storedName] && (
-              <img
-                src={srcs[active.storedName]}
-                alt={active.caption || t.reportPhotos}
-                className="max-h-[80vh] max-w-full rounded-lg object-contain"
-              />
-            )}
-            {active.caption && (
-              <figcaption className="mt-3 max-w-full break-words px-2 text-center text-sm font-normal leading-relaxed text-white">{active.caption}</figcaption>
-            )}
-            <button
-              type="button"
-              onClick={() => setActive(null)}
-              className="mt-3 block min-h-11 w-full text-center text-sm font-semibold text-white/80"
-            >
-              {t.close}
-            </button>
-          </figure>
-        </div>
-      )}
+      <PhotoLightbox
+        photo={active}
+        src={active ? srcs[active.storedName] : undefined}
+        title={t.reportPhotos}
+        closeLabel={t.close}
+        onClose={() => setActive(null)}
+      />
     </section>
   )
 }
@@ -204,3 +140,4 @@ function CaptionEditor({ photo, busy, t, onCaptionChange, onRegenerate }) {
     </>
   )
 }
+

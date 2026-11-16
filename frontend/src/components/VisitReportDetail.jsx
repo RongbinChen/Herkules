@@ -9,6 +9,7 @@ import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import { warningMessages } from '../utils/visitReportImport'
 import ReportPhotos from './visit-report/ReportPhotos'
+import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
 
@@ -233,7 +234,12 @@ export default function VisitReportDetail() {
                   {warningMessages(content.extractionWarnings, t, { hasOriginalFile: Boolean(originalFile) }).map((line) => <p key={line}>{line}</p>)}
                 </div>
               )}
-              <OriginalBody markdown={content.originalBody} />
+              <OriginalBody
+                markdown={content.originalBody}
+                photos={report.attachments}
+                reportId={report.id}
+                lang={lang}
+              />
             </section>
           ) : (
             <div className="space-y-6">
@@ -303,7 +309,7 @@ export default function VisitReportDetail() {
           <ReportPhotos
             lang={lang}
             reportId={report.id}
-            photos={report.attachments}
+            photos={preserved ? leftoverPhotos(content.originalBody, report.attachments) : report.attachments}
           />
         </article>
       </div>

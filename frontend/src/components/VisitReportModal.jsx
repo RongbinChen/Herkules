@@ -4,6 +4,7 @@ import { chooseImportedCustomer, chooseImportedDate, warningMessages } from '../
 import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
+import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
@@ -332,7 +333,13 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
                 <section>
                   <h4 className="mb-1 border-l-2 border-brand-400 pl-2 text-xs font-bold text-slate-500">{t.originalReport}</h4>
                   <p className="mb-2 text-xs leading-relaxed text-slate-500">{t.originalReportNote}</p>
-                  <OriginalBody markdown={form.content.originalBody} />
+                  <OriginalBody
+                    markdown={form.content.originalBody}
+                    photos={form.attachments}
+                    reportId={report?.id}
+                    draft
+                    lang={lang}
+                  />
                 </section>
               ) : SECTIONS.filter((s) => form.content?.[s.key]).map((s) => (
                 <section key={s.key}>
@@ -597,7 +604,9 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
             compact
             draft
             lang={lang}
-            photos={form.attachments}
+            photos={(showingOriginal && !editing)
+              ? leftoverPhotos(form.content.originalBody, form.attachments)
+              : form.attachments}
             editable={editing && canEdit}
             onCaptionChange={(photo, caption) => setCaption(photo, caption)}
             onRegenerate={editing && canEdit ? regenerateCaption : undefined}
