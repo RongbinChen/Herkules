@@ -119,6 +119,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   })
   const tables = Array.isArray(form.content?.tables) ? form.content.tables : []
   const showingOriginal = form.content?.bodySource === 'original' && form.content?.originalBody
+  const hasOriginalFile = (Array.isArray(form.attachments) ? form.attachments : []).some((item) => item?.kind === 'document' && item.storedName)
   const draftTargets = Array.isArray(form.content?.targets) ? form.content.targets : []
   const setTargets = (targets) => commitContent({ ...contentRef.current, targets })
   const setTarget = (index, patch) => {
@@ -516,9 +517,9 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
 
           {showingOriginal ? (
             <div className="space-y-3">
-              {warningMessages(form.content.extractionWarnings, t).length > 0 && (
+              {warningMessages(form.content.extractionWarnings, t, { hasOriginalFile }).length > 0 && (
                 <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-                  {warningMessages(form.content.extractionWarnings, t).map((line) => <p key={line}>{line}</p>)}
+                  {warningMessages(form.content.extractionWarnings, t, { hasOriginalFile }).map((line) => <p key={line}>{line}</p>)}
                 </div>
               )}
               <label className="block text-xs font-semibold text-slate-600">

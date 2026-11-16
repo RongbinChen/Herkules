@@ -228,9 +228,9 @@ export default function VisitReportDetail() {
                 )}
               </div>
               <p className="mb-2 text-xs leading-relaxed text-slate-500">{t.originalReportNote}</p>
-              {warningMessages(content.extractionWarnings, t).length > 0 && (
+              {warningMessages(content.extractionWarnings, t, { hasOriginalFile: Boolean(originalFile) }).length > 0 && (
                 <div className="mb-3 space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-                  {warningMessages(content.extractionWarnings, t).map((line) => <p key={line}>{line}</p>)}
+                  {warningMessages(content.extractionWarnings, t, { hasOriginalFile: Boolean(originalFile) }).map((line) => <p key={line}>{line}</p>)}
                 </div>
               )}
               <OriginalBody markdown={content.originalBody} />

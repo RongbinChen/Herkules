@@ -232,6 +232,28 @@ test('literal angle-bracket notation is kept, and an oversized body is rejected'
   assert.equal(assertPreservedContent({ needs: 'legacy' }).needs, 'legacy');
 });
 
+test('export converts a preserved pandoc grid body to pipe tables, not grid ASCII', () => {
+  const fixture = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../shared/fixtures/alpine-grid-original.md'), 'utf8');
+  const md = reportToMarkdown({
+    title: 'Alpine works visit',
+    summary: 'Separate summary.',
+    content: { bodySource: 'original', originalBody: fixture, needs: 'This rewritten section must not appear' },
+  }, { photos: [{ caption: 'Shop floor', markdownPath: 'photo-1.jpg' }] });
+
+  assert.match(md, /^\| ---/m);
+  assert.doesNotMatch(md, /\+\-{3,}\+/);
+  assert.doesNotMatch(md, /\+\-+\-+\-+\-+/);
+  assert.match(md, /Mornhill/);
+  assert.match(md, /Brocklane/);
+  assert.match(md, /Industry/);
+  assert.match(md, /Helena Frost/);
+  assert.match(md, /20% downpayment, 70% B\/L, 10% FAT/);
+  assert.match(md, /L\/C terms/);
+  assert.match(md, /<X>/);
+  assert.doesNotMatch(md, /This rewritten section must not appear/);
+  assert.ok(md.indexOf('## Report photos') > md.indexOf('Mornhill'));
+});
+
 test('a source date and company are read only when the line is unambiguous', () => {
   const meta = sourceMeta('Date of Visit: 14 July 2026\nCompany: Northline Works\n\nX axis driven system is with problem');
   assert.equal(meta.visitDate, '2026-07-14');

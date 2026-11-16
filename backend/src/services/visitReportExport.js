@@ -1,6 +1,7 @@
 // Render a stored visit report into Markdown, which pandoc converts to .docx.
 // Keeping this separate from the route makes the layout easy to tweak.
 import { isPreservedBody } from './visitReportSource.js';
+import { blocksToMarkdown, parseOriginalBody } from '../../../shared/originalBodyBlocks.js';
 
 const esc = (v) => String(v ?? '').replace(/\r?\n+/g, ' ').replace(/\|/g, '\\|').trim();
 const altText = (v) => String(v ?? '').replace(/[\[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Photo';
@@ -54,9 +55,11 @@ export function reportToMarkdown(report, options = {}) {
   }
 
   // Imported Word text is the body. The summary above is separate, and the
-  // old section buckets are not written out beside it.
+  // old section buckets are not written out beside it. Reusing the shared
+  // parser turns pandoc grid/simple tables into proper GFM pipe tables.
   if (isPreservedBody(c)) {
-    lines.push(String(c.originalBody).trim(), '');
+    const bodyMarkdown = blocksToMarkdown(parseOriginalBody(c.originalBody)).trim();
+    lines.push(bodyMarkdown, '');
     appendPhotos(lines, options.photos);
     return lines.join('\n');
   }
