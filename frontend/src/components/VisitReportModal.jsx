@@ -5,6 +5,7 @@ import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
+import { hasPreservedLetterhead } from '../../../shared/originalBodyBlocks.js'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
@@ -136,7 +137,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     setTargets(current.filter((_, i) => i !== index))
   }
   const meta = form.content?.meta || {}
-  const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
+  const hasMeta = META_FIELDS.some((mf) => meta[mf.key]) && !(showingOriginal && hasPreservedLetterhead(form.content.originalBody))
 
   // No matching customer → create one on the spot (name only; enrich later in Customers).
   const createCustomer = async () => {

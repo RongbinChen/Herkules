@@ -5,12 +5,15 @@
 //
 // Leftover `[]` marks from the Word import are replaced with the matching
 // photos (document order). A line of `[] []` stays a photo row.
+// Letterhead / participants tables become the report meta card and attendee
+// chips already used on structured reports.
 
 import { useState } from 'react'
 import { embedInlinePhotos } from '../../../../shared/inlineBodyPhotos.js'
 import { parseOriginalBody } from '../../../../shared/originalBodyBlocks.js'
-import { STRINGS } from '../../i18n/visitReports'
+import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../../i18n/visitReports'
 import { PhotoLightbox, PhotoRow } from './PhotoMedia'
+import AttendeeGroups from './AttendeeGroups'
 import useReportPhotoSrcs from './useReportPhotoSrcs'
 
 function renderCell(cell, photoProps) {
@@ -59,11 +62,34 @@ function listItemContent(item, photoProps) {
   return item
 }
 
+function fieldLabel(field, lang) {
+  const found = META_FIELDS_I18N.find((item) => item.key === field.key)
+  if (found) return found[lang] || found.en
+  return field.label
+}
+
+function MetaCard({ fields, lang }) {
+  const list = (fields || []).filter((field) => field?.value)
+  if (!list.length) return null
+  const wide = new Set(['address', 'reason'])
+  return (
+    <dl data-report-meta className="grid grid-cols-1 gap-x-8 gap-y-3 rounded-xl border border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2 sm:p-5">
+      {list.map((field) => (
+        <div key={field.key || field.label} className={`min-w-0 ${wide.has(field.key) ? 'sm:col-span-2' : ''}`}>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{fieldLabel(field, lang)}</dt>
+          <dd className="break-words text-sm text-slate-700">{field.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 export default function OriginalBody({ markdown, photos, reportId = null, draft = false, lang = 'en' }) {
   const t = STRINGS[lang] || STRINGS.en
   const { blocks } = embedInlinePhotos(parseOriginalBody(markdown), photos)
   const { srcs } = useReportPhotoSrcs(photos, { reportId, draft })
   const [active, setActive] = useState(null)
+  const attendeesLabel = (SECTIONS_I18N.find((item) => item.key === 'attendees') || {})[lang] || 'Attendees'
 
   if (!blocks.length) return null
 
@@ -75,8 +101,25 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
   }
 
   return (
-    <div className="space-y-3 text-sm font-normal leading-relaxed text-slate-700" data-original-body>
+    <div className="space-y-4 text-sm font-normal leading-relaxed text-slate-700" data-original-body>
       {blocks.map((block, index) => {
+        if (block.type === 'meta') {
+          return <MetaCard key={index} fields={block.fields} lang={lang} />
+        }
+        if (block.type === 'attendees') {
+          return (
+            <AttendeeGroups
+              key={index}
+              className="space-y-2"
+              groups={block.groups}
+              heading={(
+                <h3 className="mb-2 border-l-[3px] border-brand-500 pl-2.5 text-sm font-bold text-slate-700">
+                  {attendeesLabel}
+                </h3>
+              )}
+            />
+          )
+        }
         if (block.type === 'heading') {
           if (block.parts) {
             return (
@@ -85,13 +128,23 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
               </div>
             )
           }
-          return <h3 key={index} className="break-words text-sm font-bold text-slate-800">{block.text}</h3>
+          const headingClass = block.section
+            ? 'break-words text-sm font-semibold text-slate-800'
+            : 'break-words text-sm font-bold text-slate-800'
+          return <h3 key={index} className={headingClass}>{block.text}</h3>
         }
         if (block.type === 'list') {
           const Tag = block.ordered ? 'ol' : 'ul'
+          const start = block.ordered && block.start && block.start !== 1 ? block.start : undefined
           return (
-            <Tag key={index} className={`space-y-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
-              {block.items.map((item, itemIndex) => <li key={itemIndex} className="break-words pl-0.5">{listItemContent(item, photoProps)}</li>)}
+            <Tag
+              key={index}
+              start={start}
+              className={`list-outside space-y-2 pl-6 marker:text-slate-500 ${block.ordered ? 'list-decimal' : 'list-disc'}`}
+            >
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex} className="break-words pl-1 leading-relaxed">{listItemContent(item, photoProps)}</li>
+              ))}
             </Tag>
           )
         }
@@ -144,6 +197,9 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
         }
         if (block.parts) {
           return <MixedText key={index} parts={block.parts} {...photoProps} />
+        }
+        if (block.aside) {
+          return <p key={index} className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-500">{block.text}</p>
         }
         return <p key={index} className="whitespace-pre-wrap break-words">{block.text}</p>
       })}
