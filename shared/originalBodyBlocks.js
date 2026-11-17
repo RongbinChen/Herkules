@@ -216,6 +216,15 @@ function parseSimpleTable(lines, start, columns) {
 const LIST_START = /^\s*([-*]|\d+[.)])\s+/
 const HEADING_START = /^(#{1,4})\s+(.*)$/
 
+// A source line that is only leftover image marks (`[]` or `[] []`).
+// Kept as its own paragraph so two marks on one line stay a row, and a
+// mark on the next line stays a separate row, even without a blank line.
+export function isPlaceholderOnlyLine(line) {
+  const t = String(line ?? '').trim()
+  if (!t) return false
+  return /^(?:\[\](?:\s+\[\])*)+$/.test(t)
+}
+
 export function parseOriginalBody(markdown) {
   const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n')
   const blocks = []
@@ -292,6 +301,12 @@ export function parseOriginalBody(markdown) {
       continue
     }
 
+    if (isPlaceholderOnlyLine(line)) {
+      blocks.push({ type: 'paragraph', text: line.trim() })
+      i += 1
+      continue
+    }
+
     // Paragraph: soft-wrapped source lines are one readable paragraph.
     const paragraph = []
     while (
@@ -303,6 +318,7 @@ export function parseOriginalBody(markdown) {
       && !ruleLine(lines[i])
       && !HEADING_START.test(lines[i])
       && !LIST_START.test(lines[i])
+      && !isPlaceholderOnlyLine(lines[i])
     ) {
       paragraph.push(lines[i])
       i += 1

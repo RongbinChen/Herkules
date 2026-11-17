@@ -165,3 +165,123 @@ test('the retained body keeps soft-wrapped prose, lists, and pipe tables intact'
   assert.match(html, /<table/)
   assert.doesNotMatch(html, /<script>/)
 })
+
+const shopFloorBody = [
+  'Two SNK machines installed nearby one machine with same dimension.',
+  '',
+  'One machine is down for repairing work.',
+  '',
+  '[] []',
+  '',
+  '[]',
+  '',
+  'The table and drive system were completed dismantled.',
+  '',
+  'They ordered tailor-made attachment as follows:',
+  '',
+  '[]',
+  '',
+  'The table drive problem obviously interrupted business.',
+].join('\n')
+
+const shopFloorPhotos = [
+  { storedName: 'image1.png', kind: 'image', caption: 'SNK HF 12 M machine working on a workpiece' },
+  { storedName: 'image2.png', kind: 'image', caption: 'Dismantled SNK machine tables and drive system' },
+  { storedName: 'image3.png', kind: 'image', caption: 'Worn worm rack components of an SNK machine' },
+  { storedName: 'image4.png', kind: 'image', caption: 'An SNK machine undergoing repair, with its table and drive' },
+]
+
+test('leftover [] marks in the retained body are replaced with the matching photos', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const html = renderToStaticMarkup(createElement(OriginalBody, {
+    markdown: shopFloorBody,
+    photos: shopFloorPhotos,
+    lang: 'en',
+  }))
+
+  for (const phrase of [
+    'Two SNK machines installed nearby one machine with same dimension.',
+    'One machine is down for repairing work.',
+    'The table and drive system were completed dismantled.',
+    'They ordered tailor-made attachment as follows:',
+    'The table drive problem obviously interrupted business.',
+    ...shopFloorPhotos.map((photo) => photo.caption),
+  ]) {
+    assert.match(html, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+
+  assert.equal((html.match(/data-inline-photos/g) || []).length, 3)
+  assert.equal((html.match(/data-inline-photo=/g) || []).length, 4)
+  assert.match(html, /text-sm font-normal leading-relaxed text-slate-700/)
+  assert.doesNotMatch(html, /<textarea/)
+  assert.doesNotMatch(html, /Regenerate caption/)
+  assert.doesNotMatch(html, /data-caption-editor/)
+  // The leftover Word marks themselves must not remain as brackets.
+  assert.doesNotMatch(html, />\[\]</)
+
+  const firstCaption = html.indexOf(shopFloorPhotos[0].caption)
+  const secondCaption = html.indexOf(shopFloorPhotos[1].caption)
+  const repair = html.indexOf('One machine is down for repairing work.')
+  const table = html.indexOf('The table and drive system were completed dismantled.')
+  const attachment = html.indexOf('They ordered tailor-made attachment as follows:')
+  const lastCaption = html.indexOf(shopFloorPhotos[3].caption)
+  assert.ok(firstCaption > repair)
+  assert.ok(secondCaption > firstCaption)
+  assert.ok(table > secondCaption)
+  assert.ok(lastCaption > attachment)
+})
+
+test('reading an imported report shows inlined photos in the body and only unused photos in the gallery', async () => {
+  const { default: VisitReportModal } = await loadJsxModule(path.join(here, '../VisitReportModal.jsx'))
+  const report = {
+    id: 54,
+    title: 'Shop visit',
+    status: 'FINAL',
+    visitDate: '2026-11-12T00:00:00.000Z',
+    canEdit: true,
+    author: { id: 7, name: 'Ada North' },
+    customer: { id: 3, name: 'Northline Works' },
+    content: { bodySource: 'original', originalBody: shopFloorBody },
+    attachments: [
+      ...shopFloorPhotos,
+      { storedName: 'extra.png', kind: 'image', caption: 'A fifth shop-floor photo' },
+    ],
+  }
+  const read = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(read, /One machine is down for repairing work/)
+  assert.match(read, /SNK HF 12 M machine working on a workpiece/)
+  assert.match(read, /A fifth shop-floor photo/)
+  assert.match(read, /Report photos/)
+  assert.doesNotMatch(read, /<textarea/)
+  assert.doesNotMatch(read, /Regenerate caption/)
+  // Inlined captions appear before the leftover gallery heading.
+  assert.ok(read.indexOf('SNK HF 12 M machine working on a workpiece') < read.indexOf('Report photos'))
+  assert.ok(read.indexOf('A fifth shop-floor photo') > read.indexOf('Report photos'))
+
+  const allInlined = renderToStaticMarkup(createElement(VisitReportModal, {
+    report: { ...report, attachments: shopFloorPhotos },
+    lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(allInlined, /Worn worm rack components of an SNK machine/)
+  assert.doesNotMatch(allInlined, /Report photos/)
+
+  const editing = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, startEditing: true, lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(editing, /data-caption-editor/)
+  assert.match(editing, /Regenerate caption/)
+  assert.match(editing, /Report photos/)
+  // The source marks stay editable in the body textarea; every photo stays
+  // in the gallery so captions can be edited and saved with the report.
+  assert.match(editing, /\[\] \[\]/)
+  assert.equal((editing.match(/data-caption-editor/g) || []).length, 5)
+})
+
+test('the detail page inlines photos in the preserved body and sends only leftovers to the gallery', () => {
+  const detail = readFileSync(new URL('../VisitReportDetail.jsx', import.meta.url), 'utf8')
+  assert.match(detail, /leftoverPhotos\(content\.originalBody, report\.attachments\)/)
+  assert.match(detail, /photos=\{report\.attachments\}/)
+  assert.match(detail, /<OriginalBody/)
+})

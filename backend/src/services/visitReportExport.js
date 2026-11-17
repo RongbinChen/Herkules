@@ -1,10 +1,9 @@
 // Render a stored visit report into Markdown, which pandoc converts to .docx.
 // Keeping this separate from the route makes the layout easy to tweak.
 import { isPreservedBody } from './visitReportSource.js';
-import { blocksToMarkdown, parseOriginalBody } from '../../../shared/originalBodyBlocks.js';
+import { photoToMarkdown, renderOriginalBodyMarkdown } from '../../../shared/inlineBodyPhotos.js';
 
 const esc = (v) => String(v ?? '').replace(/\r?\n+/g, ' ').replace(/\|/g, '\\|').trim();
-const altText = (v) => String(v ?? '').replace(/[\[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Photo';
 
 const SECTIONS = [
   ['attendees', 'Attendees'],
@@ -58,9 +57,9 @@ export function reportToMarkdown(report, options = {}) {
   // old section buckets are not written out beside it. Reusing the shared
   // parser turns pandoc grid/simple tables into proper GFM pipe tables.
   if (isPreservedBody(c)) {
-    const bodyMarkdown = blocksToMarkdown(parseOriginalBody(c.originalBody)).trim();
-    lines.push(bodyMarkdown, '');
-    appendPhotos(lines, options.photos);
+    const { markdown: bodyMarkdown, leftoverPhotos: leftover } = renderOriginalBodyMarkdown(c.originalBody, options.photos);
+    lines.push(bodyMarkdown.trim(), '');
+    appendPhotos(lines, leftover);
     return lines.join('\n');
   }
 
@@ -94,7 +93,7 @@ function appendPhotos(lines, photos) {
   if (!placed.length) return;
   lines.push('## Report photos', '');
   for (const photo of placed) {
-    const caption = altText(photo.caption || photo.name || 'Photo');
-    lines.push(`![${caption}](${photo.markdownPath}){width=14cm}`, '');
+    const markdown = photoToMarkdown(photo);
+    if (markdown) lines.push(markdown, '');
   }
 }
