@@ -1,13 +1,14 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { visitReportsAPI, customersAPI, usersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
-import { Button, Card, Badge } from './ui'
+import { Button, Card, Badge, Input } from './ui'
 import VisitReportModal from './VisitReportModal'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import CustomerGroupHeader from './visit-report/CustomerGroupHeader'
 import { showDeleteVisitReport } from '../utils/visitReportAccess'
 import { groupVisitReportsByCustomer } from '../utils/visitReportGroups'
+import { filterVisitReportsByKeyword } from '../utils/visitReportSearch'
 import { useVRLang, STRINGS } from '../i18n/visitReports'
 
 export default function VisitReportList() {
@@ -26,7 +27,11 @@ export default function VisitReportList() {
   const [chooserOpen, setChooserOpen] = useState(false)
   // Deep link from a customer page: /visit-reports?new=1&customerId=..&customerName=..
   // opens the create chooser with that customer pre-linked.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialQ = searchParams.get('q') || ''
+  const [query, setQuery] = useState(initialQ)
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQ.trim())
+  const lastWrittenQ = useRef(initialQ.trim())
   const [initialCustomer, setInitialCustomer] = useState(null)
   useEffect(() => {
     if (searchParams.get('new') !== '1') return
@@ -36,6 +41,31 @@ export default function VisitReportList() {
     setChooserOpen(true)
     navigate('/visit-reports', { replace: true }) // don't reopen on refresh
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Keyword box: filter after a short pause, and keep q on the URL so a
+  // search is refresh-safe and shareable. Back/forward reapplies the URL
+  // value; typing is not written until the debounce fires.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = query.trim()
+      setDebouncedQuery(trimmed)
+      if (trimmed === lastWrittenQ.current) return
+      lastWrittenQ.current = trimmed
+      const next = new URLSearchParams(searchParams)
+      if (trimmed) next.set('q', trimmed)
+      else next.delete('q')
+      setSearchParams(next, { replace: true })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query, searchParams, setSearchParams])
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('q') || ''
+    if (fromUrl === lastWrittenQ.current) return
+    lastWrittenQ.current = fromUrl
+    setQuery(fromUrl)
+    setDebouncedQuery(fromUrl)
+  }, [searchParams])
+
   // Display mode: card grid vs. detailed table. Persisted.
   const [view, setView] = useState(() => localStorage.getItem('vrView') || 'cards')
   const pickView = (v) => { setView(v); localStorage.setItem('vrView', v) }
@@ -61,9 +91,11 @@ export default function VisitReportList() {
   const teamMemberIds = useMemo(() => new Set(teamMembers.map((u) => u.id)), [teamMembers])
 
   const visibleReports = useMemo(() => {
-    if (team === 'ALL') return reports
-    return reports.filter((r) => teamMemberIds.has(r.authorId) && (!personId || r.authorId === personId))
-  }, [reports, team, teamMemberIds, personId])
+    const byTeam = team === 'ALL'
+      ? reports
+      : reports.filter((r) => teamMemberIds.has(r.authorId) && (!personId || r.authorId === personId))
+    return filterVisitReportsByKeyword(byTeam, debouncedQuery)
+  }, [reports, team, teamMemberIds, personId, debouncedQuery])
 
   // Group the already-filtered list, so All / WRC / HRC and the person
   // sub-filter change which sections appear. Group order (newest visit in
@@ -128,6 +160,18 @@ export default function VisitReportList() {
           </div>
         </div>
 
+        <div className="mb-4">
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.searchPlaceholder}
+            aria-label={t.searchPlaceholder}
+            autoComplete="off"
+            className="w-full"
+          />
+        </div>
+
         {/* Person sub-filter, only within a team tab */}
         {team !== 'ALL' && (
           <div className="mb-4 flex flex-wrap items-center gap-1.5">
@@ -149,7 +193,14 @@ export default function VisitReportList() {
           <div className="py-16 text-center text-sm text-slate-400">{t.loading}</div>
         ) : visibleReports.length === 0 ? (
           <Card className="py-16 text-center text-sm text-slate-400">
-            {t.emptyState} <button onClick={() => setChooserOpen(true)} className="font-semibold text-brand-600 hover:underline">{t.createOne}</button>
+            {debouncedQuery ? (
+              t.emptySearch
+            ) : (
+              <>
+                {t.emptyState}{' '}
+                <button onClick={() => setChooserOpen(true)} className="font-semibold text-brand-600 hover:underline">{t.createOne}</button>
+              </>
+            )}
           </Card>
         ) : view === 'cards' ? (
           <div className="space-y-8">
