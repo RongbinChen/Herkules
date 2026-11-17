@@ -54,6 +54,18 @@ function loadSavedSelection() {
   }
 }
 
+// Shown next to the status, never instead of it: a Lost customer with one of
+// our machines still standing is exactly the case this badge exists to make
+// visible.
+function InstalledBadge() {
+  return (
+    <span title="Owns our machines — spares, service and retrofit"
+      className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 ring-1 ring-violet-200">
+      ⚙ Installed
+    </span>
+  )
+}
+
 function StatusBadge({ status }) {
   const meta = statusMeta(status)
   return (
@@ -94,6 +106,7 @@ export default function CustomerList() {
   const [search, setSearch] = useState(savedFilters.search || '')
   const [statusFilter, setStatusFilter] = useState(savedFilters.status || '')
   const [tierFilter, setTierFilter] = useState(savedFilters.tier || '')
+  const [baseFilter, setBaseFilter] = useState(savedFilters.installedBase === true)
   const [tagFilter, setTagFilter] = useState(savedFilters.tag || '')
   const [locationFilters, setLocationFilters] = useState(savedFilters.locations || [])
   const [locationInput, setLocationInput] = useState('')
@@ -155,11 +168,12 @@ export default function CustomerList() {
         search,
         status: statusFilter,
         tier: tierFilter,
+        installedBase: baseFilter,
         tag: tagFilter,
         locations: locationFilters,
       }),
     )
-  }, [search, statusFilter, tierFilter, tagFilter, locationFilters])
+  }, [search, statusFilter, tierFilter, baseFilter, tagFilter, locationFilters])
 
   // Keep the checked customers across navigation too.
   useEffect(() => {
@@ -172,6 +186,7 @@ export default function CustomerList() {
     return customers.filter((c) => {
       if (statusFilter && c.status !== statusFilter) return false
       if (tierFilter && c.tier !== tierFilter) return false
+      if (baseFilter && c.installedBase !== true) return false
       if (tagFilter && !(c.tags || []).includes(tagFilter)) return false
       if (locs.length) {
         // Match ANY selected location (OR). Known provinces match the province
@@ -209,7 +224,7 @@ export default function CustomerList() {
       }
       return true
     })
-  }, [customers, search, statusFilter, tierFilter, tagFilter, locationFilters, provinceByNorm])
+  }, [customers, search, statusFilter, tierFilter, baseFilter, tagFilter, locationFilters, provinceByNorm])
 
   function openCreate() {
     setEditing(null)
@@ -383,6 +398,20 @@ export default function CustomerList() {
             <option key={t} value={t}>{tierMeta(t).label}</option>
           ))}
         </select>
+        {/* A toggle, not a third dropdown: "who owns our machines" is a
+            question people ask on its own, and it cuts across every status. */}
+        <button
+          type="button"
+          onClick={() => setBaseFilter((v) => !v)}
+          title="Customers who already own one of our machines"
+          className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+            baseFilter
+              ? 'border-brand-500 bg-brand-500 text-white'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-brand-400 hover:text-brand-600'
+          }`}
+        >
+          ⚙ Installed base
+        </button>
         {industryOptions.length > 0 && (
           <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={selectCls}>
             <option value="">All industries</option>
@@ -467,6 +496,7 @@ export default function CustomerList() {
               {c.address && <p className="mt-1 text-xs text-slate-400">{c.address}</p>}
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <StatusBadge status={c.status} />
+                {c.installedBase && <InstalledBadge />}
                 <span className="text-xs text-slate-500">{c._count?.events ?? 0} visit(s)</span>
                 {c.contactName && (
                   <span className="text-xs text-slate-500">· {c.contactName}{c.contactPhone ? ` ${c.contactPhone}` : ''}</span>
@@ -531,7 +561,12 @@ export default function CustomerList() {
                     {c.address && <p className="mt-0.5 text-xs text-slate-400">{c.address}</p>}
                   </td>
                   <td className="px-4 py-3"><TierBadge tier={c.tier} /></td>
-                  <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                  <td className="px-4 py-3">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <StatusBadge status={c.status} />
+                      {c.installedBase && <InstalledBadge />}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {c.contactName || '—'}
                     {c.contactPhone && <p className="text-xs text-slate-400">{c.contactPhone}</p>}

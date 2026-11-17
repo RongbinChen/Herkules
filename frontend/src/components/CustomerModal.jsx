@@ -9,6 +9,7 @@ const EMPTY = {
   name: '',
   status: 'LEAD',
   tier: 'C',
+  installedBase: false,
   address: '',
   notes: '',
   latitude: '',
@@ -50,6 +51,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
         name: customer.name || '',
         status: customer.status || 'LEAD',
         tier: customer.tier || 'C',
+        installedBase: customer.installedBase === true,
         address: customer.address || '',
         notes: customer.notes || '',
         latitude: customer.latitude ?? '',
@@ -172,6 +174,7 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
       name: form.name.trim(),
       status: form.status,
       tier: form.tier,
+      installedBase: form.installedBase,
       address: form.address.trim(),
       notes: form.notes.trim(),
       tags: form.province ? [...nonProvinceTags, form.province] : nonProvinceTags,
@@ -237,6 +240,22 @@ export default function CustomerModal({ isOpen, customer, onClose, onSaved, exis
                   <option key={s} value={s}>{CUSTOMER_STATUS[s].label}</option>
                 ))}
               </select>
+              {/* A fact about the machines, not a stage of the relationship —
+                  which is why it sits beside status rather than inside it. */}
+              <label className="mt-2 flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.installedBase}
+                  onChange={(e) => update('installedBase', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600"
+                />
+                <span className="text-xs text-slate-600">
+                  Owns our machines
+                  <span className="block text-[11px] text-slate-400">
+                    Installed base — spares, service and retrofit stay live even when the status does not.
+                  </span>
+                </span>
+              </label>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-slate-700">Tier</span>
