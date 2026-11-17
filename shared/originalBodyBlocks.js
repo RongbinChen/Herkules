@@ -225,6 +225,359 @@ export function isPlaceholderOnlyLine(line) {
   return /^(?:\[\](?:\s+\[\])*)+$/.test(t)
 }
 
+// Word justification and unwrap often leave irregular extra spaces in prose.
+// Tables keep their own cell structure; this only collapses runs of spaces
+// or tabs inside already-extracted text.
+export function collapseProseSpaces(text) {
+  return String(text ?? '').replace(/[ \t]+/g, ' ').trim()
+}
+
+// Leftover Word-template prompt. Hidden on display/export; never turned
+// into a fabricated "report type".
+export function isChromeParagraph(text) {
+  return /^please select type of report\.?$/i.test(collapseProseSpaces(text))
+}
+
+// Rejoin a mid-word wrap in a short form label ("Parti cipants") without
+// gluing ordinary label words ("Purpose of visit", "Date of Visit").
+const LABEL_KEEP = /^(the|and|for|of|to|in|on|at|from|with|by|as|or|an|a|visit|report|type|purpose|country|date|machine|no|generation|new)$/i
+
+export function rejoinLabelWraps(text) {
+  return String(text ?? '').replace(/([A-Za-z]) ([a-z]+)/g, (all, lead, rest) => (
+    LABEL_KEEP.test(rest) ? all : `${lead}${rest}`
+  ))
+}
+
+function listMarker(line) {
+  const ordered = String(line ?? '').match(/^\s*(\d+)[.)]\s+(.*)$/)
+  if (ordered) return { ordered: true, number: Number(ordered[1]), text: ordered[2] }
+  const bullet = String(line ?? '').match(/^\s*[-*]\s+(.*)$/)
+  if (bullet) return { ordered: false, number: null, text: bullet[1] }
+  return null
+}
+
+function isBlockOpener(lines, index) {
+  const line = lines[index]
+  return pipeTableStart(lines, index)
+    || !!gridBorderWidths(line)
+    || !!simpleDashColumns(line)
+    || ruleLine(line)
+    || HEADING_START.test(line)
+    || isPlaceholderOnlyLine(line)
+}
+
+// Indented soft-wraps stay on the current item. An unindented lowercase
+// line is also a wrap; an unindented "(" starts a parenthetical aside
+// and must not be folded into the previous item.
+function isListContinuation(lines, index) {
+  const line = lines[index]
+  if (blank(line) || listMarker(line) || isBlockOpener(lines, index)) return false
+  if (/^\s+/.test(line)) return true
+  if (/^[a-z]/.test(line)) return true
+  return false
+}
+
+function peekSameList(lines, index, ordered) {
+  let j = index
+  while (j < lines.length && blank(lines[j])) j += 1
+  const mark = j < lines.length ? listMarker(lines[j]) : null
+  if (mark && mark.ordered === ordered) return j
+  return -1
+}
+
+function parseList(lines, start) {
+  const first = listMarker(lines[start])
+  if (!first) return null
+  const items = []
+  let i = start
+  while (i < lines.length) {
+    if (blank(lines[i])) {
+      const next = peekSameList(lines, i, first.ordered)
+      if (next < 0) break
+      i = next
+      continue
+    }
+    const mark = listMarker(lines[i])
+    if (!mark || mark.ordered !== first.ordered) break
+    const parts = [mark.text]
+    i += 1
+    while (i < lines.length && isListContinuation(lines, i)) {
+      parts.push(String(lines[i]).trim())
+      i += 1
+    }
+    items.push({ text: collapseProseSpaces(parts.join(' ')), number: mark.number })
+  }
+  if (!items.length) return null
+  const startNo = first.ordered ? (items[0].number || 1) : undefined
+  return {
+    block: {
+      type: 'list',
+      ordered: first.ordered,
+      ...(first.ordered ? { start: startNo } : {}),
+      items: items.map((item) => item.text),
+    },
+    end: i,
+  }
+}
+
+function isParentheticalAside(text) {
+  const t = collapseProseSpaces(text)
+  return t.length >= 3 && /^\(.*\)$/.test(t)
+}
+
+// Short, punctuation-free stand-alone lines are section titles in these
+// visit notes, not body sentences.
+function isSectionTitle(text) {
+  const t = collapseProseSpaces(text)
+  if (t.length < 8 || t.length > 140) return false
+  if (isChromeParagraph(t) || isParentheticalAside(t) || isPlaceholderOnlyLine(t)) return false
+  if (/[.!?:;]$/.test(t)) return false
+  if (/\|/.test(t)) return false
+  // "Name / Name" signatures and paired labels are not section titles.
+  if (/\s\/\s/.test(t)) return false
+  return true
+}
+
+function flattenFieldValue(text) {
+  return collapseProseSpaces(String(text ?? '').replace(/\n+/g, ' ')).replace(/[;,]\s*$/, '')
+}
+
+function normalizeLabel(text) {
+  return rejoinLabelWraps(collapseProseSpaces(text)).replace(/[:：]\s*$/, '').trim()
+}
+
+const FIELD_DEFS = [
+  [/^to$/i, 'recipients', 'To'],
+  [/^from$/i, 'from', 'From'],
+  // Bare "Fax" is the usual "From" slot on some templates; "Telefax"/"Telex"
+  // is the number on the address row. Keep them as separate fields.
+  [/^fax$/i, 'fax', 'Fax'],
+  [/^cc$/i, 'cc', 'CC'],
+  [/^date$/i, 'letterDate', 'Date'],
+  [/^company$/i, 'company', 'Company'],
+  [/^address$/i, 'address', 'Address'],
+  [/^phone$/i, 'phone', 'Phone'],
+  [/^(telefax|telex)$/i, 'telefax', 'Telefax'],
+  [/^(place\s*\/\s*country|place|country)$/i, 'location', 'Location'],
+  [/^e-?mail$/i, 'email', 'E-Mail'],
+  [/^industry$/i, 'industry', 'Industry'],
+  [/^date of visit$/i, 'dateOfVisit', 'Date of Visit'],
+  [/^quotation no\.?$/i, 'quotationNo', 'Quotation No.'],
+  [/^machine\s*\/\s*type$/i, 'machineType', 'Machine / Type'],
+  [/^reason\s*\/\s*purpose of visit$/i, 'reason', 'Reason / Purpose of Visit'],
+]
+
+function titleCaseLabel(text) {
+  return String(text || '').replace(/[A-Za-z]+/g, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
+}
+
+function matchField(label) {
+  const t = normalizeLabel(label)
+  if (!t) return null
+  for (const [pattern, key, title] of FIELD_DEFS) {
+    if (pattern.test(t)) {
+      // Keep Telex / Fax / Telefax as written; other fields use a stable title.
+      const display = key === 'telefax' ? titleCaseLabel(t) : title
+      return { key, label: display }
+    }
+  }
+  return null
+}
+
+function isParticipantsHeaderRow(row) {
+  const labels = (row || []).map((cell) => normalizeLabel(cell))
+  return labels.some((cell) => /participants?/i.test(cell))
+}
+
+function isEmptyRow(row) {
+  return !(row || []).some((cell) => collapseProseSpaces(cell))
+}
+
+function extractFieldsFromRow(row, fields) {
+  const cells = Array.isArray(row) ? row : []
+  const slots = []
+  if (cells.length >= 5) {
+    // Two-up letterhead: label | value | (pad) | label | value
+    slots.push([cells[0], cells.slice(1, 3).join(' ')])
+    slots.push([cells[3], cells[4]])
+  } else if (cells.length >= 2) {
+    slots.push([cells[0], cells.slice(1).join(' ')])
+  } else {
+    return 0
+  }
+  let found = 0
+  for (const [rawLabel, rawValue] of slots) {
+    const field = matchField(rawLabel)
+    if (!field) continue
+    const value = flattenFieldValue(rawValue)
+    if (!value) continue
+    if (!fields.some((item) => item.key === field.key)) {
+      fields.push({ key: field.key, label: field.label, value })
+    }
+    found += 1
+  }
+  return found
+}
+
+function groupLabelFromHeader(cell) {
+  const t = normalizeLabel(cell).replace(/^(participants?)\s+/i, '').trim()
+  return t || normalizeLabel(cell)
+}
+
+function splitPeople(cell) {
+  return String(cell ?? '')
+    .split(/\n{2,}/)
+    .map((part) => collapseProseSpaces(part))
+    .filter(Boolean)
+}
+
+function buildAttendees(header, rows) {
+  const labels = (header || []).map((cell) => normalizeLabel(cell))
+  let customerCol = labels.findIndex((cell) => /customer/i.test(cell))
+  let otherCol = labels.findIndex((cell, index) => index !== customerCol && /participants?|\bwaldrich|\bworkshop|\bwasi\b/i.test(cell))
+  const functionCol = labels.findIndex((cell) => /function|title|role|职务/i.test(cell))
+  const peopleCols = labels
+    .map((cell, index) => (/participants?/i.test(cell) || /customer/i.test(cell) ? index : -1))
+    .filter((index) => index >= 0)
+  if (customerCol < 0 && peopleCols.length) customerCol = peopleCols[0]
+  if (otherCol < 0 && peopleCols.length > 1) otherCol = peopleCols.find((index) => index !== customerCol)
+  if (customerCol < 0 && otherCol < 0) return null
+
+  const groups = []
+  const ensure = (col) => {
+    if (col == null || col < 0) return null
+    let group = groups.find((item) => item.col === col)
+    if (!group) {
+      group = { col, label: groupLabelFromHeader(header[col]) || 'Attendees', people: [] }
+      groups.push(group)
+    }
+    return group
+  }
+  const customerGroup = ensure(customerCol)
+  const otherGroup = ensure(otherCol)
+
+  for (const row of rows) {
+    const left = customerCol >= 0 ? splitPeople(row[customerCol]) : []
+    const right = otherCol >= 0 ? splitPeople(row[otherCol]) : []
+    const roles = functionCol >= 0 ? splitPeople(row[functionCol]) : []
+    // The Function column sits between the two sides and, in these
+    // templates, belongs to the adjacent customer/left names only.
+    if (customerGroup) {
+      left.forEach((name, index) => {
+        const role = roles[index] || ''
+        customerGroup.people.push(role ? `${name} (${role})` : name)
+      })
+    }
+    if (otherGroup) {
+      right.forEach((name) => {
+        otherGroup.people.push(name)
+      })
+    }
+  }
+
+  const visible = groups
+    .map(({ label, people }) => ({
+      label,
+      people: people.filter((name, index, all) => name && all.indexOf(name) === index),
+    }))
+    .filter((group) => group.people.length)
+  return visible.length ? { type: 'attendees', groups: visible } : null
+}
+
+function isLetterheadTable(block) {
+  if (!block || block.type !== 'table') return false
+  const rows = []
+  if (Array.isArray(block.header) && block.header.some((cell) => String(cell || '').trim())) {
+    rows.push(block.header)
+  }
+  for (const row of block.rows || []) rows.push(row)
+  if (rows.length < 2) return false
+  let fields = 0
+  let participants = false
+  for (const row of rows) {
+    if (isParticipantsHeaderRow(row)) participants = true
+    const tmp = []
+    extractFieldsFromRow(row, tmp)
+    fields += tmp.length
+  }
+  return participants || fields >= 3
+}
+
+function letterheadBlocks(block) {
+  const rows = []
+  if (Array.isArray(block.header) && block.header.some((cell) => String(cell || '').trim())) {
+    rows.push(block.header)
+  }
+  for (const row of block.rows || []) rows.push(row)
+
+  const fields = []
+  let header = null
+  const peopleRows = []
+  let mode = 'fields'
+  for (const row of rows) {
+    if (isEmptyRow(row)) {
+      if (mode === 'participants') mode = 'fields'
+      continue
+    }
+    if (isParticipantsHeaderRow(row)) {
+      header = row
+      mode = 'participants'
+      continue
+    }
+    if (mode === 'participants' && !matchField(row?.[0])) {
+      peopleRows.push(row)
+      continue
+    }
+    mode = 'fields'
+    extractFieldsFromRow(row, fields)
+  }
+
+  const out = []
+  if (fields.length) out.push({ type: 'meta', fields })
+  const attendees = header ? buildAttendees(header, peopleRows) : null
+  if (attendees) out.push(attendees)
+  return out.length ? out : [block]
+}
+
+function decorateBlock(block) {
+  if (block.type === 'paragraph') {
+    const text = collapseProseSpaces(block.text)
+    if (!text || isChromeParagraph(text)) return null
+    if (isParentheticalAside(text)) return { type: 'paragraph', text, aside: true }
+    if (isSectionTitle(text)) return { type: 'heading', level: 3, text, section: true }
+    return { ...block, text }
+  }
+  if (block.type === 'heading') {
+    const text = collapseProseSpaces(block.text)
+    if (!text || isChromeParagraph(text)) return null
+    return { ...block, text }
+  }
+  if (block.type === 'list') {
+    return {
+      ...block,
+      items: (block.items || []).map((item) => (typeof item === 'string' ? collapseProseSpaces(item) : item)),
+    }
+  }
+  return block
+}
+
+function structurePreservedBlocks(blocks) {
+  const out = []
+  for (const block of blocks || []) {
+    if (isLetterheadTable(block)) {
+      out.push(...letterheadBlocks(block))
+      continue
+    }
+    const next = decorateBlock(block)
+    if (next) out.push(next)
+  }
+  return out
+}
+
+export function hasPreservedLetterhead(markdown) {
+  return parseOriginalBody(markdown).some((block) => block.type === 'meta' || block.type === 'attendees')
+}
+
 export function parseOriginalBody(markdown) {
   const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n')
   const blocks = []
@@ -285,20 +638,18 @@ export function parseOriginalBody(markdown) {
 
     const heading = line.match(HEADING_START)
     if (heading) {
-      blocks.push({ type: 'heading', level: heading[1].length, text: heading[2] })
+      blocks.push({ type: 'heading', level: heading[1].length, text: collapseProseSpaces(heading[2]) })
       i += 1
       continue
     }
 
     if (LIST_START.test(line)) {
-      const ordered = /^\s*\d+[.)]\s+/.test(line)
-      const items = []
-      while (i < lines.length && LIST_START.test(lines[i])) {
-        items.push(lines[i].replace(LIST_START, ''))
-        i += 1
+      const parsed = parseList(lines, i)
+      if (parsed) {
+        blocks.push(parsed.block)
+        i = parsed.end
+        continue
       }
-      blocks.push({ type: 'list', ordered, items })
-      continue
     }
 
     if (isPlaceholderOnlyLine(line)) {
@@ -323,13 +674,20 @@ export function parseOriginalBody(markdown) {
       paragraph.push(lines[i])
       i += 1
     }
-    if (paragraph.length) blocks.push({ type: 'paragraph', text: paragraph.join(' ') })
+    if (paragraph.length) blocks.push({ type: 'paragraph', text: collapseProseSpaces(paragraph.join(' ')) })
   }
 
-  return blocks
+  return structurePreservedBlocks(blocks)
 }
 
 const escapeCell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ')
+
+function listItemText(item) {
+  if (item == null) return ''
+  if (typeof item === 'string') return item
+  if (item.text) return item.text
+  return String(item)
+}
 
 // Serialise parsed blocks back to Markdown. Grid and simple tables become
 // GFM pipe tables so pandoc writes real Word tables instead of ASCII boxes.
@@ -340,10 +698,28 @@ export function blocksToMarkdown(blocks) {
       const level = Math.min(Math.max(block.level || 1, 1), 6)
       out.push(`${'#'.repeat(level)} ${block.text}`, '')
     } else if (block.type === 'paragraph') {
+      if (isChromeParagraph(block.text)) continue
       out.push(block.text, '')
     } else if (block.type === 'list') {
-      for (const item of block.items || []) out.push(`${block.ordered ? '1.' : '-'} ${item}`)
+      const start = block.ordered ? (Number(block.start) || 1) : 0
+      ;(block.items || []).forEach((item, index) => {
+        const text = listItemText(item)
+        out.push(block.ordered ? `${start + index}. ${text}` : `- ${text}`)
+      })
       out.push('')
+    } else if (block.type === 'meta') {
+      const fields = (block.fields || []).filter((field) => field?.label && field?.value)
+      if (fields.length) {
+        out.push('| Field | Value |', '| --- | --- |')
+        for (const field of fields) out.push(`| ${escapeCell(field.label)} | ${escapeCell(field.value)} |`)
+        out.push('')
+      }
+    } else if (block.type === 'attendees') {
+      out.push('## Attendees', '')
+      for (const group of block.groups || []) {
+        if (!group?.people?.length) continue
+        out.push(`**${group.label}:** ${group.people.join('; ')}`, '')
+      }
     } else if (block.type === 'table') {
       const header = Array.isArray(block.header) && block.header.length ? block.header : null
       const firstRow = Array.isArray(block.rows?.[0]) ? block.rows[0] : []

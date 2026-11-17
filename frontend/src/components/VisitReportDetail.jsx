@@ -10,6 +10,7 @@ import OriginalBody from './visit-report/OriginalBody'
 import { warningMessages } from '../utils/visitReportImport'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
+import { hasPreservedLetterhead } from '../../../shared/originalBodyBlocks.js'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
 
@@ -124,9 +125,9 @@ export default function VisitReportDetail() {
   }
 
   const meta = content.meta || {}
-  const hasMeta = META_FIELDS.some((mf) => meta[mf.key])
-  const tables = Array.isArray(content.tables) ? content.tables : []
   const preserved = content.bodySource === 'original' && content.originalBody
+  const hasMeta = META_FIELDS.some((mf) => meta[mf.key]) && !(preserved && hasPreservedLetterhead(content.originalBody))
+  const tables = Array.isArray(content.tables) ? content.tables : []
   const originalFile = (Array.isArray(report.attachments) ? report.attachments : []).find((item) => item?.kind === 'document' && item.storedName)
   const canEdit = report.canEdit || report.author?.id === user?.id || user?.isAdmin
 

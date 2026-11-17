@@ -114,7 +114,13 @@ test('a pandoc grid table is rendered as a real table with reconstructed wrapped
   for (const name of ['Mornhill', 'Brocklane', 'Industry', 'Quotation', 'Customer', 'Shanghai', 'Holdings', 'Tscharee', 'Telex', 'Milling machine', 'Power generation']) {
     assert.match(html, new RegExp(name))
   }
-  assert.match(html, /Participants|Parti cipants/)
+  assert.match(html, /Attendees/)
+  assert.match(html, /Customer/)
+  assert.match(html, /Workshop/)
+  assert.match(html, /Mr\. Wang Guo Qiang/)
+  assert.doesNotMatch(html, /Parti cipants/)
+  assert.match(html, /data-attendees/)
+  assert.match(html, /data-report-meta/)
 
   for (const split of ['M ornhill', 'Br ocklane', 'I ndustry', 'T elex', 'H oldings', 'Tsch aree']) {
     assert.doesNotMatch(html, new RegExp(split.replace(/\s+/g, ' ')))
@@ -284,4 +290,55 @@ test('the detail page inlines photos in the preserved body and sends only leftov
   assert.match(detail, /leftoverPhotos\(content\.originalBody, report\.attachments\)/)
   assert.match(detail, /photos=\{report\.attachments\}/)
   assert.match(detail, /<OriginalBody/)
+})
+
+test('loose lists render as 1, 2, 3 and keep a muted aside before item 5', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const html = renderToStaticMarkup(createElement(OriginalBody, {
+    markdown: [
+      'Some additional exchange on the new milling machine projects of the yard',
+      '',
+      '1.  Table type and latest specification we received this Monday.',
+      '',
+      '2.  I mentioned the price and delivery time difference',
+      '',
+      '3.  Suggested again several technical points: full hydrostatic, full casted part,',
+      '    sufficient reference.',
+      '',
+      '4.  Early next week, the institute will carry out a soil',
+      '    investigation report for the yard.',
+      '',
+      '(Maybe it is still a chance to change some of machines back to gantry',
+      'type, I feel)',
+      '',
+      '5.  Exchange with the commercial lead about basic contract term.',
+    ].join('\n'),
+  }))
+  assert.match(html, /<ol[^>]*class="[^"]*list-decimal/)
+  // start is omitted for a list that begins at 1, and set for the follow-on list.
+  assert.match(html, /start="5"/)
+  assert.equal((html.match(/<ol/g) || []).length, 2)
+  assert.match(html, /soil investigation report for the yard/)
+  assert.doesNotMatch(html, /<li[^>]*>[^<]*is<\/li>/)
+  assert.match(html, /text-slate-500/)
+  assert.match(html, /\(Maybe it is still a chance to change some of machines back to gantry type, I feel\)/)
+  assert.match(html, /font-semibold text-slate-800/)
+  assert.ok(html.indexOf('Maybe it is still a chance') < html.indexOf('start="5"'))
+})
+
+test('letterhead chrome is hidden and participants become aligned attendee chips', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const html = renderToStaticMarkup(createElement(OriginalBody, {
+    markdown: `Please select type of report\n\n${readFileSync(fixturePath, 'utf8')}`,
+  }))
+  assert.doesNotMatch(html, /Please select type of report/i)
+  assert.match(html, /data-report-meta/)
+  assert.match(html, /data-attendees/)
+  assert.match(html, /grid-cols-\[auto_minmax\(0,1fr\)\]/)
+  assert.match(html, /rounded-full bg-slate-100/)
+  assert.match(html, /min-h-\[1\.75rem\]/)
+  assert.match(html, /uppercase tracking-wide text-slate-400/)
+  assert.match(html, /Mr\. Wang Guo Qiang \(Head of purchasing dept\. \(ALPINE\)\)/)
+  assert.doesNotMatch(html, /Wang Guo<\/span>/)
+  assert.doesNotMatch(html, /Parti cipants/)
 })

@@ -10,6 +10,8 @@
 // guesses wrong mangles a report somebody has to send to a customer, which is
 // worse than a paragraph that was a bit long.
 
+import AttendeeGroups from './AttendeeGroups'
+
 // "1. x 2. y 3. z" or "(1) x (2) y" — run together inside one paragraph.
 // The markers must start at 1 and ascend, so a stray "2 units" or a dimension
 // like "1. 5m" cannot split a sentence in half.
@@ -78,18 +80,7 @@ export default function SectionBody({ sectionKey, text }) {
   if (sectionKey === 'attendees') {
     const groups = namedGroups(body);
     if (groups) {
-      return (
-        <div className="mt-1 space-y-2">
-          {groups.map((g) => (
-            <div key={g.label} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{g.label}</span>
-              {g.names.map((n) => (
-                <span key={n} className="rounded-full bg-slate-100 px-2 py-0.5 text-sm text-slate-700">{n}</span>
-              ))}
-            </div>
-          ))}
-        </div>
-      );
+      return <AttendeeGroups className="mt-1" groups={groups} />;
     }
   }
 
