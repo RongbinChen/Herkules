@@ -680,6 +680,33 @@ export function letterheadMetaFields(markdown) {
 // Date of Visit, Company, Phone) stay out of this object.
 export const HEADER_META_KEYS = ['recipients', 'cc', 'location', 'industry', 'machineType', 'quotationNo']
 
+function fieldValueByKey(fields, key) {
+  const field = (fields || []).find((item) => item.key === key)
+  return flattenFieldValue(field?.value)
+}
+
+// A bare "Fax" slot is only treated as the author when the value looks like a
+// person's name. Digit-heavy values stay fax numbers, not authors.
+function looksLikePersonName(value) {
+  const text = flattenFieldValue(value)
+  if (!text) return false
+  const letters = (text.match(/\p{L}/gu) || []).length
+  const digits = (text.match(/\d/g) || []).length
+  if (letters < 2 || digits >= 6 || digits > letters) return false
+  return true
+}
+
+// Prefer an explicit From field. Fall back to a bare Fax slot only when that
+// value looks like a name. Phone, Telefax, CC, and To are never used.
+export function letterheadAuthorName(markdown) {
+  const fields = letterheadMetaFields(markdown)
+  const from = fieldValueByKey(fields, 'from')
+  if (from) return from
+  const fax = fieldValueByKey(fields, 'fax')
+  if (fax && looksLikePersonName(fax)) return fax
+  return ''
+}
+
 export function letterheadHeaderMeta(markdown) {
   const meta = {}
   for (const field of letterheadMetaFields(markdown)) {
@@ -692,7 +719,9 @@ export function letterheadHeaderMeta(markdown) {
 
 // Fill empty Report Header keys from the letterhead. A value already in
 // meta, including one the user saved, is left alone. Missing keys stay
-// absent; nothing is invented.
+// absent; nothing is invented. The letterhead From (or a name-like Fax
+// slot) is also copied into meta.author for attribution; author is not a
+// Report Header form field.
 export function mergeLetterheadHeaderMeta(existingMeta, markdown) {
   const existing = (existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta))
     ? { ...existingMeta }
@@ -701,6 +730,10 @@ export function mergeLetterheadHeaderMeta(existingMeta, markdown) {
   for (const key of HEADER_META_KEYS) {
     if (flattenFieldValue(existing[key])) continue
     if (fromLetterhead[key]) existing[key] = fromLetterhead[key]
+  }
+  if (!flattenFieldValue(existing.author)) {
+    const author = letterheadAuthorName(markdown)
+    if (author) existing.author = author
   }
   return existing
 }

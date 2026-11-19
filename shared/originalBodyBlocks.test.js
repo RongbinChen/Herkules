@@ -8,6 +8,7 @@ import {
   collapseProseSpaces,
   hasPreservedLetterhead,
   HEADER_META_KEYS,
+  letterheadAuthorName,
   letterheadHeaderMeta,
   mergeLetterheadHeaderMeta,
   parseOriginalBody,
@@ -272,6 +273,8 @@ test('a recovered header appendix can fill empty Report Header keys', () => {
   })
   assert.equal(Object.hasOwn(meta, 'quotationNo'), false)
   assert.doesNotMatch(JSON.stringify(meta), /August 19, 2022|C\. Example/)
+  assert.equal(letterheadAuthorName(body), 'C. Example')
+  assert.equal(mergeLetterheadHeaderMeta({}, body).author, 'C. Example')
 })
 
 test('a value already saved in meta wins over a letterhead prefill', () => {
@@ -282,6 +285,7 @@ test('a value already saved in meta wins over a letterhead prefill', () => {
   assert.equal(saved.recipients, 'Saved Name')
   assert.equal(saved.location, 'Baoji')
   assert.equal(saved.cc, 'B. Example')
+  assert.equal(saved.author, 'C. Example')
   const content = withLetterheadHeaderMeta({
     bodySource: 'original',
     originalBody: HEADER_GRID,
@@ -289,5 +293,60 @@ test('a value already saved in meta wins over a letterhead prefill', () => {
   })
   assert.equal(content.meta.industry, 'Already filed')
   assert.equal(content.meta.machineType, 'KC 130')
+  assert.equal(content.meta.author, 'C. Example')
   assert.equal(content.originalBody, HEADER_GRID)
+})
+
+const FROM_GRID = [
+  'Telephone Call Report',
+  '',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| To                 | A. Example           |     | From               | Ada North          |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| CC                 | B. Example           |     | Date               | August 19, 2022    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Company            | Example Plant        |     | Phone              | 555-0100           |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Place / Country    | Baoji                |     | Industry           | Engines            |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Date of Visit      | August 18, 2022      |     | Quotation No.      |                    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Machine / Type     | KC 130               |     | Fax                | 555-0199           |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '',
+  'The call covered the project briefing.',
+].join('\n')
+
+test('letterhead From is copied into meta.author, and a saved author wins', () => {
+  assert.equal(letterheadAuthorName(FROM_GRID), 'Ada North')
+  assert.equal(HEADER_META_KEYS.includes('author'), false)
+  assert.equal(Object.hasOwn(letterheadHeaderMeta(FROM_GRID), 'author'), false)
+  const meta = mergeLetterheadHeaderMeta({}, FROM_GRID)
+  assert.equal(meta.author, 'Ada North')
+  assert.equal(meta.recipients, 'A. Example')
+  assert.doesNotMatch(JSON.stringify(meta), /555-0199|August 18, 2022|August 19, 2022/)
+  const saved = mergeLetterheadHeaderMeta({ author: 'Saved Author' }, FROM_GRID)
+  assert.equal(saved.author, 'Saved Author')
+})
+
+test('a name in the bare Fax slot can be the author when From is missing', () => {
+  assert.equal(letterheadAuthorName(HEADER_GRID), 'C. Example')
+  assert.equal(mergeLetterheadHeaderMeta({}, HEADER_GRID).author, 'C. Example')
+})
+
+test('a fax number, Telefax, Phone, CC, or To is not used as the author', () => {
+  const faxNumber = [
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| To                 | A. Example           |     | Fax                | 555-0199           |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| CC                 | B. Example           |     | Date               | August 19, 2022    |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| Company            | Example Plant        |     | Phone              | 555-0100           |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| Telefax            | +1 555 010 0199      |     |                    |                    |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+  ].join('\n')
+  assert.equal(letterheadAuthorName(faxNumber), '')
+  assert.equal(Object.hasOwn(mergeLetterheadHeaderMeta({}, faxNumber), 'author'), false)
+  assert.equal(letterheadAuthorName('To: A. Example\nCC: B. Example\nPhone: 555-0100\n'), '')
 })
