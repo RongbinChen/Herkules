@@ -69,6 +69,9 @@ export const STRINGS = {
     errNoSummaryContent: 'Nothing to summarize (fill in the body or notes first)',
     errSummarizeFailed: 'AI summarization failed',
     errTitleRequired: 'Title is required',
+    errVisitDateRequired: 'Visit date is required',
+    errTitleAndVisitDateRequired: 'Title and visit date are required',
+    importDateUnrecognized: 'The letterhead Date of Visit was not recognized. Please fill in Visit Date manually.',
     errSaveFailed: 'Save failed',
     // Same customer + same visit day — warned about, never blocked: two separate
     // meetings at one customer in one day are rare but real.
@@ -185,6 +188,9 @@ export const STRINGS = {
     errNoSummaryContent: '没有可总结的内容（先填正文或随手记）',
     errSummarizeFailed: 'AI 总结失败',
     errTitleRequired: '标题必填',
+    errVisitDateRequired: '请填写拜访日期',
+    errTitleAndVisitDateRequired: '请填写标题和拜访日期',
+    importDateUnrecognized: '信头中的拜访日期未能识别，请手动填写拜访日期。',
     errSaveFailed: '保存失败',
     dupWarnTitle: (n) => (n === 1
       ? '该客户在这一天已有一份拜访报告'

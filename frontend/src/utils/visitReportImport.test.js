@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { chooseImportedCustomer, chooseImportedDate, warningMessages } from './visitReportImport.js'
+import { chooseImportedCustomer, chooseImportedDate, missingSaveFields, saveValidationMessage, shouldWarnMissingImportedDate, warningMessages } from './visitReportImport.js'
 import { HEADER_META_KEYS } from '../../../shared/originalBodyBlocks.js'
 
 test('a Word date fills only a new untouched form, and never invents today', () => {
@@ -69,4 +69,58 @@ test('the edit form prefills empty Report Header fields from a preserved letterh
   const block = i18n.slice(blockStart, i18n.indexOf(']', blockStart) + 1)
   const keys = [...block.matchAll(/key: '([^']+)'/g)].map((match) => match[1])
   assert.deepEqual(keys, HEADER_META_KEYS)
+})
+
+const SAVE_T = {
+  errTitleRequired: 'Title is required',
+  errVisitDateRequired: 'Visit date is required',
+  errTitleAndVisitDateRequired: 'Title and visit date are required',
+}
+
+test('save validation names the missing field in plain language, never raw identifiers', () => {
+  assert.deepEqual(missingSaveFields({ title: 'Plant visit', visitDate: '2022-08-18' }), {
+    missingTitle: false, missingDate: false,
+  })
+  assert.equal(saveValidationMessage({ title: 'Plant visit', visitDate: '2022-08-18' }, SAVE_T), '')
+  assert.equal(saveValidationMessage({ title: '  ', visitDate: '2022-08-18' }, SAVE_T), 'Title is required')
+  assert.equal(saveValidationMessage({ title: 'Plant visit', visitDate: '' }, SAVE_T), 'Visit date is required')
+  assert.equal(saveValidationMessage({ title: '', visitDate: '' }, SAVE_T), 'Title and visit date are required')
+  assert.equal(saveValidationMessage({ title: 'Plant visit', visitDate: '18/08/2022' }, SAVE_T), 'Visit date is required')
+  const message = saveValidationMessage({ title: 'Plant visit', visitDate: '' }, SAVE_T)
+  assert.doesNotMatch(message, /visitDate/)
+  assert.doesNotMatch(message, /\btitle\b/)
+})
+
+test('a preserved import with no letterhead date warns only when the form date is empty', () => {
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, current: '2026-11-18', suggested: null,
+  }), true)
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, suggested: '2022-08-18', current: '2026-11-18',
+  }), false)
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, touched: true, current: '2026-11-18', suggested: null,
+  }), false)
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, existingReport: true, current: '2022-08-18', suggested: null,
+  }), false)
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: false, current: '2026-11-18', suggested: null,
+  }), false)
+})
+
+test('the edit form checks visit date before save and scrolls the empty field into view', () => {
+  const modal = readFileSync(new URL('../components/VisitReportModal.jsx', import.meta.url), 'utf8')
+  assert.match(modal, /saveValidationMessage\(form, t\)/)
+  assert.match(modal, /focusRequiredField\(missingDate \? visitDateFieldRef : titleFieldRef\)/)
+  assert.match(modal, /scrollIntoView/)
+  assert.match(modal, /shouldWarnMissingImportedDate/)
+  assert.match(modal, /t\.importDateUnrecognized/)
+  assert.doesNotMatch(modal, /title 与 visitDate 必填/)
+  const i18n = readFileSync(new URL('../i18n/visitReports.js', import.meta.url), 'utf8')
+  assert.match(i18n, /errVisitDateRequired: 'Visit date is required'/)
+  assert.match(i18n, /errVisitDateRequired: '请填写拜访日期'/)
+  assert.match(i18n, /importDateUnrecognized: 'The letterhead Date of Visit was not recognized/)
+  assert.match(i18n, /importDateUnrecognized: '信头中的拜访日期未能识别/)
+  assert.doesNotMatch(i18n, /visitDate 必填/)
 })
