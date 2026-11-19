@@ -25,6 +25,32 @@ test('a Word date fills only a new untouched form, and never invents today', () 
   }), '2026-11-13')
 })
 
+test('after AI Generate Report, a recognized Date of Visit fills an empty or default-today field', () => {
+  // The create form still starts on today; generate must replace that
+  // default when the Word Date of Visit is recognized.
+  assert.equal(chooseImportedDate({
+    suggested: '2026-11-14', current: '2026-11-19',
+  }), '2026-11-14')
+  assert.equal(chooseImportedDate({
+    suggested: '2026-11-14', current: '',
+  }), '2026-11-14')
+  assert.equal(chooseImportedDate({
+    touched: true, suggested: '2026-11-14', current: '2026-07-02',
+  }), '2026-07-02')
+  assert.equal(chooseImportedDate({
+    existingReport: true, suggested: '2026-11-14', current: '2026-08-13',
+  }), '2026-08-13')
+  assert.equal(chooseImportedDate({
+    suggested: null, current: '2026-11-19',
+  }), '')
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, suggested: '2026-11-14', current: '2026-11-19',
+  }), false)
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, suggested: null, current: '2026-11-19',
+  }), true)
+})
+
 test('a matched customer does not replace one the user already chose', () => {
   assert.equal(chooseImportedCustomer({ currentId: '', matchedId: 9 }), 9)
   assert.equal(chooseImportedCustomer({ touched: true, currentId: '', matchedId: 9 }), '')
@@ -107,6 +133,13 @@ test('a preserved import with no letterhead date warns only when the form date i
   assert.equal(shouldWarnMissingImportedDate({
     preserved: false, current: '2026-11-18', suggested: null,
   }), false)
+})
+
+test('AI Generate Report applies a preserved Word Date of Visit through chooseImportedDate', () => {
+  const modal = readFileSync(new URL('../components/VisitReportModal.jsx', import.meta.url), 'utf8')
+  assert.match(modal, /chooseImportedDate\(\{ existingReport: Boolean\(report\), touched: dateTouched, current: f\.visitDate, suggested: data\.visitDate \}\)/)
+  assert.match(modal, /shouldWarnMissingImportedDate/)
+  assert.doesNotMatch(modal, /visitDate: data\.preserved\s*\?\s*\(data\.visitDate \|\| f\.visitDate\)/)
 })
 
 test('the edit form checks visit date before save and scrolls the empty field into view', () => {
