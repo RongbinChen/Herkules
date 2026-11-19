@@ -2,6 +2,7 @@
 // Keeping this separate from the route makes the layout easy to tweak.
 import { isPreservedBody } from './visitReportSource.js';
 import { photoToMarkdown, renderOriginalBodyMarkdown } from '../../../shared/inlineBodyPhotos.js';
+import { displayTitle } from '../../../shared/markdownEmphasis.js';
 
 const esc = (v) => String(v ?? '').replace(/\r?\n+/g, ' ').replace(/\|/g, '\\|').trim();
 
@@ -34,7 +35,7 @@ export function reportToMarkdown(report, options = {}) {
   const meta = c.meta || {};
   const lines = [];
 
-  lines.push(`# ${report.title || 'Visit Report'}`, '');
+  lines.push(`# ${displayTitle(report.title) || 'Visit Report'}`, '');
 
   // Header table (report metadata).
   const headerRows = [

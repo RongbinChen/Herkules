@@ -2,6 +2,7 @@
 // summary and the separate target list. It does not get to replace the body.
 import { unzipSync } from './visitReportPhotos.js';
 import { SUMMARY_MODEL } from './visitReport.js';
+import { stripEmphasis } from '../../../shared/markdownEmphasis.js';
 
 export const BODY_SOURCE = 'original';
 export const MAX_ORIGINAL_CHARS = 1_500_000;
@@ -255,12 +256,13 @@ export function preservedDraft({
 // First heading, else the first substantial line. Not a model title.
 export function titleFromSource(markdown) {
   const lines = String(markdown || '').split(/\n/);
+  const visible = (value) => normalizeSpace(stripEmphasis(value));
   for (const line of lines) {
     const heading = line.match(/^#{1,4}\s+(.+)$/);
-    if (heading && normalizeSpace(heading[1])) return normalizeSpace(heading[1]).slice(0, 180);
+    if (heading && visible(heading[1])) return visible(heading[1]).slice(0, 180);
   }
   for (const line of lines) {
-    const plain = normalizeSpace(line.replace(/^[-*]\s+/, '').replace(/^\d+[.)]\s+/, ''));
+    const plain = visible(line.replace(/^[-*]\s+/, '').replace(/^\d+[.)]\s+/, ''));
     if (plain.length >= 8 && !plain.startsWith('|')) return plain.slice(0, 180);
   }
   return null;

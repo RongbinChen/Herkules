@@ -14,6 +14,8 @@
 // splitting the padded text on "|". Wrapped cell fragments are rejoined with
 // the deterministic rules below; no dictionary-based "name repair".
 
+import { stripEmphasis } from './markdownEmphasis.js'
+
 const blank = (line) => !String(line ?? '').trim()
 
 const ruleLine = (line) => {
@@ -328,10 +330,18 @@ function isParentheticalAside(text) {
 // Short, punctuation-free stand-alone lines are section titles in these
 // visit notes, not body sentences.
 function isSectionTitle(text) {
-  const t = collapseProseSpaces(text)
+  // Classify on the visible wording so **[Project briefing:]{.underline}**
+  // still counts as a section title after the markers are ignored.
+  const raw = collapseProseSpaces(text)
+  const t = collapseProseSpaces(stripEmphasis(text))
   if (t.length < 8 || t.length > 140) return false
   if (isChromeParagraph(t) || isParentheticalAside(t) || isPlaceholderOnlyLine(t)) return false
-  if (/[.!?:;]$/.test(t)) return false
+  const core = t.replace(/[:：]\s*$/, '')
+  if (/[.!?;]$/.test(t) || /[.!?:;]/.test(core)) return false
+  // A trailing colon is only a section label when the source was marked
+  // (bold/underline). Plain sentences such as "They ordered ... as follows:"
+  // stay body paragraphs.
+  if (/[:：]$/.test(t) && raw === t) return false
   if (/\|/.test(t)) return false
   // "Name / Name" signatures and paired labels are not section titles.
   if (/\s\/\s/.test(t)) return false

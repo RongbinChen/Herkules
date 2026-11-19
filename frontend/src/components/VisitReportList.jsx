@@ -9,6 +9,7 @@ import CustomerGroupHeader from './visit-report/CustomerGroupHeader'
 import { showDeleteVisitReport } from '../utils/visitReportAccess'
 import { groupVisitReportsByCustomer } from '../utils/visitReportGroups'
 import { filterVisitReportsByKeyword } from '../utils/visitReportSearch'
+import { displayTitle } from '../../../shared/markdownEmphasis.js'
 import { useVRLang, STRINGS } from '../i18n/visitReports'
 
 export default function VisitReportList() {
@@ -223,7 +224,7 @@ export default function VisitReportList() {
                           <button type="button" onClick={() => openReport(r.id)}
                             className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200">
                             <div className="flex items-start justify-between gap-2">
-                              <h3 className="min-w-0 truncate text-sm font-bold text-slate-800">{r.title}</h3>
+                              <h3 className="min-w-0 truncate text-sm font-bold text-slate-800">{displayTitle(r.title)}</h3>
                               <Badge tone={r.status === 'FINAL' ? 'green' : 'amber'}>{r.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
                             </div>
                             {r.summary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{r.summary}</p>}
@@ -291,7 +292,7 @@ export default function VisitReportList() {
                           className="cursor-pointer border-t border-slate-100 transition hover:bg-brand-50/40">
                           <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{fmtDate(r.visitDate)}</td>
                           <td className="min-w-[240px] px-4 py-3">
-                            <div className="font-semibold text-slate-800">{r.title}</div>
+                            <div className="font-semibold text-slate-800">{displayTitle(r.title)}</div>
                             {r.summary && <div className="mt-0.5 line-clamp-1 text-xs text-slate-500">{r.summary}</div>}
                           </td>
                           <td className="max-w-[220px] truncate whitespace-nowrap px-4 py-3 text-xs text-slate-600">{r.customer?.name || '—'}</td>

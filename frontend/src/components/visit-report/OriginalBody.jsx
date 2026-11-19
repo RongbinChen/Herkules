@@ -10,18 +10,40 @@
 
 import { useState } from 'react'
 import { embedInlinePhotos } from '../../../../shared/inlineBodyPhotos.js'
+import { parseEmphasis } from '../../../../shared/markdownEmphasis.js'
 import { parseOriginalBody } from '../../../../shared/originalBodyBlocks.js'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../../i18n/visitReports'
 import { PhotoLightbox, PhotoRow } from './PhotoMedia'
 import AttendeeGroups from './AttendeeGroups'
 import useReportPhotoSrcs from './useReportPhotoSrcs'
 
+
+function styledSegment(segment, key) {
+  let node = segment.text
+  if (segment.strike) node = <s className="line-through">{node}</s>
+  if (segment.mark) node = <mark className="rounded-sm bg-amber-100 px-0.5 text-inherit">{node}</mark>
+  if (segment.underline) node = <u className="underline">{node}</u>
+  if (segment.italic) node = <em>{node}</em>
+  if (segment.bold) node = <strong className="font-semibold text-slate-800">{node}</strong>
+  return <span key={key}>{node}</span>
+}
+
+function EmphasisText({ text }) {
+  const segments = parseEmphasis(text)
+  if (!segments.length) return null
+  if (segments.length === 1 && !segments[0].bold && !segments[0].italic && !segments[0].underline && !segments[0].mark && !segments[0].strike) {
+    return segments[0].text
+  }
+  return segments.map((segment, index) => styledSegment(segment, index))
+}
+
 function renderCell(cell, photoProps) {
   if (cell && typeof cell === 'object') {
     if (cell.photos) return <PhotoRow photos={cell.photos} {...photoProps} />
     if (Array.isArray(cell.parts)) return <MixedText parts={cell.parts} {...photoProps} compact />
-    if (cell.text) return cell.text
+    if (cell.text) return <EmphasisText text={cell.text} />
   }
+  if (typeof cell === 'string') return <EmphasisText text={cell} />
   return cell
 }
 
@@ -33,8 +55,8 @@ function MixedText({ parts, compact = false, ...photoProps }) {
     if (part.type === 'text') {
       const text = part.text || ''
       if (text) {
-        if (compact) nodes.push(<span key={`t-${index}`} className="whitespace-pre-wrap break-words">{text}</span>)
-        else nodes.push(<p key={`t-${index}`} className="whitespace-pre-wrap break-words">{text}</p>)
+        if (compact) nodes.push(<span key={`t-${index}`} className="whitespace-pre-wrap break-words"><EmphasisText text={text} /></span>)
+        else nodes.push(<p key={`t-${index}`} className="whitespace-pre-wrap break-words"><EmphasisText text={text} /></p>)
       }
       index += 1
       continue
@@ -57,8 +79,9 @@ function listItemContent(item, photoProps) {
   if (item && typeof item === 'object') {
     if (item.photos) return <PhotoRow photos={item.photos} {...photoProps} />
     if (Array.isArray(item.parts)) return <MixedText parts={item.parts} {...photoProps} compact />
-    if (item.text) return item.text
+    if (item.text) return <EmphasisText text={item.text} />
   }
+  if (typeof item === 'string') return <EmphasisText text={item} />
   return item
 }
 
@@ -77,7 +100,7 @@ function MetaCard({ fields, lang }) {
       {list.map((field) => (
         <div key={field.key || field.label} className={`min-w-0 ${wide.has(field.key) ? 'sm:col-span-2' : ''}`}>
           <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{fieldLabel(field, lang)}</dt>
-          <dd className="break-words text-sm text-slate-700">{field.value}</dd>
+          <dd className="break-words text-sm text-slate-700"><EmphasisText text={field.value} /></dd>
         </div>
       ))}
     </dl>
@@ -131,7 +154,7 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
           const headingClass = block.section
             ? 'break-words text-sm font-semibold text-slate-800'
             : 'break-words text-sm font-bold text-slate-800'
-          return <h3 key={index} className={headingClass}>{block.text}</h3>
+          return <h3 key={index} className={headingClass}><EmphasisText text={block.text} /></h3>
         }
         if (block.type === 'list') {
           const Tag = block.ordered ? 'ol' : 'ul'
@@ -161,7 +184,7 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
                       const label = typeof columns[cellIndex] === 'string' ? columns[cellIndex] : null
                       return (
                         <div key={cellIndex} className="break-words py-0.5">
-                          {label ? <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p> : null}
+                          {label ? <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400"><EmphasisText text={label} /></p> : null}
                           <div className="whitespace-pre-wrap text-sm text-slate-700">{renderCell(cell, photoProps)}</div>
                         </div>
                       )
@@ -174,7 +197,7 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
                   <thead>
                     <tr className="bg-slate-50">
                       {columns.map((col, colIndex) => (
-                        <th key={colIndex} className="break-words border-b border-slate-200 px-2.5 py-1.5 text-left font-semibold text-slate-600">{typeof col === 'string' ? col : renderCell(col, photoProps)}</th>
+                        <th key={colIndex} className="break-words border-b border-slate-200 px-2.5 py-1.5 text-left font-semibold text-slate-600">{renderCell(col, photoProps)}</th>
                       ))}
                     </tr>
                   </thead>
@@ -199,9 +222,9 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
           return <MixedText key={index} parts={block.parts} {...photoProps} />
         }
         if (block.aside) {
-          return <p key={index} className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-500">{block.text}</p>
+          return <p key={index} className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-500"><EmphasisText text={block.text} /></p>
         }
-        return <p key={index} className="whitespace-pre-wrap break-words">{block.text}</p>
+        return <p key={index} className="whitespace-pre-wrap break-words"><EmphasisText text={block.text} /></p>
       })}
       <PhotoLightbox
         photo={active}
