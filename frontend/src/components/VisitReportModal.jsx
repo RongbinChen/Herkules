@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCaptionChange } from '../utils/visitReportCaptions'
-import { chooseImportedCustomer, chooseImportedDate, warningMessages } from '../utils/visitReportImport'
+import { chooseImportedCustomer, chooseImportedDate, missingSaveFields, saveValidationMessage, shouldWarnMissingImportedDate, warningMessages } from '../utils/visitReportImport'
 import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
@@ -49,6 +49,9 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   const photoInputRef = useRef(null)
   const [docFile, setDocFile] = useState(null) // .docx to auto-import
   const [dateTouched, setDateTouched] = useState(false)
+  const [missingImportedDate, setMissingImportedDate] = useState(false)
+  const visitDateFieldRef = useRef(null)
+  const titleFieldRef = useRef(null)
   const [customerTouched, setCustomerTouched] = useState(Boolean(report?.customerId || report?.customer?.id))
   const [generating, setGenerating] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
@@ -157,6 +160,15 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     } finally { setCreatingCust(false) }
   }
 
+
+  const focusRequiredField = (ref) => {
+    const el = ref?.current
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const input = el.matches?.('input, textarea, select') ? el : el.querySelector('input, textarea, select')
+    if (input && typeof input.focus === 'function') input.focus()
+  }
+
   const generate = async () => {
     if (isImportCreate) {
       if (!docFile) { setErr(t.errNoDocument); return }
@@ -190,6 +202,15 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
         rawNotes: data.rawNotes || f.rawNotes,
         attachments: Array.isArray(data.attachments) ? data.attachments : f.attachments,
       }))
+      const warnMissingDate = shouldWarnMissingImportedDate({
+        preserved: data.preserved,
+        existingReport: Boolean(report),
+        touched: dateTouched,
+        current: form.visitDate,
+        suggested: data.visitDate,
+      })
+      setMissingImportedDate(warnMissingDate)
+      if (warnMissingDate) focusRequiredField(visitDateFieldRef)
       contentRef.current = withLetterheadHeaderMeta(data.content || contentRef.current)
       attachmentsRef.current = Array.isArray(data.attachments) ? data.attachments : attachmentsRef.current
       setPhotos([])
@@ -248,7 +269,15 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
   }
 
   const save = async (status) => {
-    if (!form.title.trim()) { setErr(t.errTitleRequired); return }
+    const message = saveValidationMessage(form, t)
+    if (message) {
+      setErr(message)
+      const { missingDate } = missingSaveFields(form)
+      // Visit Date sits at the top of this long form; Title is further down.
+      // When both are empty, scroll to the first field the user can fill.
+      focusRequiredField(missingDate ? visitDateFieldRef : titleFieldRef)
+      return
+    }
     // The banner has been on screen the whole time; this is the last stop
     // before a duplicate is actually written.
     if (dupes.length > 0 && !window.confirm(t.dupConfirm)) return
@@ -371,7 +400,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
           {editing && (<>
           {/* Meta */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-xs font-semibold text-slate-600">
+            <label ref={visitDateFieldRef} className="text-xs font-semibold text-slate-600">
               {t.visitDate}
               <Input type="date" value={form.visitDate} disabled={readOnly} onChange={(e) => { setDateTouched(true); set('visitDate', e.target.value) }} className="mt-1 min-w-0 max-w-full appearance-none" />
             </label>
@@ -426,6 +455,12 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
               </div>
             </div>
           </div>
+
+          {missingImportedDate && !form.visitDate && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+              {t.importDateUnrecognized}
+            </div>
+          )}
 
           {dupes.length > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
@@ -496,7 +531,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
           )}
 
           {/* Title + summary */}
-          <label className="block text-xs font-semibold text-slate-600">
+          <label ref={titleFieldRef} className="block text-xs font-semibold text-slate-600">
             {t.title}
             <Input value={form.title} disabled={readOnly} onChange={(e) => set('title', e.target.value)} className="mt-1" />
           </label>

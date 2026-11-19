@@ -13,6 +13,7 @@ import {
   structureVisitReport,
   summarizeVisitReport,
 } from '../services/visitReport.js';
+import { missingCreateFieldsError } from '../services/visitReportRequired.js';
 import { captionVisitPhoto, ocrImage, isGeminiConfigured } from '../services/gemini.js';
 import { reportToMarkdown } from '../services/visitReportExport.js';
 import {
@@ -571,7 +572,8 @@ async function resolveAuthorId(content, fallbackId) {
 router.post('/', async (req, res) => {
   try {
     const { title, visitDate, customerId, threadKey, summary, content, rawNotes, attachments, status, aiModel } = req.body;
-    if (!title || !visitDate) return res.status(400).json({ error: 'title 与 visitDate 必填' });
+    const requiredError = missingCreateFieldsError(title, visitDate);
+    if (requiredError) return res.status(400).json({ error: requiredError });
     // Imported reports are often written by someone else — credit the "From"
     // person when they map to a system user (uploader stays the fallback).
     let storedContent = content ?? null;

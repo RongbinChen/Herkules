@@ -35,3 +35,34 @@ export function warningMessages(warnings, t, { hasOriginalFile = false } = {}) {
   }
   return lines
 }
+
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/
+
+export function missingSaveFields({ title, visitDate } = {}) {
+  return {
+    missingTitle: !String(title || '').trim(),
+    missingDate: !DATE_ISO.test(String(visitDate || '').trim()),
+  }
+}
+
+export function saveValidationMessage(fields, t = {}) {
+  const { missingTitle, missingDate } = missingSaveFields(fields)
+  if (missingTitle && missingDate) return t.errTitleAndVisitDateRequired || ''
+  if (missingTitle) return t.errTitleRequired || ''
+  if (missingDate) return t.errVisitDateRequired || ''
+  return ''
+}
+
+// After a preserved Word import, warn only when the date field will actually
+// be empty. A date the user already set, or one found in the letterhead, is
+// not a reason to nag.
+export function shouldWarnMissingImportedDate({
+  preserved = false,
+  existingReport = false,
+  touched = false,
+  current = '',
+  suggested = null,
+} = {}) {
+  if (!preserved) return false
+  return !chooseImportedDate({ existingReport, touched, current, suggested })
+}
