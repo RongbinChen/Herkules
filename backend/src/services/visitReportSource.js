@@ -175,9 +175,23 @@ export function preservedContent({
 
 // Summary and targets are optional. A failure there must not drop the body.
 const MONTHS = {
-  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
-  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  january: 1, jan: 1,
+  february: 2, feb: 2,
+  march: 3, mar: 3,
+  april: 4, apr: 4,
+  may: 5,
+  june: 6, jun: 6,
+  july: 7, jul: 7,
+  august: 8, aug: 8,
+  september: 9, sept: 9, sep: 9,
+  october: 10, oct: 10,
+  november: 11, nov: 11,
+  december: 12, dec: 12,
 };
+
+function monthNumber(name) {
+  return MONTHS[String(name || '').toLowerCase()] || 0;
+}
 
 function isoDate(year, month, day) {
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
@@ -189,20 +203,26 @@ function isoDate(year, month, day) {
 }
 
 // Only unambiguous dates. A slash date such as 07/14/2026 is left unset
-// rather than guessed, and nothing here invents "today".
+// rather than guessed, and nothing here invents "today". Ordinals
+// (14th, 2nd) and English month abbreviations (Nov., Sept.) are accepted
+// so a Date of Visit like "Nov. 14th, 2026" can fill the form. A bare
+// letterhead Date / DATE is still not used as the visit date; sourceMeta
+// only parses the Date of Visit field.
 export function parseSourceDate(raw) {
-  const text = normalizeSpace(raw).replace(/[,.]/g, '');
+  const text = normalizeSpace(raw)
+    .replace(/[,.]/g, '')
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/gi, '$1');
   let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (match) return isoDate(Number(match[1]), Number(match[2]), Number(match[3]));
   match = text.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (match) return isoDate(Number(match[1]), Number(match[2]), Number(match[3]));
   match = text.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-  if (match && MONTHS[match[2].toLowerCase()]) {
-    return isoDate(Number(match[3]), MONTHS[match[2].toLowerCase()], Number(match[1]));
+  if (match && monthNumber(match[2])) {
+    return isoDate(Number(match[3]), monthNumber(match[2]), Number(match[1]));
   }
   match = text.match(/^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})$/);
-  if (match && MONTHS[match[1].toLowerCase()]) {
-    return isoDate(Number(match[3]), MONTHS[match[1].toLowerCase()], Number(match[2]));
+  if (match && monthNumber(match[1])) {
+    return isoDate(Number(match[3]), monthNumber(match[1]), Number(match[2]));
   }
   return null;
 }

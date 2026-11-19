@@ -307,6 +307,54 @@ test('a bare letterhead Date is not used as the visit date', () => {
   assert.equal(meta.customerName, 'Example Plant');
 });
 
+test('ordinal and abbreviated Date of Visit values parse, slash dates still do not', () => {
+  assert.equal(parseSourceDate('Nov. 14th, 2026'), '2026-11-14');
+  assert.equal(parseSourceDate('Nov 14, 2026'), '2026-11-14');
+  assert.equal(parseSourceDate('July 2nd, 2026'), '2026-07-02');
+  assert.equal(parseSourceDate('2nd July 2026'), '2026-07-02');
+  assert.equal(parseSourceDate('14th November 2026'), '2026-11-14');
+  assert.equal(parseSourceDate('Sept. 3rd, 2026'), '2026-09-03');
+  assert.equal(parseSourceDate('1st May 2026'), '2026-05-01');
+  assert.equal(parseSourceDate('August 18, 2022'), '2022-08-18');
+  assert.equal(parseSourceDate('07/14/2026'), null);
+});
+
+test('an ordinal Date of Visit fills the visit date and a bare ordinal Date does not', () => {
+  const withVisit = [
+    '+----------------+------------------+---+------+------------------+',
+    '| Company        | Example Plant    |   | Date | Nov. 12th, 2026  |',
+    '+----------------+------------------+---+------+------------------+',
+    '| Date of Visit  | Nov. 14th, 2026  |   |      |                  |',
+    '+----------------+------------------+---+------+------------------+',
+  ].join('\n');
+  const meta = sourceMeta(withVisit);
+  assert.equal(meta.visitDate, '2026-11-14');
+  assert.equal(meta.customerName, 'Example Plant');
+
+  const wrapped = [
+    '+---------+----------+---+------+------------------+',
+    '| Company | Example  |   | Date | Nov. 12th, 2026  |',
+    '|         | Plant    |   |      |                  |',
+    '+---------+----------+---+------+------------------+',
+    '| Date of | Nov.     |   |      |                  |',
+    '| Visit   | 14th,    |   |      |                  |',
+    '|         | 2026     |   |      |                  |',
+    '+---------+----------+---+------+------------------+',
+  ].join('\n');
+  assert.equal(sourceMeta(wrapped).visitDate, '2026-11-14');
+  assert.equal(sourceMeta(wrapped).customerName, 'Example Plant');
+
+  const onlyLetterDate = [
+    '+---------+------------------+',
+    '| Date    | Nov. 12th, 2026  |',
+    '+---------+------------------+',
+    '| Company | Example Plant    |',
+    '+---------+------------------+',
+  ].join('\n');
+  assert.equal(sourceMeta(onlyLetterDate).visitDate, null);
+  assert.equal(sourceMeta(onlyLetterDate).customerName, 'Example Plant');
+});
+
 const HEADER_GRID = [
   'Telephone Call Report',
   '',
