@@ -19,6 +19,7 @@ import {
   isPreservedBody,
   MAX_ORIGINAL_CHARS,
   parseSourceDate,
+  preservedContent,
   preservedDraft,
   reminderTargets,
   reprocessPreservedFromRawNotes,
@@ -304,6 +305,59 @@ test('a bare letterhead Date is not used as the visit date', () => {
   const meta = sourceMeta(onlyLetterDate);
   assert.equal(meta.visitDate, null);
   assert.equal(meta.customerName, 'Example Plant');
+});
+
+const HEADER_GRID = [
+  'Telephone Call Report',
+  '',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| To                 | A. Example           |     | Fax                | C. Example         |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| CC                 | B. Example           |     | Date               | August 19, 2022    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Company            | Example Plant        |     | Phone              | 555-0100           |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Place / Country    | Baoji                |     | Industry           | Engines            |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Date of Visit      | August 18, 2022      |     | Quotation No.      |                    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Machine / Type     | KC 130               |     |                    |                    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '',
+  'The call covered the project briefing.',
+].join('\n');
+
+test('import copies letterhead Report Header fields into content.meta', () => {
+  const content = preservedContent({ originalBody: HEADER_GRID });
+  assert.deepEqual(content.meta, {
+    recipients: 'A. Example',
+    cc: 'B. Example',
+    location: 'Baoji',
+    industry: 'Engines',
+    machineType: 'KC 130',
+  });
+  const draft = preservedDraft({ originalBody: HEADER_GRID, visitDate: '2022-08-18', customerName: 'Example Plant' });
+  assert.deepEqual(draft.content.meta, content.meta);
+  const dates = sourceMeta(HEADER_GRID);
+  assert.equal(dates.visitDate, '2022-08-18');
+  assert.equal(dates.customerName, 'Example Plant');
+  assert.equal(content.meta.location, 'Baoji');
+  assert.doesNotMatch(JSON.stringify(content.meta), /August 18, 2022|August 19, 2022|555-0100/);
+});
+
+test('import leaves Report Header fields empty when the letterhead has none', () => {
+  const content = preservedContent({ originalBody: 'The call covered the project briefing.' });
+  assert.equal(content.meta, undefined);
+});
+
+test('a saved Report Header value is not replaced by the letterhead copy', () => {
+  const content = preservedContent({
+    originalBody: HEADER_GRID,
+    meta: { recipients: 'Saved Name', industry: 'Already filed' },
+  });
+  assert.equal(content.meta.recipients, 'Saved Name');
+  assert.equal(content.meta.industry, 'Already filed');
+  assert.equal(content.meta.machineType, 'KC 130');
 });
 
 test('reprocess does not replace a preserved body the user has edited', () => {

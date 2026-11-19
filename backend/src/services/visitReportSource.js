@@ -3,7 +3,7 @@
 import { unzipSync } from './visitReportPhotos.js';
 import { SUMMARY_MODEL } from './visitReport.js';
 import { stripEmphasis } from '../../../shared/markdownEmphasis.js';
-import { letterheadMetaFields } from '../../../shared/originalBodyBlocks.js';
+import { letterheadMetaFields, mergeLetterheadHeaderMeta } from '../../../shared/originalBodyBlocks.js';
 
 export const BODY_SOURCE = 'original';
 export const MAX_ORIGINAL_CHARS = 1_500_000;
@@ -159,7 +159,9 @@ export function preservedContent({
   warnings = [],
   summaryModel = null,
   targetsModel = null,
+  meta,
 }) {
+  const headerMeta = mergeLetterheadHeaderMeta(meta, originalBody);
   return {
     bodySource: BODY_SOURCE,
     originalBody,
@@ -167,6 +169,7 @@ export function preservedContent({
     summaryModel,
     targets: Array.isArray(targets) ? targets : [],
     targetsModel,
+    ...(Object.keys(headerMeta).length ? { meta: headerMeta } : {}),
   };
 }
 
@@ -343,6 +346,7 @@ export function reprocessPreservedFromRawNotes(report) {
       }],
       summaryModel: prev.summaryModel || null,
       targetsModel: prev.targetsModel || null,
+      meta: prev.meta,
     }),
   };
 }

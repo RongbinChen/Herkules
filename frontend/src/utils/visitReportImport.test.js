@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { chooseImportedCustomer, chooseImportedDate, warningMessages } from './visitReportImport.js'
+import { HEADER_META_KEYS } from '../../../shared/originalBodyBlocks.js'
 
 test('a Word date fills only a new untouched form, and never invents today', () => {
   assert.equal(chooseImportedDate({
@@ -56,4 +58,15 @@ test('the extraction warning only promises a download when a stored Word file ex
   const withFile = warningMessages(warnings, t, { hasOriginalFile: true })
   assert.deepEqual(withFile, ['Text recovered and the Word file can be downloaded'])
   assert.match(withFile[0], /download/)
+})
+
+test('the edit form prefills empty Report Header fields from a preserved letterhead', () => {
+  const modal = readFileSync(new URL('../components/VisitReportModal.jsx', import.meta.url), 'utf8')
+  assert.match(modal, /withLetterheadHeaderMeta\(report\?\.content \|\| \{\}\)/)
+  assert.match(modal, /withLetterheadHeaderMeta\(data\.content \|\| \{\}\)/)
+  const i18n = readFileSync(new URL('../i18n/visitReports.js', import.meta.url), 'utf8')
+  const blockStart = i18n.indexOf('export const META_FIELDS_I18N')
+  const block = i18n.slice(blockStart, i18n.indexOf(']', blockStart) + 1)
+  const keys = [...block.matchAll(/key: '([^']+)'/g)].map((match) => match[1])
+  assert.deepEqual(keys, HEADER_META_KEYS)
 })

@@ -5,7 +5,7 @@ import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
-import { hasPreservedLetterhead } from '../../../shared/originalBodyBlocks.js'
+import { hasPreservedLetterhead, withLetterheadHeaderMeta } from '../../../shared/originalBodyBlocks.js'
 import { displayTitle } from '../../../shared/markdownEmphasis.js'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
@@ -32,7 +32,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
     visitDate: (report?.visitDate ? new Date(report.visitDate).toISOString() : '').slice(0, 10) || todayISO(),
     customerId: report?.customer?.id || report?.customerId || initialCustomer?.id || '',
     summary: report?.summary || '',
-    content: report?.content || {},
+    content: withLetterheadHeaderMeta(report?.content || {}),
     rawNotes: report?.rawNotes || '',
     attachments: Array.isArray(report?.attachments) ? report.attachments : [],
     status: report?.status || 'DRAFT',
@@ -186,11 +186,11 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
           ? chooseImportedCustomer({ touched: customerTouched || Boolean(report), currentId: f.customerId, matchedId: data.customerMatch?.id })
           : (f.customerId || data.customerMatch?.id || ''),
         summary: data.preserved ? (data.summary ?? f.summary) : (data.summary || ''),
-        content: data.content || {},
+        content: withLetterheadHeaderMeta(data.content || {}),
         rawNotes: data.rawNotes || f.rawNotes,
         attachments: Array.isArray(data.attachments) ? data.attachments : f.attachments,
       }))
-      contentRef.current = data.content || contentRef.current
+      contentRef.current = withLetterheadHeaderMeta(data.content || contentRef.current)
       attachmentsRef.current = Array.isArray(data.attachments) ? data.attachments : attachmentsRef.current
       setPhotos([])
       if (photoInputRef.current) photoInputRef.current.value = ''
