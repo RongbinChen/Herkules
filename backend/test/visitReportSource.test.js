@@ -335,6 +335,7 @@ test('import copies letterhead Report Header fields into content.meta', () => {
     location: 'Baoji',
     industry: 'Engines',
     machineType: 'KC 130',
+    author: 'C. Example',
   });
   const draft = preservedDraft({ originalBody: HEADER_GRID, visitDate: '2022-08-18', customerName: 'Example Plant' });
   assert.deepEqual(draft.content.meta, content.meta);
@@ -343,6 +344,34 @@ test('import copies letterhead Report Header fields into content.meta', () => {
   assert.equal(dates.customerName, 'Example Plant');
   assert.equal(content.meta.location, 'Baoji');
   assert.doesNotMatch(JSON.stringify(content.meta), /August 18, 2022|August 19, 2022|555-0100/);
+});
+
+test('import copies letterhead From into content.meta.author', () => {
+  const body = [
+    'Telephone Call Report',
+    '',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| To                 | A. Example           |     | From               | Ada North          |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| CC                 | B. Example           |     | Date               | August 19, 2022    |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| Company            | Example Plant        |     | Phone              | 555-0100           |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| Place / Country    | Baoji                |     | Industry           | Engines            |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| Date of Visit      | August 18, 2022      |     | Quotation No.      |                    |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '| Machine / Type     | KC 130               |     | Fax                | 555-0199           |',
+    '+--------------------+----------------------+-----+--------------------+--------------------+',
+    '',
+    'The call covered the project briefing.',
+  ].join('\n');
+  const content = preservedContent({ originalBody: body });
+  assert.equal(content.meta.author, 'Ada North');
+  assert.equal(content.meta.recipients, 'A. Example');
+  assert.doesNotMatch(JSON.stringify(content.meta), /555-0199|555-0100|August 18, 2022|August 19, 2022/);
+  const saved = preservedContent({ originalBody: body, meta: { author: 'Saved Author' } });
+  assert.equal(saved.meta.author, 'Saved Author');
 });
 
 test('import leaves Report Header fields empty when the letterhead has none', () => {
@@ -358,6 +387,7 @@ test('a saved Report Header value is not replaced by the letterhead copy', () =>
   assert.equal(content.meta.recipients, 'Saved Name');
   assert.equal(content.meta.industry, 'Already filed');
   assert.equal(content.meta.machineType, 'KC 130');
+  assert.equal(content.meta.author, 'C. Example');
 });
 
 test('reprocess does not replace a preserved body the user has edited', () => {

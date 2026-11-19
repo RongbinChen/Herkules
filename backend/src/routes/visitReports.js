@@ -52,6 +52,7 @@ import {
   handleDeleteVisitReport,
   withCanDelete,
 } from '../services/visitReportAccess.js';
+import { resolveAuthorIdFromUsers } from '../services/visitReportAuthor.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -557,14 +558,8 @@ router.post('/summarize', async (req, res) => {
 // Resolve the report's actual author (the docx "From" field) to a system user.
 // Unique case-insensitive contains-match; otherwise fall back to the uploader.
 async function resolveAuthorId(content, fallbackId) {
-  const name = String(content?.meta?.author || '').trim().toLowerCase();
-  if (name.length < 3) return fallbackId;
   const users = await prisma.user.findMany({ select: { id: true, name: true } });
-  const hits = users.filter((u) => {
-    const un = u.name.trim().toLowerCase();
-    return un.includes(name) || name.includes(un);
-  });
-  return hits.length === 1 ? hits[0].id : fallbackId;
+  return resolveAuthorIdFromUsers(content, users, fallbackId);
 }
 
 // ── Create ─────────────────────────────────────────────────────────────────────
