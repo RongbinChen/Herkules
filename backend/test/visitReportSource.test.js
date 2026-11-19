@@ -255,13 +255,55 @@ test('export converts a preserved pandoc grid body to pipe tables, not grid ASCI
   assert.ok(md.indexOf('## Report photos') > md.indexOf('Mornhill'));
 });
 
+const LETTERHEAD_GRID = [
+  'Telephone Call Report',
+  '',
+  '+---------------+------------------+---+------+------------------+',
+  '| To            | Alex Reed        |   | Fax  | Pat Lee          |',
+  '+---------------+------------------+---+------+------------------+',
+  '| CC            | Jordan Cole      |   | Date | August. 19, 2022 |',
+  '+---------------+------------------+---+------+------------------+',
+  '| Company       | Example Plant    |   |      |                  |',
+  '+---------------+------------------+---+------+------------------+',
+  '| Date of Visit | August 18, 2022  |   |      |                  |',
+  '+---------------+------------------+---+------+------------------+',
+  '',
+  'The call covered the project briefing.',
+].join('\n');
+
 test('a source date and company are read only when the line is unambiguous', () => {
   const meta = sourceMeta('Date of Visit: 14 July 2026\nCompany: Northline Works\n\nX axis driven system is with problem');
   assert.equal(meta.visitDate, '2026-07-14');
   assert.equal(meta.customerName, 'Northline Works');
   assert.equal(parseSourceDate('07/14/2026'), null);
+  assert.equal(sourceMeta('Date of Visit: 07/14/2026').visitDate, null);
   assert.equal(sourceMeta('No header here').visitDate, null);
   assert.equal(sourceMeta('No header here').customerName, null);
+});
+
+test('a letterhead table date of visit is preferred over a bare Date', () => {
+  const meta = sourceMeta(LETTERHEAD_GRID);
+  assert.equal(meta.visitDate, '2022-08-18');
+  assert.equal(meta.customerName, 'Example Plant');
+});
+
+test('a date of visit label can stand on the line above the date', () => {
+  const meta = sourceMeta('Date of Visit\n\nAugust 18, 2022\n\nCompany: Example Plant\n');
+  assert.equal(meta.visitDate, '2022-08-18');
+  assert.equal(meta.customerName, 'Example Plant');
+});
+
+test('a bare letterhead Date is not used as the visit date', () => {
+  const onlyLetterDate = [
+    '+---------+------------------+',
+    '| Date    | August. 19, 2022 |',
+    '+---------+------------------+',
+    '| Company | Example Plant    |',
+    '+---------+------------------+',
+  ].join('\n');
+  const meta = sourceMeta(onlyLetterDate);
+  assert.equal(meta.visitDate, null);
+  assert.equal(meta.customerName, 'Example Plant');
 });
 
 test('reprocess does not replace a preserved body the user has edited', () => {

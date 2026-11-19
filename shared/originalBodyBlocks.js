@@ -371,7 +371,7 @@ const FIELD_DEFS = [
   [/^(place\s*\/\s*country|place|country)$/i, 'location', 'Location'],
   [/^e-?mail$/i, 'email', 'E-Mail'],
   [/^industry$/i, 'industry', 'Industry'],
-  [/^date of visit$/i, 'dateOfVisit', 'Date of Visit'],
+  [/^(date of visit|visit date|拜访日期)$/i, 'dateOfVisit', 'Date of Visit'],
   [/^quotation no\.?$/i, 'quotationNo', 'Quotation No.'],
   [/^machine\s*\/\s*type$/i, 'machineType', 'Machine / Type'],
   [/^reason\s*\/\s*purpose of visit$/i, 'reason', 'Reason / Purpose of Visit'],
@@ -494,13 +494,18 @@ function buildAttendees(header, rows) {
   return visible.length ? { type: 'attendees', groups: visible } : null
 }
 
-function isLetterheadTable(block) {
-  if (!block || block.type !== 'table') return false
+function collectTableRows(block) {
   const rows = []
   if (Array.isArray(block.header) && block.header.some((cell) => String(cell || '').trim())) {
     rows.push(block.header)
   }
   for (const row of block.rows || []) rows.push(row)
+  return rows
+}
+
+function isLetterheadTable(block) {
+  if (!block || block.type !== 'table') return false
+  const rows = collectTableRows(block)
   if (rows.length < 2) return false
   let fields = 0
   let participants = false
@@ -514,11 +519,7 @@ function isLetterheadTable(block) {
 }
 
 function letterheadBlocks(block) {
-  const rows = []
-  if (Array.isArray(block.header) && block.header.some((cell) => String(cell || '').trim())) {
-    rows.push(block.header)
-  }
-  for (const row of block.rows || []) rows.push(row)
+  const rows = collectTableRows(block)
 
   const fields = []
   let header = null
@@ -586,6 +587,28 @@ function structurePreservedBlocks(blocks) {
 
 export function hasPreservedLetterhead(markdown) {
   return parseOriginalBody(markdown).some((block) => block.type === 'meta' || block.type === 'attendees')
+}
+
+// Known letterhead fields, including Date of Visit from a table that did not
+// have enough other fields to be classified as a full letterhead.
+export function letterheadMetaFields(markdown) {
+  const fields = []
+  const add = (list) => {
+    for (const field of list || []) {
+      if (field?.key && !fields.some((item) => item.key === field.key)) fields.push(field)
+    }
+  }
+  for (const block of parseOriginalBody(markdown)) {
+    if (block.type === 'meta') {
+      add(block.fields)
+      continue
+    }
+    if (block.type !== 'table') continue
+    const found = []
+    for (const row of collectTableRows(block)) extractFieldsFromRow(row, found)
+    add(found)
+  }
+  return fields
 }
 
 export function parseOriginalBody(markdown) {

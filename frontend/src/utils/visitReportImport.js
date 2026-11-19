@@ -4,7 +4,8 @@
 
 export function chooseImportedDate({ existingReport = false, touched = false, current = '', suggested = null } = {}) {
   if (existingReport || touched) return current || ''
-  return suggested || current || ''
+  // A missing suggestion must not keep a new form's default "today".
+  return suggested || ''
 }
 
 export function chooseImportedCustomer({ touched = false, currentId = '', matchedId = null } = {}) {

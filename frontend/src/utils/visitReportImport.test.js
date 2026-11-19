@@ -14,6 +14,12 @@ test('a Word date fills only a new untouched form, and never invents today', () 
   }), '2026-11-12')
   assert.equal(chooseImportedDate({
     suggested: null, current: '2026-11-13',
+  }), '')
+  assert.equal(chooseImportedDate({
+    touched: true, suggested: null, current: '2026-11-13',
+  }), '2026-11-13')
+  assert.equal(chooseImportedDate({
+    existingReport: true, suggested: null, current: '2026-11-13',
   }), '2026-11-13')
 })
 

@@ -3,6 +3,7 @@
 import { unzipSync } from './visitReportPhotos.js';
 import { SUMMARY_MODEL } from './visitReport.js';
 import { stripEmphasis } from '../../../shared/markdownEmphasis.js';
+import { letterheadMetaFields } from '../../../shared/originalBodyBlocks.js';
 
 export const BODY_SOURCE = 'original';
 export const MAX_ORIGINAL_CHARS = 1_500_000;
@@ -203,22 +204,66 @@ export function parseSourceDate(raw) {
   return null;
 }
 
-// Header lines only. The body text is not rewritten to match them.
-export function sourceMeta(text) {
+const VISIT_DATE_LABEL = /^(?:date of visit|visit date|日期|拜访日期)$/i;
+const VISIT_DATE_LINE = /^\s*(?:date of visit|visit date|日期|拜访日期)\s*[:：]\s*(.+)$/i;
+const COMPANY_LINE = /^\s*(?:company|customer|公司|客户)\s*[:：]\s*(.+)$/i;
+
+function usableCompany(value) {
+  const name = normalizeSpace(value);
+  return name.length >= 2 && name.length <= 180 ? name : '';
+}
+
+function nextNonEmptyLine(lines, start) {
+  for (let i = start; i < lines.length; i += 1) {
+    const text = String(lines[i] || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function metaFromHeaderLines(text) {
   const lines = String(text || '').split(/\n/).slice(0, 80);
-  let visitDate = null;
+  let visitDateRaw = null;
   let customerName = null;
-  for (const line of lines) {
-    if (!visitDate) {
-      const date = line.match(/^\s*(?:date of visit|visit date|日期|拜访日期)\s*[:：]\s*(.+)$/i);
-      if (date) visitDate = parseSourceDate(date[1]);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!visitDateRaw) {
+      const dated = line.match(VISIT_DATE_LINE);
+      if (dated) {
+        visitDateRaw = dated[1];
+      } else if (VISIT_DATE_LABEL.test(normalizeSpace(line).replace(/[:：]\s*$/, ''))) {
+        const next = nextNonEmptyLine(lines, i + 1);
+        if (next) visitDateRaw = next;
+      }
     }
     if (!customerName) {
-      const company = line.match(/^\s*(?:company|customer|公司|客户)\s*[:：]\s*(.+)$/i);
-      const name = company ? normalizeSpace(company[1]) : '';
-      if (name.length >= 2 && name.length <= 180) customerName = name;
+      const company = line.match(COMPANY_LINE);
+      const name = company ? usableCompany(company[1]) : '';
+      if (name) customerName = name;
     }
   }
+  return { visitDateRaw, customerName };
+}
+
+function metaFromLetterhead(text) {
+  const fields = letterheadMetaFields(text);
+  const dateOfVisit = fields.find((field) => field.key === 'dateOfVisit')?.value || null;
+  const company = fields.find((field) => field.key === 'company')?.value || '';
+  return {
+    visitDateRaw: dateOfVisit,
+    customerName: usableCompany(company) || null,
+  };
+}
+
+// Header lines and letterhead tables. The body text is not rewritten to
+// match them. Prefer Date of Visit (or visit date / 拜访日期 / 日期) over
+// a bare letterhead Date, which is the writing date on these templates.
+export function sourceMeta(text) {
+  const fromLines = metaFromHeaderLines(text);
+  const fromLetterhead = metaFromLetterhead(text);
+  const visitDate = parseSourceDate(fromLines.visitDateRaw)
+    || parseSourceDate(fromLetterhead.visitDateRaw);
+  const customerName = fromLines.customerName || fromLetterhead.customerName;
   return { visitDate, customerName };
 }
 
