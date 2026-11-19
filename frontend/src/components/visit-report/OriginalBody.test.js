@@ -342,3 +342,35 @@ test('letterhead chrome is hidden and participants become aligned attendee chips
   assert.doesNotMatch(html, /Wang Guo<\/span>/)
   assert.doesNotMatch(html, /Parti cipants/)
 })
+
+test('pandoc emphasis is shown as typography, not raw asterisks or underline spans', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const html = renderToStaticMarkup(createElement(OriginalBody, {
+    markdown: [
+      '**Telephone Call Report**',
+      '',
+      '**[Project briefing:]{.underline}**',
+      '',
+      '**[Customer’s profile:]{.underline}**',
+      '',
+      '**[Meeting:]{.underline}**',
+      '',
+      'The parent company is ***Example Power Research Institute Co., Ltd.***, a research unit.',
+      '',
+      '[]',
+      '',
+      '[] []',
+    ].join('\n'),
+  }))
+  assert.match(html, /<strong[^>]*>Telephone Call Report<\/strong>/)
+  assert.match(html, /<u class="underline">/)
+  assert.match(html, /Project briefing:/)
+  assert.match(html, /Customer’s profile:/)
+  assert.match(html, /Meeting:/)
+  assert.match(html, /<strong[^>]*><em>Example Power Research Institute Co\., Ltd\.<\/em><\/strong>/)
+  assert.match(html, /The parent company is /)
+  assert.doesNotMatch(html, /\*\*/)
+  assert.doesNotMatch(html, /\{\.underline\}/)
+  assert.doesNotMatch(html, /\[Project briefing:/)
+  assert.match(html, /font-semibold text-slate-800/)
+})

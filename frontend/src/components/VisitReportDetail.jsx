@@ -11,6 +11,7 @@ import { warningMessages } from '../utils/visitReportImport'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
 import { hasPreservedLetterhead } from '../../../shared/originalBodyBlocks.js'
+import { displayTitle } from '../../../shared/markdownEmphasis.js'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
 
@@ -104,7 +105,7 @@ export default function VisitReportDetail() {
       const url = URL.createObjectURL(res.data)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${(report.title || 'visit-report').replace(/[^\w.\- ]+/g, '_').slice(0, 80)}.docx`
+      a.download = `${(displayTitle(report.title) || 'visit-report').replace(/[^\w.\- ]+/g, '_').slice(0, 80)}.docx`
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
     } catch {
@@ -181,7 +182,7 @@ export default function VisitReportDetail() {
         {/* Article */}
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-1 flex items-start justify-between gap-3">
-            <h1 className="text-xl font-bold leading-snug text-slate-900 sm:text-2xl">{report.title}</h1>
+            <h1 className="text-xl font-bold leading-snug text-slate-900 sm:text-2xl">{displayTitle(report.title)}</h1>
             <Badge tone={report.status === 'FINAL' ? 'green' : 'amber'}>{report.status === 'FINAL' ? t.statusFinal : t.statusDraft}</Badge>
           </div>
           <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 pb-4 text-xs text-slate-500">

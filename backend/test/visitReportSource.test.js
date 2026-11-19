@@ -24,6 +24,7 @@ import {
   reprocessPreservedFromRawNotes,
   sanitizeOriginalBody,
   sourceMeta,
+  titleFromSource,
 } from '../src/services/visitReportSource.js';
 import { retainSavableAttachments, storedNamesOwnedByOthers } from '../src/services/visitReportPhotos.js';
 
@@ -369,4 +370,30 @@ test('pandoc keeps paragraphs, and a text box the converter drops is still retai
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('titleFromSource strips pandoc emphasis from the first substantial line', () => {
+  assert.equal(titleFromSource('**Telephone Call Report**\n\nThe call covered the project briefing.'), 'Telephone Call Report');
+  assert.equal(titleFromSource('# **Telephone Call Report**\n\nBody of the note'), 'Telephone Call Report');
+  assert.equal(titleFromSource('Northline visit\n\nShop floor notes'), 'Northline visit');
+});
+
+test('export keeps body emphasis marks and writes a clean title heading', () => {
+  const body = [
+    '**[Project briefing:]{.underline}**',
+    '',
+    'The parent company is ***Example Power Research Institute Co., Ltd.***, a research unit.',
+    '',
+    '[]',
+    '',
+    '[] []',
+  ].join('\n');
+  const md = reportToMarkdown({
+    title: '**Telephone Call Report**',
+    content: { bodySource: 'original', originalBody: body },
+  });
+  assert.match(md, /^# Telephone Call Report/m);
+  assert.doesNotMatch(md, /^# \*\*Telephone Call Report\*\*/m);
+  assert.match(md, /\*\*\[Project briefing:\]\{\.underline\}\*\*/);
+  assert.match(md, /\*\*\*Example Power Research Institute Co\., Ltd\.\*\*\*/);
 });

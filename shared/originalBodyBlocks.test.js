@@ -147,3 +147,28 @@ test('leftover Word chrome is dropped on parse and export', () => {
   assert.equal(blocks[0].text, 'The shop reported a drive problem.')
   assert.doesNotMatch(blocksToMarkdown(blocks), /Please select type of report/i)
 })
+
+test('bold underlined labels stay section titles and export keeps the source markers', () => {
+  const source = [
+    '**[Project briefing:]{.underline}**',
+    '',
+    'The parent company is ***Example Power Research Institute Co., Ltd.***, a research unit.',
+    '',
+    '[]',
+    '',
+    '[] []',
+  ].join('\n')
+  const blocks = parseOriginalBody(source)
+  assert.equal(blocks[0].type, 'heading')
+  assert.equal(blocks[0].section, true)
+  assert.equal(blocks[0].text, '**[Project briefing:]{.underline}**')
+  assert.equal(blocks[1].type, 'paragraph')
+  assert.match(blocks[1].text, /\*\*\*Example Power Research Institute Co\., Ltd\.\*\*\*/)
+  assert.equal(blocks[2].text, '[]')
+  assert.equal(blocks[3].text, '[] []')
+  const md = blocksToMarkdown(blocks)
+  assert.match(md, /\*\*\[Project briefing:\]\{\.underline\}\*\*/)
+  assert.match(md, /\*\*\*Example Power Research Institute Co\., Ltd\.\*\*\*/)
+  assert.match(md, /^\[\]$/m)
+  assert.match(md, /^\[\] \[\]$/m)
+})

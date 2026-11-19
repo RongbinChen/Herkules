@@ -6,6 +6,7 @@ import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
 import { leftoverPhotos } from '../../../shared/inlineBodyPhotos.js'
 import { hasPreservedLetterhead } from '../../../shared/originalBodyBlocks.js'
+import { displayTitle } from '../../../shared/markdownEmphasis.js'
 import { visitReportsAPI, customersAPI } from '../api/api'
 import { Button, Input, Textarea, Badge } from './ui'
 import { STRINGS, SECTIONS_I18N, META_FIELDS_I18N } from '../i18n/visitReports'
@@ -297,7 +298,7 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
           {!editing && (
             <div className="space-y-5">
               <div>
-                <h3 className="text-lg font-bold leading-snug text-slate-900">{form.title}</h3>
+                <h3 className="text-lg font-bold leading-snug text-slate-900">{displayTitle(form.title)}</h3>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                   <span>📅 {form.visitDate}</span>
                   {(report?.customer?.name || custQuery) && <span>🤝 {report?.customer?.name || custQuery}</span>}

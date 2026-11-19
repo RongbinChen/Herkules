@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { visitReportsAPI } from '../../api/api'
 import { STRINGS } from '../../i18n/visitReports'
 import { showDeleteVisitReport } from '../../utils/visitReportAccess'
+import { displayTitle } from '../../../../shared/markdownEmphasis.js'
 
 const DEFAULT_CLASS = 'shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50'
 
@@ -17,7 +18,7 @@ export default function DeleteReportButton({ report, user, lang = 'en', classNam
     event.preventDefault()
     event.stopPropagation()
     if (busy) return
-    const title = report.title || (lang === 'zh' ? '该报告' : 'this report')
+    const title = displayTitle(report.title) || (lang === 'zh' ? '该报告' : 'this report')
     if (!window.confirm(t.deleteConfirm(title))) return
     setBusy(true)
     try {
