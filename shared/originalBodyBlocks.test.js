@@ -7,8 +7,12 @@ import {
   blocksToMarkdown,
   collapseProseSpaces,
   hasPreservedLetterhead,
+  HEADER_META_KEYS,
+  letterheadHeaderMeta,
+  mergeLetterheadHeaderMeta,
   parseOriginalBody,
   rejoinLabelWraps,
+  withLetterheadHeaderMeta,
 } from './originalBodyBlocks.js'
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/alpine-grid-original.md')
@@ -171,4 +175,119 @@ test('bold underlined labels stay section titles and export keeps the source mar
   assert.match(md, /\*\*\*Example Power Research Institute Co\., Ltd\.\*\*\*/)
   assert.match(md, /^\[\]$/m)
   assert.match(md, /^\[\] \[\]$/m)
+})
+
+const HEADER_GRID = [
+  'Telephone Call Report',
+  '',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| To                 | A. Example           |     | Fax                | C. Example         |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| CC                 | B. Example           |     | Date               | August 19, 2022    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Company            | Example Plant        |     | Phone              | 555-0100           |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Place / Country    | Baoji                |     | Industry           | Engines            |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Date of Visit      | August 18, 2022      |     | Quotation No.      |                    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '| Machine / Type     | KC 130               |     |                    |                    |',
+  '+--------------------+----------------------+-----+--------------------+--------------------+',
+  '',
+  'The call covered the project briefing.',
+].join('\n')
+
+test('a letterhead table fills the six Report Header keys and skips Date and From', () => {
+  const meta = letterheadHeaderMeta(HEADER_GRID)
+  assert.deepEqual(meta, {
+    recipients: 'A. Example',
+    cc: 'B. Example',
+    location: 'Baoji',
+    industry: 'Engines',
+    machineType: 'KC 130',
+  })
+  assert.equal(Object.hasOwn(meta, 'quotationNo'), false)
+  assert.equal(HEADER_META_KEYS.includes('letterDate'), false)
+  assert.equal(HEADER_META_KEYS.includes('dateOfVisit'), false)
+  assert.equal(HEADER_META_KEYS.includes('from'), false)
+  assert.doesNotMatch(JSON.stringify(meta), /August 18, 2022|August 19, 2022|555-0100|C\. Example/)
+})
+
+test('header meta stays empty when the letterhead has no Report Header fields', () => {
+  const body = [
+    '+---------+------------------+',
+    '| Date    | August 19, 2022  |',
+    '+---------+------------------+',
+    '| Company | Example Plant    |',
+    '+---------+------------------+',
+    '',
+    'The call covered the project briefing.',
+  ].join('\n')
+  assert.deepEqual(letterheadHeaderMeta(body), {})
+})
+
+test('a recovered header appendix can fill empty Report Header keys', () => {
+  const body = [
+    'The call covered the project briefing.',
+    '',
+    'Text recovered from the header',
+    '',
+    'To',
+    '',
+    'A. Example',
+    '',
+    'CC',
+    '',
+    'B. Example',
+    '',
+    'Place / Country',
+    '',
+    'Baoji',
+    '',
+    'Industry',
+    '',
+    'Engines',
+    '',
+    'Machine / Type',
+    '',
+    'KC 130',
+    '',
+    'Quotation No.',
+    '',
+    'Date',
+    '',
+    'August 19, 2022',
+    '',
+    'From',
+    '',
+    'C. Example',
+  ].join('\n')
+  const meta = letterheadHeaderMeta(body)
+  assert.deepEqual(meta, {
+    recipients: 'A. Example',
+    cc: 'B. Example',
+    location: 'Baoji',
+    industry: 'Engines',
+    machineType: 'KC 130',
+  })
+  assert.equal(Object.hasOwn(meta, 'quotationNo'), false)
+  assert.doesNotMatch(JSON.stringify(meta), /August 19, 2022|C\. Example/)
+})
+
+test('a value already saved in meta wins over a letterhead prefill', () => {
+  const saved = mergeLetterheadHeaderMeta(
+    { recipients: 'Saved Name', location: '' },
+    HEADER_GRID,
+  )
+  assert.equal(saved.recipients, 'Saved Name')
+  assert.equal(saved.location, 'Baoji')
+  assert.equal(saved.cc, 'B. Example')
+  const content = withLetterheadHeaderMeta({
+    bodySource: 'original',
+    originalBody: HEADER_GRID,
+    meta: { industry: 'Already filed' },
+  })
+  assert.equal(content.meta.industry, 'Already filed')
+  assert.equal(content.meta.machineType, 'KC 130')
+  assert.equal(content.originalBody, HEADER_GRID)
 })

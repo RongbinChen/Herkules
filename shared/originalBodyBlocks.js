@@ -591,6 +591,69 @@ export function hasPreservedLetterhead(markdown) {
 
 // Known letterhead fields, including Date of Visit from a table that did not
 // have enough other fields to be classified as a full letterhead.
+const RECOVERED_HEADING = /^(?:Text recovered from the (?:header|footer|document body)|Text recovered from text boxes)\s*$/i
+
+function nextFilledLine(lines, start) {
+  for (let i = start; i < lines.length; i += 1) {
+    const text = collapseProseSpaces(lines[i])
+    if (text) return text
+  }
+  return ''
+}
+
+// Unambiguous same-line labels (`To: A. Example`), used as a fallback when
+// the value is not already in a letterhead table.
+function collectColonFields(text, fields) {
+  for (const raw of String(text ?? '').split(/\n/)) {
+    const line = collapseProseSpaces(raw)
+    const labeled = line.match(/^(.+?)\s*[:：]\s*(.+)$/)
+    if (!labeled) continue
+    const field = matchField(labeled[1])
+    const value = flattenFieldValue(labeled[2])
+    if (field && value && !fields.some((item) => item.key === field.key)) {
+      fields.push({ key: field.key, label: field.label, value })
+    }
+  }
+}
+
+// Recovered header/footer/text-box appendices are often loose paragraphs
+// (label, then value) because the Word XML path does not keep the table.
+function collectRecoveredFields(text, fields) {
+  collectColonFields(text, fields)
+  const lines = String(text ?? '').split(/\n/)
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = collapseProseSpaces(lines[i])
+    if (!line || RECOVERED_HEADING.test(line)) continue
+    if (/[:：]/.test(line)) continue
+    const field = matchField(line)
+    if (!field) continue
+    const next = nextFilledLine(lines, i + 1)
+    if (!next || RECOVERED_HEADING.test(next) || matchField(next)) continue
+    const nextLabel = next.match(/^(.+?)\s*[:：]/)
+    if (nextLabel && matchField(nextLabel[1])) continue
+    const value = flattenFieldValue(next)
+    if (value && !fields.some((item) => item.key === field.key)) {
+      fields.push({ key: field.key, label: field.label, value })
+    }
+  }
+}
+
+function recoveredSectionBodies(markdown) {
+  const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n')
+  const bodies = []
+  let current = null
+  for (const line of lines) {
+    if (RECOVERED_HEADING.test(collapseProseSpaces(line))) {
+      if (current) bodies.push(current.join('\n'))
+      current = []
+      continue
+    }
+    if (current) current.push(line)
+  }
+  if (current) bodies.push(current.join('\n'))
+  return bodies
+}
+
 export function letterheadMetaFields(markdown) {
   const fields = []
   const add = (list) => {
@@ -608,7 +671,47 @@ export function letterheadMetaFields(markdown) {
     for (const row of collectTableRows(block)) extractFieldsFromRow(row, found)
     add(found)
   }
+  collectColonFields(markdown, fields)
+  for (const body of recoveredSectionBodies(markdown)) collectRecoveredFields(body, fields)
   return fields
+}
+
+// Report Header inputs on the edit form. Other letterhead keys (From, Date,
+// Date of Visit, Company, Phone) stay out of this object.
+export const HEADER_META_KEYS = ['recipients', 'cc', 'location', 'industry', 'machineType', 'quotationNo']
+
+export function letterheadHeaderMeta(markdown) {
+  const meta = {}
+  for (const field of letterheadMetaFields(markdown)) {
+    if (!HEADER_META_KEYS.includes(field.key)) continue
+    const value = flattenFieldValue(field.value)
+    if (value && meta[field.key] == null) meta[field.key] = value
+  }
+  return meta
+}
+
+// Fill empty Report Header keys from the letterhead. A value already in
+// meta, including one the user saved, is left alone. Missing keys stay
+// absent; nothing is invented.
+export function mergeLetterheadHeaderMeta(existingMeta, markdown) {
+  const existing = (existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta))
+    ? { ...existingMeta }
+    : {}
+  const fromLetterhead = letterheadHeaderMeta(markdown)
+  for (const key of HEADER_META_KEYS) {
+    if (flattenFieldValue(existing[key])) continue
+    if (fromLetterhead[key]) existing[key] = fromLetterhead[key]
+  }
+  return existing
+}
+
+export function withLetterheadHeaderMeta(content) {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return content
+  const markdown = typeof content.originalBody === 'string' ? content.originalBody : ''
+  if (!markdown.trim()) return content
+  const meta = mergeLetterheadHeaderMeta(content.meta, markdown)
+  if (!Object.keys(meta).length && !content.meta) return content
+  return { ...content, meta }
 }
 
 export function parseOriginalBody(markdown) {
