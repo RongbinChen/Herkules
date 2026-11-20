@@ -8,6 +8,13 @@
 // here, on the server that sends the mail).
 import { prisma } from '../index.js';
 import { milestoneReminderMail } from './followUpMail.js';
+import {
+  chinaDay,
+  reminderDue,
+  resolveReminderRecipients,
+} from './followUpReminder.js';
+
+export { chinaDay, milestoneStanding, reminderDue } from './followUpReminder.js';
 
 // Ordered as the order actually runs. `lead` is the default reminder lead time
 // in days; a record can override it per milestone.
@@ -43,51 +50,17 @@ export const MILESTONES = [
 export const MILESTONE_BY_KIND = new Map(MILESTONES.map((m) => [m.kind, m]));
 export const MILESTONE_KINDS = new Set(MILESTONES.map((m) => m.kind));
 
-// The company works on China time. A date-only milestone is a day in Beijing,
-// not a moment in UTC, or a deadline on the 30th starts reminding on the 29th
-// for anyone reading before 08:00.
-const CN_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' });
-export const chinaDay = (d = new Date()) => CN_DATE.format(d);
-const daysBetween = (fromDay, toDay) =>
-  Math.round((new Date(`${toDay}T00:00:00Z`) - new Date(`${fromDay}T00:00:00Z`)) / 86400000);
-
-/**
- * Should this milestone be chased today, and with what urgency?
- * Returns null when it should not.
- *
- * Overdue is capped at one mail every three days rather than daily: a date that
- * slipped by a month is not thirty times more urgent, and a mail that arrives
- * every morning stops being read within a week — which would also bury the
- * milestones that are still in time.
- */
-export function reminderDue(milestone, today = chinaDay()) {
-  if (!milestone.dueDate || milestone.doneAt) return null;
-  const due = chinaDay(milestone.dueDate);
-  const delta = daysBetween(today, due); // >0 upcoming, 0 today, <0 overdue
-  if (milestone.lastRemindedOn === today) return null; // one mail per day, at most
-
-  if (delta === 0) return { urgency: 'today', delta };
-  if (delta > 0) {
-    const lead = milestone.remindDaysBefore?.length ? milestone.remindDaysBefore : [];
-    return lead.includes(delta) ? { urgency: 'upcoming', delta } : null;
-  }
-  // Overdue: day 1 always, then every third day.
-  const overdueDays = -delta;
-  return overdueDays === 1 || overdueDays % 3 === 0 ? { urgency: 'overdue', delta } : null;
-}
-
 // ── Who hears about it ───────────────────────────────────────────────────────
-// The assigned person is the addressee; the sales lead is copied so nothing
-// depends on one person reading their mail; the managing director is blind
-// copied so the copy list a customer-facing colleague sees stays short.
+// The assigned person is the addressee. Nobody is copied by default — an
+// optional CC is only FOLLOWUP_CC_EMAIL, or the user named by FOLLOWUP_CC_NAME.
+// The managing director stays on bcc, so the copy list a customer-facing
+// colleague sees stays short.
 //
 // Names are resolved against the user table so a change of address is one
 // profile edit, and the env vars exist for the case where the person is not a
 // user of this system at all.
-const CC_NAME = process.env.FOLLOWUP_CC_NAME || 'Stefan Elze';
-const BCC_NAME = process.env.FOLLOWUP_BCC_NAME || 'Rongbin Chen';
-
 async function emailForName(name) {
+  if (!name) return null;
   const u = await prisma.user.findFirst({
     where: { name: { equals: name, mode: 'insensitive' } },
     select: { email: true },
@@ -95,15 +68,8 @@ async function emailForName(name) {
   return u?.email || null;
 }
 
-export async function reminderRecipients(ownerEmail) {
-  const [cc, bcc] = await Promise.all([
-    process.env.FOLLOWUP_CC_EMAIL || emailForName(CC_NAME),
-    process.env.FOLLOWUP_BCC_EMAIL || emailForName(BCC_NAME),
-  ]);
-  // Never copy someone on their own mail — a person who is both the assignee
-  // and the sales lead would otherwise get it twice.
-  const drop = (addr) => (addr && addr.toLowerCase() !== (ownerEmail || '').toLowerCase() ? addr : null);
-  return { cc: drop(cc), bcc: drop(bcc) };
+export async function reminderRecipients(ownerEmail, env = process.env) {
+  return resolveReminderRecipients(ownerEmail, env, emailForName);
 }
 
 /**
