@@ -51,6 +51,7 @@ import { normalizeCompany } from '../services/companyName.js';
 import {
   canDeleteVisitReport,
   handleDeleteVisitReport,
+  removeVisitReportAndReminders,
   withCanDelete,
 } from '../services/visitReportAccess.js';
 import { resolveAuthorIdFromUsers } from '../services/visitReportAuthor.js';
@@ -845,12 +846,13 @@ router.get('/:id/export', async (req, res) => {
 
 // ── Delete (uploader or admin) ──────────────────────────────────────────────────
 // Same lookup as GET, so a report you cannot see is a 404 and a report you can
-// read but did not upload is a 403. Hard-delete: the row goes, attachment
-// metadata goes with it, and any storedName blob under VISIT_REPORT_STORAGE_DIR
-// is unlinked. Reminders stay; their visitReportId is set null by the schema.
+// read but did not upload is a 403. Hard-delete: the report and every calendar
+// reminder linked by visitReportId go in one transaction, attachment metadata
+// goes with the row, and any storedName blob under VISIT_REPORT_STORAGE_DIR
+// is unlinked. Events not linked to this report are left alone.
 router.delete('/:id', (req, res) => handleDeleteVisitReport(req, res, {
   findReport: (id) => prisma.visitReport.findUnique({ where: { id } }),
-  removeRow: (reportId) => prisma.visitReport.delete({ where: { id: reportId } }),
+  removeRow: (reportId) => removeVisitReportAndReminders(prisma, reportId),
   unlinkFile: (file) => unlink(file),
   storageRoot: visitReportStorageRoot(),
 }));

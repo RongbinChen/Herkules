@@ -12,6 +12,7 @@ import {
   deleteVisitReportRecord,
   handleDeleteVisitReport,
   parseReportId,
+  removeVisitReportAndReminders,
   storedAttachmentTargets,
   withCanDelete,
 } from '../src/services/visitReportAccess.js';
@@ -228,4 +229,122 @@ test('an admin can delete another person\'s report, and a failed unlink still ke
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+// In-memory Prisma stand-in: $transaction rolls back both tables if either
+// write throws. Fixtures are anonymized (no real contacts).
+function memoryDb({ failOn } = {}) {
+  const events = [
+    { id: 101, title: 'Keep contact', visitReportId: 10, category: 'REMINDER' },
+    { id: 102, title: 'Prepare proposal', visitReportId: 10, category: 'REMINDER' },
+    { id: 103, title: 'Workshop meeting', visitReportId: null, category: 'MEETING' },
+    { id: 104, title: 'Other report reminder', visitReportId: 11, category: 'REMINDER' },
+  ];
+  const reports = [
+    { id: 10, title: 'Plant visit' },
+    { id: 11, title: 'Other visit' },
+  ];
+  const txOf = (store) => ({
+    event: {
+      deleteMany: async ({ where }) => {
+        if (failOn === 'reminders') throw new Error('reminder delete failed');
+        const before = store.events.length;
+        store.events = store.events.filter((e) => e.visitReportId !== where.visitReportId);
+        return { count: before - store.events.length };
+      },
+    },
+    visitReport: {
+      delete: async ({ where }) => {
+        if (failOn === 'report') throw new Error('report delete failed');
+        const i = store.reports.findIndex((r) => r.id === where.id);
+        if (i < 0) throw new Error('not found');
+        const [removed] = store.reports.splice(i, 1);
+        return removed;
+      },
+    },
+  });
+  const store = { events, reports };
+  return {
+    store,
+    $transaction: async (fn) => {
+      const snap = {
+        events: store.events.map((e) => ({ ...e })),
+        reports: store.reports.map((r) => ({ ...r })),
+      };
+      try {
+        return await fn(txOf(store));
+      } catch (err) {
+        store.events = snap.events;
+        store.reports = snap.reports;
+        throw err;
+      }
+    },
+  };
+}
+
+test('deleting a report also deletes reminders linked by visitReportId, and nothing else', async () => {
+  const db = memoryDb();
+  await removeVisitReportAndReminders(db, 10);
+  assert.equal(db.store.reports.some((r) => r.id === 10), false);
+  assert.equal(db.store.reports.some((r) => r.id === 11), true);
+  assert.deepEqual(db.store.events.map((e) => e.id).sort(), [103, 104]);
+});
+
+test('a failed reminder delete leaves the report and its reminders in place', async () => {
+  const db = memoryDb({ failOn: 'reminders' });
+  await assert.rejects(() => removeVisitReportAndReminders(db, 10), /reminder delete failed/);
+  assert.equal(db.store.reports.some((r) => r.id === 10), true);
+  assert.deepEqual(db.store.events.map((e) => e.id).sort(), [101, 102, 103, 104]);
+});
+
+test('a failed report delete rolls back reminder deletions', async () => {
+  const db = memoryDb({ failOn: 'report' });
+  await assert.rejects(() => removeVisitReportAndReminders(db, 10), /report delete failed/);
+  assert.equal(db.store.reports.some((r) => r.id === 10), true);
+  assert.deepEqual(db.store.events.map((e) => e.id).sort(), [101, 102, 103, 104]);
+});
+
+test('a 403 or missing report does not delete linked reminders', async () => {
+  const events = new Map([
+    [101, { id: 101, visitReportId: 10 }],
+    [103, { id: 103, visitReportId: null }],
+  ]);
+  const rows = new Map([[10, { ...report }]]);
+  const removeRow = async (id) => {
+    for (const [eid, ev] of [...events]) {
+      if (ev.visitReportId === id) events.delete(eid);
+    }
+    rows.delete(id);
+  };
+
+  const denied = await deleteVisitReportRecord({
+    report: rows.get(10),
+    user: coordinator,
+    removeRow,
+    unlinkFile: async () => {},
+  });
+  assert.equal(denied.status, 403);
+  assert.equal(rows.has(10), true);
+  assert.equal(events.has(101), true);
+
+  const missing = await deleteVisitReportRecord({
+    report: null,
+    user: admin,
+    removeRow,
+    unlinkFile: async () => {},
+  });
+  assert.equal(missing.status, 404);
+  assert.equal(events.has(101), true);
+
+  const ok = await deleteVisitReportRecord({
+    report: rows.get(10),
+    user: uploader,
+    removeRow,
+    unlinkFile: async () => {},
+  });
+  assert.equal(ok.status, 204);
+  assert.equal(rows.has(10), false);
+  assert.equal(events.has(101), false);
+  assert.equal(events.has(103), true);
 });
