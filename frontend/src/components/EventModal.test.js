@@ -14,6 +14,12 @@ const CUSTOMERS = [
   { id: 13, name: 'Gamma Plant Ltd.' },
 ]
 
+const AGENTS = [
+  { id: 7, name: 'North Agent', company: 'North Desk' },
+  { id: 8, name: 'East Liaison' },
+  { id: 9, name: 'West Desk', company: 'Harbor Agency' },
+]
+
 async function render(extra = {}) {
   const { default: EventModal } = await loadJsxModule(path.join(here, 'EventModal.jsx'))
   return renderToStaticMarkup(createElement(EventModal, {
@@ -23,7 +29,7 @@ async function render(extra = {}) {
     event: null,
     users: [{ id: 1, name: 'Ada' }],
     customers: CUSTOMERS,
-    agents: [{ id: 7, name: 'North Agent', company: 'North Desk' }],
+    agents: AGENTS,
     isAdmin: true,
     currentUser: { id: 1, name: 'Ada' },
     ...extra,
@@ -41,16 +47,30 @@ test('the create-activity customer field is a searchable select, not a native li
   assert.doesNotMatch(html, /<option[^>]*>Alpha Mill Co\.</)
   assert.doesNotMatch(html, /<option[^>]*>Beta Machinery Works</)
   assert.doesNotMatch(html, /<option[^>]*>Gamma Plant Ltd\.</)
-  // The Agent field was not requested; it stays a native select.
-  assert.match(html, /<option value=""[^>]*>Agent Selection<\/option>/)
-  assert.match(html, /North Agent/)
 })
 
 test('the customer picker keeps the new-customer action and does not render a native customer list', async () => {
   const html = await render()
   assert.match(html, />Customer</)
   assert.match(html, /\+ New customer/)
+  assert.match(html, /id="activity-customer"/)
   assert.match(html, /data-searchable-select-trigger="true"/)
   // Address remains a detail under the field after a selection; it is not option text.
   assert.doesNotMatch(html, /1 Harbor Road/)
+})
+
+test('the create-activity agent field uses the same searchable select as customer', async () => {
+  const html = await render()
+  assert.match(html, /Create employee activity/)
+  assert.match(html, /\+ New agent/)
+  assert.match(html, /id="activity-agent"/)
+  assert.match(html, /Agent Selection/)
+  assert.match(html, /data-searchable-select-trigger="true"/)
+  // Closed triggers show the placeholder, not the full native option list.
+  assert.doesNotMatch(html, /<option value=""[^>]*>Agent Selection<\/option>/)
+  assert.doesNotMatch(html, /<option[^>]*>North Agent/)
+  assert.doesNotMatch(html, /<option[^>]*>East Liaison</)
+  assert.doesNotMatch(html, /<option[^>]*>West Desk/)
+  // Two searchable fields: customer and agent.
+  assert.equal((html.match(/data-searchable-select-trigger="true"/g) || []).length, 2)
 })
