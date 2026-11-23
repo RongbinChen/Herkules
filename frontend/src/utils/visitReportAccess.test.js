@@ -44,6 +44,7 @@ test('delete copy exists in English and Chinese', () => {
     assert.equal(typeof t.deleteConfirm, 'function')
     const message = t.deleteConfirm('COSCO visit')
     assert.match(message, /COSCO visit/)
+    assert.match(message, lang === 'zh' ? /提醒/ : /reminders/i)
     assert.notEqual(message, STRINGS[lang === 'en' ? 'zh' : 'en'].deleteConfirm('COSCO visit'))
   }
 })

@@ -130,7 +130,7 @@ export const STRINGS = {
     delete: 'Delete',
     deleting: 'Deleting…',
     deleteFailed: 'Failed to delete the report',
-    deleteConfirm: (title) => `Delete “${title}”? This cannot be undone.`,
+    deleteConfirm: (title) => `Delete “${title}”? Reminders created from this report will also be deleted. This cannot be undone.`,
   },
   zh: {
     pageTitle: '拜访报告',
@@ -247,7 +247,7 @@ export const STRINGS = {
     delete: '删除',
     deleting: '删除中…',
     deleteFailed: '删除报告失败',
-    deleteConfirm: (title) => `删除「${title}」？此操作无法撤销。`,
+    deleteConfirm: (title) => `删除「${title}」？由此报告生成的提醒也会一并删除。此操作无法撤销。`,
   },
 }
 

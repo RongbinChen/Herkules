@@ -76,9 +76,23 @@ export function storedAttachmentTargets(attachments, storageRoot) {
   return targets;
 }
 
+// Deletes the report and every Event linked by visitReportId (the calendar
+// reminders created from that report's dated targets) in one transaction.
+// Events not linked to this report — including already-orphaned reminders
+// whose visitReportId is already null — are left alone. The Event FK still
+// uses onDelete: SetNull as a safety net for any other delete path.
+export async function removeVisitReportAndReminders(db, reportId) {
+  return db.$transaction(async (tx) => {
+    await tx.event.deleteMany({ where: { visitReportId: reportId } });
+    return tx.visitReport.delete({ where: { id: reportId } });
+  });
+}
+
 // Hard-delete, matching the existing visit-report route and the contract /
 // bid-opening deletes: the row goes first, then stored blobs, best effort.
-// Calendar reminders keep their rows; the schema sets visitReportId to null.
+// `removeRow` must delete the report and its linked reminders in one
+// transaction (see removeVisitReportAndReminders). A leftover blob is
+// unlinked after the row is gone, best effort.
 export async function deleteVisitReportRecord({
   report,
   user,
