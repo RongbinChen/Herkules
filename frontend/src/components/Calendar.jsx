@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { agentsAPI, customersAPI, eventsAPI, holidaysAPI, usersAPI } from '../api/api'
 import { BEIJING_TIME_ZONE, beijingDayKey, beijingWallToIso, formatBeijingDayHeading, formatBeijingDisplay, formatBeijingMonthDay } from '../utils/halfDay'
 import { exclusiveAllDayEnd, holidayRange, isValidInstant } from '../utils/calendarEvents'
+import { parseIdParam } from '../utils/deepLink'
 import EventModal from './EventModal'
 import CalendarErrorBoundary from './CalendarErrorBoundary'
 import ProfileModal from './ProfileModal'
@@ -523,6 +524,8 @@ export default function Calendar() {
   const SPLIT_VIEW_BREAKPOINT = 1220
   const { logout, user, updateUser } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const openedEventRef = useRef(null)
   const calendarRef = useRef(null)
   const selectedCellElementsRef = useRef([])
   const todayKeyRef = useRef(beijingDayKey(new Date()))
@@ -705,6 +708,23 @@ export default function Calendar() {
   useEffect(() => {
     loadInitialData()
   }, [isAdmin])
+
+  useEffect(() => {
+    if (isLoading) return
+    const id = parseIdParam(searchParams, 'event')
+    if (!id || openedEventRef.current === id) return
+    const ev = allEvents.find((event) => Number(event.id) === id)
+    if (!ev) return
+    openedEventRef.current = id
+    if (selectedUserIds !== null && ev.userId && !selectedUserIds.includes(ev.userId)) {
+      setSelectedUserIds((prev) => (prev ? [...prev, ev.userId] : [ev.userId]))
+    }
+    setSelectedCategory('ALL')
+    setSelectedStatus('ALL')
+    setSelectedEvent(ev)
+    setModalOpen(true)
+    try { calendarRef.current?.getApi()?.gotoDate(ev.start) } catch { /* calendar may not be ready */ }
+  }, [isLoading, allEvents, searchParams, selectedUserIds])
 
   useEffect(() => {
     if (users.length === 0) return

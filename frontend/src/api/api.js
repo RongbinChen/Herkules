@@ -116,8 +116,22 @@ export const searchAPI = {
 
 // Workspace AI assistant (DeepSeek tool loop over module data). Multi-step
 // queries can take a while — give it a generous timeout.
+const withContractToken = (token, extra = {}) => (
+  token ? { ...extra, headers: { ...(extra.headers || {}), 'X-Contract-Token': token } } : extra
+)
+
 export const assistantAPI = {
-  chat: (messages, lang) => api.post('/assistant/chat', { messages, lang }, { timeout: 120000 }),
+  listThreads: () => api.get('/assistant/threads'),
+  getThread: (id, token, lang) => api.get(`/assistant/threads/${id}`, withContractToken(token, {
+    params: lang ? { lang } : undefined,
+  })),
+  createThread: () => api.post('/assistant/threads'),
+  deleteThread: (id) => api.delete(`/assistant/threads/${id}`),
+  chat: (messages, lang, { threadId, token } = {}) => api.post(
+    '/assistant/chat',
+    { messages, lang, threadId },
+    withContractToken(token, { timeout: 180000 }),
+  ),
 }
 
 // Hot projects — internal sales open/potential projects tracking (sensitive).

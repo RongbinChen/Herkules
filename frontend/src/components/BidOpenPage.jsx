@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   uploadBidOpening, listBidOpenings, deleteBidOpening,
   createManualBidOpening,
@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { drawBidPoster } from '../utils/bidPoster'
 import ClampText from './ClampText'
+import { parseIdParam } from '../utils/deepLink'
 
 const TABS = [
   { key: 'opening', label: 'Bid Opening' },
@@ -135,6 +136,8 @@ function ManualEntryForm({ record, onSaved, onCancel }) {
 // ── Bid Opening tab ──────────────────────────────────────────────────────────
 function OpeningTab() {
   const { user } = useAuth()
+  const [searchParams] = useSearchParams()
+  const openId = parseIdParam(searchParams, 'id')
   const fileRef = useRef(null)
   const [records, setRecords] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -206,6 +209,9 @@ function OpeningTab() {
     try { setRecords(await listBidOpenings()) } catch (e) { console.error(e) }
   }
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (openId) setExpanded(openId)
+  }, [openId])
 
   async function handleFile(e) {
     const file = e.target.files?.[0]

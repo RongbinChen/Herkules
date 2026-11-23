@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 // ── Minimal markdown rendering for assistant replies ─────────────────────────
 // Handles: **bold**, [text](url) + bare URLs (break-all so long share links
 // can't overflow the bubble), headings, lists, hr, and pipe tables (rendered
@@ -11,10 +12,16 @@ export function bold(s, key) {
     p.startsWith('**') && p.endsWith('**') ? <strong key={`${key}b${i}`}>{p.slice(2, -2)}</strong> : p)
 }
 
+const APP_PATH = /^\/(customers|visit-reports|chinabidding|hotprojects|followups|trips|contracts|calendar|search|trip\/share|bidopen\/share)(\/|\?|#|$)/
+
 export function inline(s) {
-  const parts = String(s).split(/(\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s)]+)/g)
+  const parts = String(s).split(/(\[[^\]]+\]\((?:https?:\/\/[^)]+|\/[^)]+)\)|https?:\/\/[^\s)]+)/g)
   return parts.map((p, i) => {
     if (!p) return null
+    const mdApp = p.match(/^\[([^\]]+)\]\((\/[^)]+)\)$/)
+    if (mdApp && APP_PATH.test(mdApp[2])) {
+      return <Link key={i} to={mdApp[2]} className="break-all font-semibold text-brand-600 underline">{mdApp[1]}</Link>
+    }
     const md = p.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
     if (md) return <a key={i} href={md[2]} target="_blank" rel="noreferrer" className="break-all font-semibold text-brand-600 underline">{md[1]}</a>
     if (/^https?:\/\//.test(p)) return <a key={i} href={p} target="_blank" rel="noreferrer" className="break-all text-brand-600 underline">{p}</a>
