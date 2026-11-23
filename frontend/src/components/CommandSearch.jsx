@@ -2,35 +2,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { searchAPI, visitReportsAPI, assistantAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
+import useContractUnlock from '../hooks/useContractUnlock'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { useVRLang } from '../i18n/visitReports'
 import { statusMeta, tierMeta } from '../constants/customer'
 import ChatThread from './chat/ChatThread'
 import ChatComposer from './chat/ChatComposer'
-
-// Slash commands = instant structured search (no LLM, fast path).
-// Anything else typed into the box goes to the AI assistant (DeepSeek tool
-// loop over customers / bidding / reports / calendar).
-const COMMANDS = [
-  { key: 'customer', icon: '🤝', label: '/customer', hint: 'Search customers' },
-  { key: 'project', icon: '📋', label: '/project', hint: 'Search tender projects' },
-  { key: 'report', icon: '📝', label: '/report', hint: 'Search visit reports' },
-]
-const CMD_BY_KEY = Object.fromEntries(COMMANDS.map((c) => [c.key, c]))
-
-const EXAMPLES = [
-  'How are the recent visits and project progress with COSCO?',
-  'Which competitors won the most tenders in the last 6 months?',
-  "What's on the calendar next week?",
-  'Schedule a visit to COSCO next Tuesday morning',
-]
-
-const TOOL_LABEL = {
-  search_customers: 'Customers', get_customer: 'Customer profile', search_projects: 'Tenders',
-  get_bidding_stats: 'Market stats', search_reports: 'Visit reports', get_report: 'Report',
-  search_hot_projects: 'Hot projects', search_bid_openings: 'Bid openings', search_trips: 'Trips',
-  search_events: 'Calendar', create_event: '✚ New event',
-}
+import SourceCards from './chat/SourceCards'
+import {
+  COMMANDS, CMD_BY_KEY, parseInput, resultHref, examplesForLang, TOOL_LABEL,
+} from '../utils/commandSearch'
 
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
 const OUR_STATUS = {
@@ -39,40 +20,69 @@ const OUR_STATUS = {
 }
 const fmtDate = (d) => { try { return new Date(d).toISOString().slice(0, 10) } catch { return '' } }
 
-function parseInput(raw) {
-  const s = raw.trimStart()
-  if (!s || s[0] !== '/') return { mode: 'idle' }
-  const m = s.match(/^\/(\w+)\s+(.*)$/)
-  if (m && CMD_BY_KEY[m[1].toLowerCase()]) {
-    return { mode: 'search', type: m[1].toLowerCase(), query: m[2].trim() }
+function toChatMessage(m) {
+  return {
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
+    steps: m.steps || [],
+    sources: m.sources || [],
+    suggestions: m.suggestions || [],
+    isError: false,
+    redacted: m.redacted === true,
   }
-  return { mode: 'palette', partial: s.slice(1).toLowerCase() }
 }
 
 export default function CommandSearch() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [reportLang] = useVRLang()
+  const { unlock, team, setTeam, doUnlock, lock, busy, error: pinError, setError: setPinError } = useContractUnlock()
   const inputRef = useRef(null)
   const [raw, setRaw] = useState('')
-  // Slash structured search
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [downloading, setDownloading] = useState(null)
-  // AI chat
   const [chat, setChat] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
-  // Reply language: 'auto' follows the question; 'zh'/'en' force it. Persisted.
   const [lang, setLang] = useState(() => localStorage.getItem('assistantLang') || 'auto')
   const pickLang = (v) => { setLang(v); localStorage.setItem('assistantLang', v) }
+  const [threadId, setThreadId] = useState(null)
+  const [threads, setThreads] = useState([])
+  const [pinOpen, setPinOpen] = useState(false)
+  const [pin, setPin] = useState('')
 
   const parsed = parseInput(raw)
 
-  // Desktop-only autofocus and scroll-to-bottom now live in ChatComposer /
-  // ChatThread.
+  useEffect(() => {
+    let ignore = false
+    assistantAPI.listThreads().then(async ({ data }) => {
+      if (ignore) return
+      const list = data || []
+      setThreads(list)
+      if (!list.length) return
+      const { data: thread } = await assistantAPI.getThread(list[0].id, unlock?.token, lang === 'auto' ? undefined : lang)
+      if (ignore) return
+      setThreadId(thread.id)
+      setChat((thread.messages || []).map(toChatMessage))
+    }).catch(() => {})
+    return () => { ignore = true }
+    // Load once on mount; unlock/lang refetch is handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Debounced structured search for "/type query".
+  useEffect(() => {
+    if (!threadId) return
+    let ignore = false
+    assistantAPI.getThread(threadId, unlock?.token, lang === 'auto' ? undefined : lang)
+      .then(({ data }) => {
+        if (ignore) return
+        setChat((data.messages || []).map(toChatMessage))
+      })
+      .catch(() => {})
+    return () => { ignore = true }
+  }, [unlock?.token, threadId, lang])
+
   useEffect(() => {
     if (parsed.mode !== 'search' || !parsed.query) { setResults(null); setLoading(false); return }
     let ignore = false
@@ -107,14 +117,57 @@ export default function CommandSearch() {
     setChatLoading(true)
     try {
       const { data } = await assistantAPI.chat(
-        next.map(({ role, content }) => ({ role, content })),
+        next.filter((m) => m.role === 'user' || m.role === 'assistant').map(({ role, content }) => ({ role, content })),
         lang === 'auto' ? undefined : lang,
+        { threadId, token: unlock?.token },
       )
-      setChat([...next, { role: 'assistant', content: data.reply, steps: data.steps || [] }])
+      if (data.threadId && data.threadId !== threadId) setThreadId(data.threadId)
+      setChat([...next, {
+        role: 'assistant',
+        content: data.reply,
+        steps: data.steps || [],
+        sources: data.sources || [],
+        suggestions: data.suggestions || [],
+        redacted: data.redacted === true,
+      }])
+      assistantAPI.listThreads().then((r) => setThreads(r.data || [])).catch(() => {})
     } catch (e) {
       setChat([...next, { role: 'assistant', content: e.response?.data?.error || 'The assistant is temporarily unavailable, please retry.', isError: true }])
     } finally {
       setChatLoading(false)
+    }
+  }
+
+  async function startFresh() {
+    try {
+      const { data } = await assistantAPI.createThread()
+      setThreadId(data.id)
+      setChat([])
+      setResults(null)
+      setRaw('')
+      assistantAPI.listThreads().then((r) => setThreads(r.data || [])).catch(() => {})
+    } catch {
+      setThreadId(null)
+      setChat([])
+    }
+  }
+
+  async function openThread(id) {
+    try {
+      const { data } = await assistantAPI.getThread(id, unlock?.token, lang === 'auto' ? undefined : lang)
+      setThreadId(data.id)
+      setChat((data.messages || []).map(toChatMessage))
+    } catch {
+      setError('Failed to open conversation')
+    }
+  }
+
+  async function submitPin(e) {
+    e.preventDefault()
+    setPinError('')
+    if (await doUnlock(pin.trim(), team)) {
+      setPin('')
+      setPinOpen(false)
     }
   }
 
@@ -136,18 +189,17 @@ export default function CommandSearch() {
   }
 
   const showWelcome = chat.length === 0 && parsed.mode === 'idle' && !raw
+  const examples = examplesForLang(lang)
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-4 sm:py-6">
-        {/* Header */}
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <button onClick={() => navigate('/')}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
             ← Dashboard
           </button>
-          <div className="flex items-center gap-2">
-            {/* Reply-language toggle */}
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-semibold shadow-sm">
               {[{ k: 'auto', t: 'Auto' }, { k: 'zh', t: '中文' }, { k: 'en', t: 'EN' }].map((o) => (
                 <button key={o.k} onClick={() => pickLang(o.k)} title="AI 回复语言 / Reply language"
@@ -156,8 +208,26 @@ export default function CommandSearch() {
                 </button>
               ))}
             </div>
-            {chat.length > 0 && (
-              <button onClick={() => setChat([])}
+            <button type="button" onClick={() => setPinOpen((v) => !v)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                unlock ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+              }`}>
+              {unlock ? `🔓 ${unlock.team}` : '🔒 PIN'}
+            </button>
+            {threads.length > 0 && (
+              <select
+                value={threadId || ''}
+                onChange={(e) => { const id = Number(e.target.value); if (id) openThread(id) }}
+                className="max-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600"
+                title="Conversations"
+              >
+                {threads.map((t) => (
+                  <option key={t.id} value={t.id}>{t.title || 'Conversation'}</option>
+                ))}
+              </select>
+            )}
+            {(chat.length > 0 || threadId) && (
+              <button onClick={startFresh}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">
                 ✕ Clear
               </button>
@@ -165,19 +235,53 @@ export default function CommandSearch() {
           </div>
         </div>
 
-        {/* Welcome / hints */}
+        {pinOpen && (
+          <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            {unlock ? (
+              <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
+                <span>{unlock.team} contracts are unlocked in this tab. Ask AI can answer contract questions and show follow-up amounts for this team.</span>
+                <button type="button" onClick={() => { lock(); setPinOpen(false) }}
+                  className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 font-semibold text-slate-500 hover:bg-slate-50">Lock</button>
+              </div>
+            ) : (
+              <form onSubmit={submitPin} className="flex flex-wrap items-end gap-2">
+                <label className="text-xs font-semibold text-slate-500">
+                  Team
+                  <select value={team} onChange={(e) => setTeam(e.target.value)}
+                    className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
+                    <option value="HRC">HRC</option>
+                    <option value="WRC">WRC</option>
+                  </select>
+                </label>
+                <label className="min-w-[8rem] flex-1 text-xs font-semibold text-slate-500">
+                  Team PIN
+                  <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} autoComplete="off"
+                    className="mt-1 block w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+                </label>
+                <button type="submit" disabled={!pin.trim() || busy}
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+                  {busy ? 'Checking…' : 'Unlock'}
+                </button>
+                {pinError && <p className="w-full text-xs text-rose-600">{pinError}</p>}
+              </form>
+            )}
+          </div>
+        )}
+
         {showWelcome && (
           <div className="mb-4">
             <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">✦ AI Assistant</h1>
             <p className="mt-1 text-sm text-slate-500">
               Ask anything — I answer from real workspace data (customers, tenders, bid openings,
-              hot projects, visit reports, trips, calendar) and can create calendar events.
-              Slash commands (<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/customer</code>
-              {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/project</code>
-              {' '}<code className="rounded bg-slate-100 px-1 font-mono text-slate-600">/report</code>) still work for instant search.
+              hot projects, visit reports, trips, calendar, due reminders, project follow-up,
+              GMT field service, and contracts after you unlock the team PIN)
+              and can create calendar events.
+              Slash commands ({COMMANDS.map((c) => (
+                <code key={c.key} className="mx-0.5 rounded bg-slate-100 px-1 font-mono text-slate-600">{c.label}</code>
+              ))}) still work for instant search.
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {EXAMPLES.map((ex) => (
+              {examples.map((ex) => (
                 <button key={ex} onClick={() => send(ex)}
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs text-slate-600 transition hover:border-brand-300 hover:bg-brand-50/40">
                   💬 {ex}
@@ -187,27 +291,40 @@ export default function CommandSearch() {
           </div>
         )}
 
-        {/* Chat thread */}
         {chat.length > 0 && (
           <ChatThread
             messages={chat}
             loading={chatLoading}
             loadingLabel="Querying data…"
             className="mb-4"
-            renderMeta={(m) => m.steps?.length > 0 && (
-              <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-50 pt-2">
-                <span className="text-[10px] text-slate-300">Queried</span>
-                {m.steps.map((s, si) => (
-                  <span key={si} className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">
-                    {TOOL_LABEL[s.tool] || s.tool}{s.count != null ? ` ${s.count}` : ''}
-                  </span>
-                ))}
-              </div>
+            renderMeta={(m) => (
+              <>
+                {m.steps?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-50 pt-2">
+                    <span className="text-[10px] text-slate-300">Queried</span>
+                    {m.steps.map((s, si) => (
+                      <span key={si} className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+                        {TOOL_LABEL[s.tool] || s.tool}{s.count != null ? ` ${s.count}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <SourceCards sources={m.sources} />
+                {m.suggestions?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {m.suggestions.map((s) => (
+                      <button key={s.key || s.prompt} type="button" onClick={() => send(s.prompt)}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:border-brand-300 hover:bg-brand-50">
+                        {s.prompt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           />
         )}
 
-        {/* Slash structured results */}
         {parsed.mode === 'search' && (
           <div className="mb-4">
             {loading && <p className="py-6 text-center text-sm text-slate-400">Searching…</p>}
@@ -222,14 +339,14 @@ export default function CommandSearch() {
                   </p>
                   <div className="space-y-2">
                     {results.type === 'customer' && results.results.map((c) => (
-                      <CustomerCard key={c.id} c={c} onOpen={() => navigate(`/customers/${c.id}?from=search`)} />
+                      <CustomerCard key={c.id} c={c} onOpen={() => navigate(resultHref('customer', c))} />
                     ))}
                     {results.type === 'project' && results.results.map((p) => (
-                      <ProjectCard key={p.threadKey} p={p} onOpen={() => navigate('/chinabidding/tracking')}
+                      <ProjectCard key={p.threadKey} p={p} onOpen={() => navigate(resultHref('project', p))}
                         onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)} />
                     ))}
                     {results.type === 'report' && results.results.map((r) => (
-                      <ReportCard key={r.id} r={r} onOpen={() => navigate(`/visit-reports/${r.id}`)}
+                      <ReportCard key={r.id} r={r} onOpen={() => navigate(resultHref('report', r))}
                         onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)}
                         onDownload={() => downloadReport(r)} downloading={downloading === r.id}
                         user={user}
@@ -241,6 +358,18 @@ export default function CommandSearch() {
                         ))}
                       />
                     ))}
+                    {results.type === 'followup' && results.results.map((f) => (
+                      <SimpleCard key={f.id} title={f.title} href={resultHref('followup', f)}
+                        meta={[f.customer?.name, f.status, f.orderNo, f.owner?.name].filter(Boolean)} />
+                    ))}
+                    {results.type === 'trip' && results.results.map((t) => (
+                      <SimpleCard key={t.id} title={t.title} href={resultHref('trip', t)}
+                        meta={[fmtDate(t.startTime), (t.assignees || []).map((a) => a.name).join(', ')].filter(Boolean)} />
+                    ))}
+                    {results.type === 'hot' && results.results.map((h) => (
+                      <SimpleCard key={h.id} title={h.customer || `Hot project ${h.id}`} href={resultHref('hot', h)}
+                        meta={[h.category, h.machineType, h.processor, h.priority].filter(Boolean)} />
+                    ))}
                   </div>
                 </>
               )
@@ -248,7 +377,6 @@ export default function CommandSearch() {
           </div>
         )}
 
-        {/* Input (sticky at bottom) */}
         <ChatComposer
           value={raw}
           onChange={setRaw}
@@ -256,17 +384,14 @@ export default function CommandSearch() {
           inputRef={inputRef}
           placeholder={chat.length ? 'Ask a follow-up…' : 'Ask anything, or type / for quick search…'}
           onClear={() => { setRaw(''); setResults(null) }}
-          // A slash command is dispatched by the debounced search effect, not by
-          // submitting — hide Send while the box holds one.
           showSend={!raw.startsWith('/')}
           sendDisabled={!raw.trim() || chatLoading}
-          leftSlot={parsed.mode === 'search' && (
+          leftSlot={parsed.mode === 'search' && CMD_BY_KEY[parsed.type] && (
             <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">
               {CMD_BY_KEY[parsed.type].icon} {parsed.type}
             </span>
           )}
         >
-          {/* Command palette (above the input) */}
           {parsed.mode === 'palette' && paletteItems.length > 0 && (
             <div className="absolute bottom-full left-0 z-20 mb-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
               {paletteItems.map((c) => (
@@ -282,6 +407,19 @@ export default function CommandSearch() {
         </ChatComposer>
       </div>
     </div>
+  )
+}
+
+function SimpleCard({ title, href, meta = [] }) {
+  const navigate = useNavigate()
+  return (
+    <button onClick={() => href && navigate(href)}
+      className="block w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-brand-300 hover:shadow-sm">
+      <span className="block font-semibold text-slate-800">{title}</span>
+      {meta.length > 0 && (
+        <span className="mt-1 block truncate text-xs text-slate-400">{meta.join(' · ')}</span>
+      )}
+    </button>
   )
 }
 

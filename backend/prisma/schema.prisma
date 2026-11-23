@@ -38,6 +38,7 @@ model User {
   followUps         ProjectFollowUp[]  @relation("FollowUpOwner")
   followUpMilestones FollowUpMilestone[] @relation("MilestoneOwner")
   followUpUpdates   FollowUpUpdate[]
+  assistantThreads  AssistantThread[]
 }
 
 // ── Hot projects (internal sales open-projects list, from the WAV template) ──
@@ -845,4 +846,40 @@ enum OcrStatus {
   DONE
   FAILED // see ocrError; re-queued by setting this back to PENDING
   SKIPPED // nothing to read (unsupported type)
+}
+
+
+// Workspace Ask AI conversations. One user owns their threads; messages are
+// never shared across accounts. Contract or follow-up amount text may appear
+// in an assistant reply only after a team PIN unlock; those rows set
+// sensitiveTeam and are redacted on read unless the same team's unlock token
+// is present. PIN values and unlock tokens are never stored here. Tool traces
+// and source cards keep hrefs and titles, not contract excerpts.
+model AssistantThread {
+  id        Int                 @id @default(autoincrement())
+  userId    Int
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  messages  AssistantMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model AssistantMessage {
+  id            Int              @id @default(autoincrement())
+  threadId      Int
+  thread        AssistantThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role          String // 'user' | 'assistant'
+  content       String
+  steps         Json? // tool chips: {tool, count} only — no raw tool payloads
+  sources       Json? // trusted source cards {type, title, href, ...} without excerpts
+  suggestions   Json? // follow-up prompt chips shown under the reply
+  // When set, this assistant reply may include contract/follow-up values for
+  // that team and must be withheld unless the request carries a matching unlock.
+  sensitiveTeam UserTeam?
+  createdAt     DateTime         @default(now())
+
+  @@index([threadId, createdAt])
 }

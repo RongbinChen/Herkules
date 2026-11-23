@@ -14,12 +14,27 @@ import {
   deepseekNetworkError,
   deepseekFailureMessage,
 } from './deepseekErrors.js';
+import { answerContractQuestion } from './contractQa.js';
+import { loadCustomerFieldService } from './gmtFieldService.js';
+import { presentFollowUpForAssistant, lockedContractResult } from './assistantFollowUp.js';
+import {
+  SITE_ORIGIN,
+  customerHref,
+  reportHref,
+  projectTrackingHref,
+  bidOpenHref,
+  hotProjectHref,
+  tripHref,
+  calendarEventHref,
+  contractsHref,
+  eventHref,
+} from './assistantLinks.js';
+import { sourcesFromSteps, suggestionsFromSteps } from './assistantSources.js';
+import { stepsForStore, sourcesForStore, sensitiveTeamFromSteps } from './assistantPersistence.js';
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
 const MODEL = 'deepseek-v4-flash';
-// Public site origin for building share links (same convention as shareMeta.js).
-const SITE_ORIGIN = process.env.PUBLIC_ORIGIN || 'https://www.herkulesgroup-china.com';
 
 const MAX_ROUNDS = 6; // tool-call loop guard
 const RESULT_CAP = 3000; // chars of tool output fed back per call
@@ -180,6 +195,67 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'search_followups',
+      description: '搜索项目跟进（Project Follow-up：中标后的订单执行，含信用证/付款/验收等节点）。返回状态、负责人、客户、下一批节点日期。合同金额仅在提问者已解锁对应团队 PIN 时出现，否则只给状态和日期并注明已锁定。',
+      parameters: {
+        type: 'object',
+        properties: {
+          q: { type: 'string', description: '项目名/订单号/客户名/机身号关键字（可选，留空列出进行中的跟进）' },
+          status: { type: 'string', enum: ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'], description: '状态过滤（可选，默认 ACTIVE 与 ON_HOLD）' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_followup',
+      description: '获取单条项目跟进的详情：节点、联系人、进展日志。合同金额仅在已解锁对应团队 PIN 时返回。',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'number', description: '跟进 id（可先用 search_followups 找到）' } },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_due_reminders',
+      description: '列出当前用户首页「到期提醒」：属于提问者、类别为 REMINDER、状态 PLANNED、已到期或 7 天内到期的提醒。返回标题、日期、客户，以及指向拜访报告目标锚点或日历事件的链接。只读，不能在此完成/延期/删除。',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_field_service',
+      description: '查询某客户在 GMT 现场服务系统中的任务与服务报告（与客户详情页 Field service 相同，登录即可，不需要合同 PIN）。令牌留在服务器，只返回任务/报告摘要和 GMT 链接。',
+      parameters: {
+        type: 'object',
+        properties: { customerId: { type: 'number', description: '客户 id' } },
+        required: ['customerId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ask_contracts',
+      description: '在当前会话已解锁团队 PIN 的前提下，针对某一客户的合同做问答（与合同页 Ask AI 同一条路径）。未解锁时不要编造金额或条款，工具会返回 locked 并给出 /contracts 链接，请引导用户先解锁再问。禁止把 PIN 本身当作参数。',
+      parameters: {
+        type: 'object',
+        properties: {
+          customerId: { type: 'number', description: '客户 id（可先 search_customers）' },
+          question: { type: 'string', description: '关于该客户合同的问题' },
+        },
+        required: ['customerId', 'question'],
+      },
+    },
+  },
 ];
 
 // ── Tool implementations ─────────────────────────────────────────────────────
@@ -197,6 +273,7 @@ const impl = {
     return rows.map((c) => ({
       id: c.id, name: c.name, status: c.status, tier: c.tier, address: c.address,
       projects: c._count.projectLinks, reports: c._count.visitReports,
+      href: customerHref(c.id), title: c.name,
     }));
   },
 
@@ -211,7 +288,20 @@ const impl = {
         },
         events: {
           orderBy: { start: 'desc' }, take: 8,
-          select: { title: true, start: true, category: true, user: { select: { name: true } } },
+          select: { id: true, title: true, start: true, category: true, visitReportId: true, user: { select: { name: true } } },
+        },
+        noteEntries: {
+          orderBy: { createdAt: 'desc' }, take: 8,
+          select: { id: true, content: true, createdAt: true, author: { select: { name: true } } },
+        },
+        followUps: {
+          orderBy: { updatedAt: 'desc' }, take: 8,
+          include: {
+            owner: { select: { name: true } },
+            customer: { select: { id: true, name: true } },
+            milestones: { select: { kind: true, label: true, dueDate: true, doneAt: true } },
+            hotProject: { select: { id: true, category: true } },
+          },
         },
       },
     });
@@ -231,16 +321,27 @@ const impl = {
     for (const p of projects) byKey.set(p.threadKey, p);
     const trackByKey = new Map(trackings.map((t) => [t.threadKey, t]));
     return {
-      id: c.id, name: c.name, status: c.status, tier: c.tier, address: c.address,
+      id: c.id, name: c.name, title: c.name, status: c.status, tier: c.tier, address: c.address,
+      href: customerHref(c.id),
+      contractsHref: contractsHref(c.id),
       contacts: c.contacts || [{ name: c.contactName, phone: c.contactPhone, email: c.email }],
       tags: c.tags, notes: c.notes,
+      noteEntries: (c.noteEntries || []).map((n) => ({
+        id: n.id, date: n.createdAt, by: n.author?.name || null,
+        content: String(n.content || '').slice(0, 400),
+      })),
       projects: keys.map((k) => {
         const p = byKey.get(k) || { projectName: k };
         const t = trackByKey.get(k);
-        return { threadKey: k, projectName: p.projectName, stage: p.bidStage, deadline: p.deadline, winner: p.winner, ourStatus: t?.ourStatus || null };
+        return {
+          threadKey: k, projectName: p.projectName, title: p.projectName, stage: p.bidStage,
+          deadline: p.deadline, winner: p.winner, ourStatus: t?.ourStatus || null,
+          href: projectTrackingHref(k),
+        };
       }),
-      visitReports: c.visitReports,
-      recentEvents: c.events,
+      visitReports: (c.visitReports || []).map((r) => ({ ...r, href: reportHref(r.id) })),
+      recentEvents: (c.events || []).map((e) => ({ ...e, href: eventHref(e) })),
+      followUps: (c.followUps || []).map((f) => presentFollowUpForAssistant(f, ctx.viewer, ctx.unlockTeam)),
       // Sensitive: hot projects filtered by the asking user's visibility.
       hotProjects: (await prisma.hotProject.findMany({
         where: { customerId: c.id, ...visibleWhere({ userId: ctx.userId, isAdmin: ctx.isAdmin }) },
@@ -252,6 +353,7 @@ const impl = {
         closedAt: h.closedAt, outcome: h.outcome,
         requirements: (h.requirements || '').slice(0, 150),
         latestUpdate: h.updates[0]?.content?.slice(0, 250) || null,
+        href: hotProjectHref(h.id), title: h.customer || `Hot project ${h.id}`,
       })),
     };
   },
@@ -262,12 +364,13 @@ const impl = {
       ourStatus: ourStatus || null,
     });
     return threads.slice(0, 10).map((t) => ({
-      threadKey: t.threadKey, projectName: t.projectName, purchaser: t.purchaser,
+      threadKey: t.threadKey, projectName: t.projectName, title: t.projectName, purchaser: t.purchaser,
       region: t.region, equipmentType: t.equipmentType, stage: t.currentStage,
       retendered: t.retendered || false,
       deadline: t.deadline, winner: t.winner, winningPrice: t.winningPrice,
       ourStatus: t.tracking?.ourStatus || null,
       customers: (t.customers || []).map((c) => c.name),
+      href: projectTrackingHref(t.threadKey),
     }));
   },
 
@@ -286,7 +389,7 @@ const impl = {
 
   async search_reports({ q }) {
     const s = String(q || '');
-    return prisma.visitReport.findMany({
+    const rows = await prisma.visitReport.findMany({
       where: {
         OR: [
           { title: { contains: s, mode: 'insensitive' } },
@@ -301,6 +404,7 @@ const impl = {
         author: { select: { name: true } },
       },
     });
+    return rows.map((r) => ({ ...r, href: reportHref(r.id) }));
   },
 
   async get_report({ id }) {
@@ -313,6 +417,8 @@ const impl = {
       id: r.id, title: r.title, visitDate: r.visitDate, status: r.status,
       customer: r.customer?.name, author: r.author?.name, summary: r.summary,
       content: r.content,
+      href: reportHref(r.id),
+      customerHref: r.customer ? customerHref(r.customer.id) : null,
     };
   },
 
@@ -348,6 +454,7 @@ const impl = {
       closedAt: p.closedAt, outcome: p.outcome,
       requirements: (p.requirements || '').slice(0, 200),
       latestUpdates: p.updates.map((u) => ({ date: u.date, by: u.author?.name, content: u.content.slice(0, 300) })),
+      href: hotProjectHref(p.id), title: p.customer || `Hot project ${p.id}`,
     }));
   },
 
@@ -372,10 +479,16 @@ const impl = {
       where: and.length ? { AND: and } : {}, orderBy: { start: 'asc' }, take: 30,
       select: {
         id: true, title: true, start: true, end: true, location: true, category: true, status: true,
-        user: { select: { name: true } }, customer: { select: { name: true } },
+        visitReportId: true,
+        user: { select: { name: true } },
+        customer: { select: { id: true, name: true } },
       },
     });
-    return rows;
+    return rows.map((e) => ({
+      ...e,
+      href: eventHref(e),
+      customerHref: e.customer ? customerHref(e.customer.id) : null,
+    }));
   },
 
   async search_bid_openings({ q }) {
@@ -400,8 +513,9 @@ const impl = {
       },
     });
     return rows.map((r) => ({
-      id: r.id, biddingNo: r.biddingNo, projectName: r.projectName, openDate: r.openDate,
+      id: r.id, biddingNo: r.biddingNo, projectName: r.projectName, title: r.projectName, openDate: r.openDate,
       purchaser: r.purchaser, summary: r.summary,
+      href: bidOpenHref(r.id),
       shareUrl: r.shareToken ? `${SITE_ORIGIN}/bidopen/share/${r.shareToken}` : null,
       bidders: Array.isArray(r.bidders) ? r.bidders.map((b) => ({ name: b.name, price: b.price })) : [],
     }));
@@ -439,6 +553,7 @@ const impl = {
       title: t.title,
       startTime: t.startTime,
       endTime: t.endTime,
+      href: tripHref(t.id),
       shareUrl: t.shareToken ? `${SITE_ORIGIN}/trip/share/${t.shareToken}` : null,
       assignees: t.assignees.map((a) => a.name),
       createdBy: t.createdBy?.name || null,
@@ -477,7 +592,167 @@ const impl = {
         userId: ctx.userId,
       },
     });
-    return { created: true, id: ev.id, title: ev.title, start: ev.start, end: ev.end };
+    return { created: true, id: ev.id, title: ev.title, start: ev.start, end: ev.end, href: calendarEventHref(ev.id) };
+  },
+
+  async search_followups({ q, status }, ctx) {
+    const where = { AND: [] };
+    if (status && ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'].includes(status)) {
+      where.AND.push({ status });
+    } else {
+      where.AND.push({ status: { in: ['ACTIVE', 'ON_HOLD'] } });
+    }
+    if (q) {
+      const s = String(q);
+      where.AND.push({
+        OR: [
+          { title: { contains: s, mode: 'insensitive' } },
+          { orderNo: { contains: s, mode: 'insensitive' } },
+          { machineSerial: { contains: s, mode: 'insensitive' } },
+          { notes: { contains: s, mode: 'insensitive' } },
+          { customer: { name: { contains: s, mode: 'insensitive' } } },
+        ],
+      });
+    }
+    const rows = await prisma.projectFollowUp.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: 12,
+      include: {
+        owner: { select: { name: true } },
+        customer: { select: { id: true, name: true } },
+        milestones: { select: { kind: true, label: true, dueDate: true, doneAt: true } },
+        hotProject: { select: { id: true, category: true } },
+      },
+    });
+    return rows.map((f) => presentFollowUpForAssistant(f, ctx.viewer, ctx.unlockTeam));
+  },
+
+  async get_followup({ id }, ctx) {
+    const row = await prisma.projectFollowUp.findUnique({
+      where: { id: Number(id) },
+      include: {
+        owner: { select: { name: true } },
+        customer: { select: { id: true, name: true } },
+        milestones: {
+          orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+          include: { owner: { select: { name: true } } },
+        },
+        contacts: { orderBy: { id: 'asc' } },
+        updates: { orderBy: { createdAt: 'desc' }, take: 8, include: { author: { select: { name: true } } } },
+        hotProject: { select: { id: true, category: true } },
+      },
+    });
+    if (!row) return { error: 'follow-up not found' };
+    return presentFollowUpForAssistant(row, ctx.viewer, ctx.unlockTeam, { detail: true });
+  },
+
+  async list_due_reminders(_args, ctx) {
+    const soon = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    const rows = await prisma.event.findMany({
+      where: {
+        userId: ctx.userId,
+        category: 'REMINDER',
+        status: 'PLANNED',
+        start: { lte: soon },
+      },
+      orderBy: { start: 'asc' },
+      include: { customer: { select: { id: true, name: true } } },
+    });
+    return rows.map((e) => ({
+      id: e.id,
+      title: e.title,
+      start: e.start,
+      status: e.status,
+      visitReportId: e.visitReportId,
+      customer: e.customer ? { id: e.customer.id, name: e.customer.name, href: customerHref(e.customer.id) } : null,
+      href: eventHref(e),
+    }));
+  },
+
+  async get_field_service({ customerId }) {
+    const id = Number(customerId);
+    if (!Number.isInteger(id) || id <= 0) return { error: 'invalid customerId' };
+    const customer = await prisma.customer.findUnique({ where: { id }, select: { id: true, name: true } });
+    if (!customer) return { error: 'customer not found' };
+    const data = await loadCustomerFieldService(id);
+    const href = customerHref(id);
+    if (!data || data.ok === false) {
+      return {
+        ok: false,
+        reason: data?.reason || 'unavailable',
+        href,
+        title: customer.name,
+        customer: customer.name,
+        message: data?.reason === 'unconfigured'
+          ? 'Field service is not connected.'
+          : 'Field service is temporarily unavailable.',
+      };
+    }
+    return {
+      ok: true,
+      href,
+      title: customer.name,
+      customer: customer.name,
+      sites: (data.sites || []).slice(0, 8),
+      tasks: (data.tasks || []).slice(0, 12).map((t) => ({
+        id: t.id, title: t.title, type: t.type, status: t.status,
+        start: t.start, end: t.end, siteName: t.siteName,
+        equipment: t.equipment, engineers: t.engineers, url: t.url,
+      })),
+      serviceReports: (data.serviceReports || []).slice(0, 12).map((r) => ({
+        id: r.id, title: r.title, status: r.status, siteName: r.siteName,
+        machineSerial: r.machineSerial, authorName: r.authorName,
+        publishedAt: r.publishedAt, summary: r.summary, url: r.url,
+      })),
+    };
+  },
+
+  async ask_contracts({ customerId, question }, ctx) {
+    const id = Number(customerId);
+    if (!Number.isInteger(id) || id <= 0) return { error: 'invalid customerId' };
+    if (!ctx.unlockTeam) {
+      return lockedContractResult({ customerId: id });
+    }
+    const has = await prisma.contractFile.findFirst({
+      where: { customerId: id, team: ctx.unlockTeam },
+      select: { id: true },
+    });
+    if (!has) {
+      return {
+        locked: false,
+        href: contractsHref(id),
+        title: 'Contracts',
+        message: 'No contracts for this customer under the unlocked team.',
+      };
+    }
+    const history = (ctx.contractHistory || []).slice(-6);
+    const result = await answerContractQuestion({
+      customerId: id,
+      team: ctx.unlockTeam,
+      question: String(question || '').trim(),
+      history,
+    });
+    if (!result?.answer) {
+      return {
+        locked: false,
+        href: contractsHref(id),
+        title: 'Contracts',
+        reason: result?.reason || 'no-answer',
+        message: result?.reason === 'no-readable-pages'
+          ? "This customer's contracts have not been read yet."
+          : 'No matching pages were found in this customer\'s contracts.',
+      };
+    }
+    return {
+      href: contractsHref(id),
+      title: 'Contracts',
+      customerId: id,
+      sensitive: true,
+      // Answer text is for the model to summarise; sources are filename + page only (no excerpts).
+      answer: result.answer,
+      sources: (result.sources || []).map((s) => ({ filename: s.filename, pageNo: s.pageNo })),
+    };
   },
 };
 
@@ -512,26 +787,78 @@ const todayCN = () =>
 
 const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、重型机床制造商）中国销售团队工作台的 AI 助手。今天是 ${todayCN()}（北京时间）。
 
-工作台的数据模块：客户（Customers）、招投标项目（ChinaBidding，抓取的招标/评标/中标公告 + 我方跟踪）、开标记录（Bid Openings，开标现场的投标人与报价清单）、热点项目（Hot Projects，内部销售 Open/Potential 项目跟踪，敏感数据、查询结果已按提问者权限过滤）、拜访报告（Visit Reports）、出差行程（Trips，多客户拜访行程规划）、日历（Calendar）。你可以通过提供的工具查询这些真实数据，也可以用 create_event 帮用户创建日程。
+工作台的数据模块（均可通过工具查询真实数据）：
+- 客户（Customers，含客户笔记时间线 noteEntries）
+- 招投标项目（ChinaBidding：招标/评标/中标公告 + 我方跟踪）
+- 开标记录（Bid Openings）
+- 热点项目（Hot Projects，内部 Open/Potential 跟踪，结果已按提问者权限过滤）
+- 拜访报告（Visit Reports）
+- 出差行程（Trips）
+- 日历（Calendar）与首页到期提醒（Due reminders，当前用户的 REMINDER）
+- 项目跟进（Project Follow-up：中标后的执行节点；合同金额仅在已解锁对应团队 PIN 时可见）
+- 合同（Contracts：仅在当前会话已解锁团队 PIN 时可用 ask_contracts，与合同页 Ask AI 同一路径；未解锁时不得编造金额或条款，应引导用户解锁）
+- GMT 现场服务（客户在 GMT 上的任务与服务报告，登录即可，不需要合同 PIN）
+
+也可以用 create_event 在用户明确要求时创建日程。界面会根据工具返回的 href 展示可点击来源卡片，你不必在回复里编造链接。
 
 规则：
-- 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到；查不到时先想想换个工具查——比如人名/行程类问题日历查不到就查 search_trips，客户类问题再试 search_customers。
-- 绝对禁止编造 URL、分享链接、token、编号、金额、日期。这些必须逐字来自本轮工具返回结果。历史对话里没有工具数据——追问涉及具体数据时（哪怕上一轮聊过），必须重新调用工具拿到后再答。站内分享链接域名只会是 https://www.herkulesgroup-china.com/…，其他域名都是错的。
+- 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到；查不到时先换个工具再试——比如人名/行程类问题日历查不到就查 search_trips，客户类再试 search_customers，订单执行查 search_followups，到期提醒用 list_due_reminders，现场服务用 get_field_service。
+- 绝对禁止编造 URL、分享链接、token、编号、金额、日期。这些必须逐字来自本轮工具返回结果。历史对话里没有工具数据——追问涉及具体数据时（哪怕上一轮聊过），必须重新调用工具拿到后再答。站内分享链接域名只会是 https://www.herkulesgroup-china.com/…，其他域名都是错的。不要编造站内路径。
 - 用用户提问的语言回答（中文问中文答，英文问英文答）。
-- 回答简洁、结构清晰，用短段落或列表；涉及多条数据时挑重点，不要机械罗列全部字段。
-- 涉及客户/项目/报告时，尽量把关联信息串起来（如客户的项目跟踪状态、最近拜访情况）。
-- create_event 只在用户明确要求安排/创建时使用，创建后复述标题与时间供确认。
+- 回答先给简短结论，再用短列表或 Markdown 管道表格呈现多条记录（表格列要少而可读），不要机械罗列全部字段。
+- 涉及客户时尽量串联：跟踪状态、最近拜访、跟进节点、现场服务、客户笔记。
+- 合同与跟进金额：未解锁时工具会返回 locked 或 contractValueLocked，只陈述状态/日期并请用户解锁团队 PIN，绝不猜测金额。已解锁时金额保持原样。
+- create_event 只在用户明确要求安排/创建时使用，创建后立即写入，并在回复中复述标题与时间供确认。不要创建 REMINDER 类别。
 - 金额、日期等关键信息保持原样，不要换算或猜测。`;
+
+async function valueViewer(user) {
+  if (user.isAdmin === true) return { isAdmin: true, team: null };
+  const row = await prisma.user.findUnique({ where: { id: user.userId }, select: { team: true } });
+  return { isAdmin: false, team: row?.team ?? null };
+}
+
+function packReply(reply, steps, lang, unlockTeam) {
+  const sources = sourcesForStore(sourcesFromSteps(steps));
+  const suggestions = suggestionsFromSteps(steps, lang === 'zh' ? 'zh' : 'en', { unlocked: Boolean(unlockTeam) });
+  return {
+    reply,
+    steps: stepsForStore(steps),
+    sources,
+    suggestions,
+    sensitiveTeam: sensitiveTeamFromSteps(steps, unlockTeam),
+  };
+}
+
+function contractHistoryFrom(history) {
+  const turns = [];
+  let pending = null;
+  for (const m of history || []) {
+    if (m.role === 'user') pending = String(m.content || '').slice(0, 500);
+    else if (m.role === 'assistant' && pending) {
+      turns.push({ question: pending, answer: String(m.content || '').slice(0, 4000) });
+      pending = null;
+    }
+  }
+  return turns.slice(-6);
+}
 
 /**
  * Run the assistant loop.
  * `history` — [{role:'user'|'assistant', content}] prior turns (capped by caller).
  * `user` — { userId, isAdmin } of the asker; tools apply per-user visibility.
  * `lang` — 'zh' | 'en' | undefined: force the reply language (undefined = follow the question).
- * Returns { reply, steps: [{tool, args, count}] }.
+ * `unlockTeam` — 'HRC' | 'WRC' | null from a verified contract-unlock token.
+ * Returns { reply, steps, sources, suggestions, sensitiveTeam }.
  */
-export async function runAssistant(history, user, lang) {
-  const ctx = { userId: user.userId, isAdmin: user.isAdmin === true };
+export async function runAssistant(history, user, lang, unlockTeam = null) {
+  const viewer = await valueViewer(user);
+  const ctx = {
+    userId: user.userId,
+    isAdmin: user.isAdmin === true,
+    unlockTeam: unlockTeam || null,
+    viewer,
+    contractHistory: contractHistoryFrom(history),
+  };
   const langDirective = lang === 'zh'
     ? '\n- 强制：无论用户用什么语言提问，都用中文回答。'
     : lang === 'en'
@@ -547,7 +874,7 @@ export async function runAssistant(history, user, lang) {
     const msg = await completion(messages);
     const calls = msg.tool_calls || [];
     if (!calls.length) {
-      return { reply: (msg.content || '').trim() || '（无回复）', steps };
+      return packReply((msg.content || '').trim() || '（无回复）', steps, lang, ctx.unlockTeam);
     }
     messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls) {
@@ -561,7 +888,7 @@ export async function runAssistant(history, user, lang) {
         console.error(`[assistant] tool ${name} failed:`, err.message);
         result = { error: `tool failed: ${err.message}` };
       }
-      steps.push({ tool: name, args, count: Array.isArray(result) ? result.length : undefined });
+      steps.push({ tool: name, args, count: Array.isArray(result) ? result.length : undefined, result });
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
@@ -569,5 +896,5 @@ export async function runAssistant(history, user, lang) {
       });
     }
   }
-  return { reply: '查询步骤过多，已中止。请把问题拆小一点再试。', steps };
+  return packReply('查询步骤过多，已中止。请把问题拆小一点再试。', steps, lang, ctx.unlockTeam);
 }

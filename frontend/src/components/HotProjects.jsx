@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usersAPI, hotProjectsAPI, customersAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { Button, Input, Textarea, Badge } from './ui'
 import HotMiniCalendar from './HotMiniCalendar'
+import { parseIdParam } from '../utils/deepLink'
 
 // Internal sales open/potential projects list (from the WAV Excel template).
 // Sensitive module: per-record visibility (TEAM | PRIVATE = owner+admin only).
@@ -287,9 +288,9 @@ function CloseModal({ project, onClose, onClosed }) {
 }
 
 // ── One project row (expandable) ─────────────────────────────────────────────
-function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
+function ProjectRow({ p, onChanged, currentUserId, isAdmin, forceOpen = false }) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(forceOpen)
   const [detail, setDetail] = useState(null)
   const [note, setNote] = useState('')
   const [posting, setPosting] = useState(false)
@@ -304,6 +305,12 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
   const loadDetail = async () => {
     try { const { data } = await hotProjectsAPI.get(p.id); setDetail(data) } catch { /* noop */ }
   }
+  useEffect(() => {
+    if (!forceOpen) return
+    setOpen(true)
+    loadDetail()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceOpen, p.id])
   const toggle = () => { const next = !open; setOpen(next); if (next && !detail) loadDetail() }
 
   // Ephemeral AI digest of the update history (nothing is persisted).
@@ -489,6 +496,8 @@ function ProjectRow({ p, onChanged, currentUserId, isAdmin }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function HotProjects() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const openId = parseIdParam(searchParams, 'id')
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
   const [category, setCategory] = useState('OPEN')
@@ -542,6 +551,17 @@ export default function HotProjects() {
   }, [category, qDebounced, priority])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!openId) return
+    let ignore = false
+    hotProjectsAPI.get(openId).then(({ data }) => {
+      if (ignore || !data) return
+      if (data.closedAt) setCategory(CLOSED_TAB.key)
+      else if (data.category) setCategory(data.category)
+    }).catch(() => {})
+    return () => { ignore = true }
+  }, [openId])
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -632,7 +652,7 @@ export default function HotProjects() {
         ) : (
           <div className="space-y-3">
             {visibleProjects.map((p) => (
-              <ProjectRow key={p.id} p={p} onChanged={load} currentUserId={user?.id} isAdmin={isAdmin} />
+              <ProjectRow key={p.id} p={p} onChanged={load} currentUserId={user?.id} isAdmin={isAdmin} forceOpen={openId === p.id} />
             ))}
           </div>
         )}
