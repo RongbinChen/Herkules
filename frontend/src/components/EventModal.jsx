@@ -398,6 +398,13 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
     () => customers.map((customer) => ({ value: String(customer.id), label: customer.name })),
     [customers],
   )
+  const agentOptions = useMemo(
+    () => agents.map((agent) => ({
+      value: String(agent.id),
+      label: agent.company ? `${agent.name} · ${agent.company}` : agent.name,
+    })),
+    [agents],
+  )
 
   if (!isOpen) return null
 
@@ -690,19 +697,17 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                     )}
                   </div>
 
-                  <select
+                  <SearchableSelect
+                    options={agentOptions}
                     value={form.agentId}
-                    onChange={(event) => updateField('agentId', event.target.value)}
+                    onChange={(next) => updateField('agentId', next)}
                     disabled={readOnly}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
-                  >
-                    <option value="">Agent Selection</option>
-                    {agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}{agent.company ? ` · ${agent.company}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Agent Selection"
+                    searchPlaceholder="Search agents…"
+                    emptyMessage="No matching agents"
+                    aria-label="Agent"
+                    id="activity-agent"
+                  />
 
                   {selectedAgent && (selectedAgent.company || selectedAgent.contactPhone || selectedAgent.region) && (
                     <div className="mt-2 space-y-0.5 text-xs text-slate-500">
