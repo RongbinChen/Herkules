@@ -12,6 +12,7 @@ import ActivityHistory from './ActivityHistory'
 import { statusMeta, tierMeta } from '../constants/customer'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { useVRLang } from '../i18n/visitReports'
+import useAppBack from '../hooks/useAppBack'
 
 // Tender-lifecycle stage + our-tracking status labels (mirror BidTrackingBoard).
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
@@ -43,11 +44,9 @@ export default function CustomerDetail() {
     map: { to: '/customers?view=map', label: '← Back to map' },
     hotprojects: { to: '/hotprojects', label: '← Hot Projects' },
     tracking: { to: '/chinabidding/tracking', label: '← Project Tracking' },
-    search: { to: '/search', label: '← Search' },
   }
-  const back = BACK_TARGETS[searchParams.get('from')] || { to: '/customers', label: '← Customers' }
-  const backTo = back.to
-  const backLabel = back.label
+  const moduleBack = BACK_TARGETS[searchParams.get('from')] || { to: '/customers', label: '← Customers' }
+  const { label: backLabel, go: goBack } = useAppBack(moduleBack.to, moduleBack.label)
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
   const [reportLang] = useVRLang()
@@ -113,8 +112,8 @@ export default function CustomerDetail() {
     return (
       <div className="mx-auto max-w-3xl p-8 text-center">
         <p className="text-slate-500">{error || 'Customer not found'}</p>
-        <button onClick={() => navigate('/customers')} className="mt-4 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-          ← Back to customers
+        <button onClick={goBack} className="mt-4 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+          {backLabel}
         </button>
       </div>
     )
@@ -131,7 +130,7 @@ export default function CustomerDetail() {
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <button
-          onClick={() => navigate(backTo)}
+          onClick={goBack}
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
         >
           {backLabel}

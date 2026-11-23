@@ -103,3 +103,44 @@ test('when the model writes prose without a table, the list is still inserted be
   assert.match(out, /Overview: Discussed the first phase\./);
   assert.ok(out.indexOf('Plant visit') < out.indexOf('Next steps'));
 });
+
+test('a dashed raw-path visits list from the model is replaced so only the 图3 list remains', () => {
+  const sources = [
+    { type: 'report', title: 'Reference visit at the boiler plant', href: '/visit-reports/54', visitDate: '2026-11-12', summary: 'Reviewed milling machines on site.' },
+    { type: 'report', title: 'Pre-tender meeting', href: '/visit-reports/43', visitDate: '2026-10-30', summary: 'Delivery time was the main concern.' },
+  ];
+  const reply = [
+    'Here is a brief on the customer.',
+    '',
+    'Recent visits (newest first)',
+    '',
+    '1. Reference visit at the boiler plant (Nov 12, 2026)',
+    '- Date: 2026-11-12',
+    '- Overview: Reviewed milling machines on site.',
+    '- Report link: /visit-reports/54',
+    '',
+    '2. Pre-tender meeting (Oct 30, 2026)',
+    '- Date: 2026-10-30',
+    '- Overview: Delivery time was the main concern.',
+    '- Report link: /visit-reports/43',
+    '',
+    'Next steps',
+    '',
+    '- Keep contact next week',
+  ].join('\n');
+  const out = ensureVisitReportList(reply, sources, 'en');
+  assert.equal((out.match(/Recent visits/g) || []).length, 1);
+  assert.doesNotMatch(out, /newest first/);
+  assert.doesNotMatch(out, /^- Date:/m);
+  assert.doesNotMatch(out, /Report link: \/visit-reports\/54/);
+  assert.match(out, /Here is a brief on the customer\./);
+  assert.match(out, /\*\*Recent visits\*\* \(2\)/);
+  assert.match(out, /Date: November 12, 2026/);
+  assert.match(out, /Overview: Reviewed milling machines on site\./);
+  assert.match(out, /Report link: \[View report\]\(\/visit-reports\/54\)/);
+  assert.match(out, /Date: October 30, 2026/);
+  assert.match(out, /Next steps/);
+  assert.ok(out.indexOf('Recent visits') < out.indexOf('Next steps'));
+  // Newest first: Nov 12 before Oct 30.
+  assert.ok(out.indexOf('November 12, 2026') < out.indexOf('October 30, 2026'));
+});

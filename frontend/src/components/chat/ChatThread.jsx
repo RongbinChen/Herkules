@@ -14,6 +14,8 @@ export default function ChatThread({
   loadingLabel = 'Thinking…',
   renderMeta,
   className = '',
+  from,
+  threadId,
 }) {
   const endRef = useRef(null)
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
@@ -30,7 +32,7 @@ export default function ChatThread({
         ) : (
           <div key={i} className="flex min-w-0 justify-start">
             <div className={`min-w-0 max-w-[95%] overflow-hidden rounded-2xl rounded-bl-md border bg-white px-4 py-3 shadow-sm ${m.isError ? 'border-rose-200' : 'border-slate-200'}`}>
-              <Md text={m.content} />
+              <Md text={m.content} from={from} threadId={threadId} />
               {renderMeta?.(m)}
             </div>
           </div>

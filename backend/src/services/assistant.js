@@ -32,6 +32,7 @@ import {
 import { sourcesFromSteps, suggestionsFromSteps, locationFromReportContent } from './assistantSources.js';
 import { resolveReplyLang, languageDirective } from '../../../shared/assistantLang.js';
 import { ensureVisitReportList } from './assistantVisitList.js';
+import { selectMatching } from './assistantSearch.js';
 import { stepsForStore, sourcesForStore, sensitiveTeamFromSteps } from './assistantPersistence.js';
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -263,15 +264,16 @@ const TOOLS = [
 // ── Tool implementations ─────────────────────────────────────────────────────
 const impl = {
   async search_customers({ q }) {
-    const rows = await prisma.customer.findMany({
-      where: { name: { contains: String(q || ''), mode: 'insensitive' } },
+    const query = String(q || '').trim();
+    const rows = selectMatching(await prisma.customer.findMany({
+      where: query ? { name: { contains: query, mode: 'insensitive' } } : undefined,
       orderBy: { name: 'asc' },
-      take: 10,
+      take: 40,
       select: {
         id: true, name: true, status: true, tier: true, address: true,
         _count: { select: { projectLinks: true, visitReports: true } },
       },
-    });
+    }), query, (c) => [c.name], 10);
     return rows.map((c) => ({
       id: c.id, name: c.name, status: c.status, tier: c.tier, address: c.address,
       projects: c._count.projectLinks, reports: c._count.visitReports,
@@ -414,24 +416,26 @@ const impl = {
   },
 
   async search_reports({ q }) {
-    const s = String(q || '');
-    const rows = await prisma.visitReport.findMany({
-      where: {
+    const s = String(q || '').trim();
+    const found = await prisma.visitReport.findMany({
+      where: s ? {
         OR: [
           { title: { contains: s, mode: 'insensitive' } },
           { summary: { contains: s, mode: 'insensitive' } },
           { rawNotes: { contains: s, mode: 'insensitive' } },
+          { customer: { name: { contains: s, mode: 'insensitive' } } },
         ],
-      },
-      orderBy: { visitDate: 'desc' }, take: 10,
+      } : {},
+      orderBy: { visitDate: 'desc' }, take: 30,
       select: {
-        id: true, title: true, visitDate: true, summary: true, status: true, content: true,
+        id: true, title: true, visitDate: true, summary: true, status: true, content: true, rawNotes: true,
         customer: { select: { id: true, name: true } },
         author: { select: { name: true } },
       },
     });
+    const rows = selectMatching(found, s, (r) => [r.title, r.summary, r.rawNotes, r.customer?.name], 10);
     return rows.map((r) => {
-      const { content, ...rest } = r;
+      const { content, rawNotes, ...rest } = r;
       return {
         ...rest,
         type: 'report',
@@ -475,14 +479,20 @@ const impl = {
         ],
       });
     }
-    const rows = await prisma.hotProject.findMany({
+    const found = await prisma.hotProject.findMany({
       where,
       orderBy: [{ priority: { sort: 'asc', nulls: 'last' } }, { sortNo: 'asc' }],
-      take: 12,
+      take: 30,
       include: {
         updates: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 2, include: { author: { select: { name: true } } } },
       },
     });
+    const rows = selectMatching(
+      found,
+      q,
+      (p) => [p.customer, p.requirements, p.processor, ...(p.updates || []).map((u) => u.content)],
+      12,
+    );
     return rows.map((p) => ({
       id: p.id, category: p.category, customer: p.customer, processor: p.processor,
       machineType: p.machineType, priority: p.priority, deadline: p.deadline,
@@ -510,16 +520,22 @@ const impl = {
       if (to) start.lte = new Date(`${to}T23:59:59+08:00`);
       and.push({ start });
     }
-    const rows = await prisma.event.findMany({
-      where: and.length ? { AND: and } : {}, orderBy: { start: 'asc' }, take: 30,
+    const found = await prisma.event.findMany({
+      where: and.length ? { AND: and } : {}, orderBy: { start: 'asc' }, take: 60,
       select: {
-        id: true, title: true, start: true, end: true, location: true, category: true, status: true,
+        id: true, title: true, start: true, end: true, location: true, description: true, category: true, status: true,
         visitReportId: true,
         user: { select: { name: true } },
         customer: { select: { id: true, name: true } },
         visitReport: { select: { id: true, title: true } },
       },
     });
+    const rows = selectMatching(
+      found,
+      q,
+      (e) => [e.title, e.location, e.description, e.customer?.name],
+      30,
+    );
     return rows.map((e) => ({
       ...e,
       type: e.category === 'REMINDER' ? 'reminder' : 'event',
@@ -573,10 +589,10 @@ const impl = {
           ],
         }
       : {};
-    const trips = await prisma.trip.findMany({
+    const foundTrips = await prisma.trip.findMany({
       where,
       orderBy: { startTime: 'desc' },
-      take: 8,
+      take: 20,
       include: {
         createdBy: { select: { name: true } },
         assignees: { select: { name: true } },
@@ -586,6 +602,16 @@ const impl = {
         },
       },
     });
+    const trips = selectMatching(
+      foundTrips,
+      s,
+      (t) => [
+        t.title, t.notes, t.constraints, t.createdBy?.name,
+        ...(t.assignees || []).map((a) => a.name),
+        ...(t.stops || []).map((st) => st.customer?.name),
+      ],
+      8,
+    );
     return trips.map((t) => ({
       id: t.id,
       title: t.title,
@@ -652,10 +678,10 @@ const impl = {
         ],
       });
     }
-    const rows = await prisma.projectFollowUp.findMany({
+    const foundFollowups = await prisma.projectFollowUp.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
-      take: 12,
+      take: 30,
       include: {
         owner: { select: { name: true } },
         customer: { select: { id: true, name: true } },
@@ -663,6 +689,12 @@ const impl = {
         hotProject: { select: { id: true, category: true } },
       },
     });
+    const rows = selectMatching(
+      foundFollowups,
+      q,
+      (f) => [f.title, f.orderNo, f.machineSerial, f.notes, f.customer?.name],
+      12,
+    );
     return rows.map((f) => presentFollowUpForAssistant(f, ctx.viewer, ctx.unlockTeam));
   },
 
@@ -842,7 +874,7 @@ const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、
 - 合同（Contracts：仅在当前会话已解锁团队 PIN 时可用 ask_contracts，与合同页 Ask AI 同一路径；未解锁时不得编造金额或条款，应引导用户解锁）
 - GMT 现场服务（客户在 GMT 上的任务与服务报告，登录即可，不需要合同 PIN）
 
-也可以用 create_event 在用户明确要求时创建日程。界面会根据工具返回的 href 展示可点击来源卡片，你不必在回复里编造链接。
+也可以用 create_event 在用户明确要求时创建日程。不要编造链接。需要指向报告或客户时，只用工具返回的站内 href 写成 Markdown 链接（例如 [View report](/visit-reports/54)）。界面不再展示来源卡片。最近拜访列表由系统按规范格式附上，不要再单独写一份 Date/Overview/Report link 清单或管道表格。
 
 规则：
 - 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到；查不到时先换个工具再试——比如人名/行程类问题日历查不到就查 search_trips，客户类再试 search_customers，订单执行查 search_followups，到期提醒用 list_due_reminders，现场服务用 get_field_service。

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import useAppBack from '../hooks/useAppBack'
 import {
   uploadBidOpening, listBidOpenings, deleteBidOpening,
   createManualBidOpening,
@@ -675,6 +676,7 @@ function WatchTab() {
 // ── Page shell ───────────────────────────────────────────────────────────────
 export default function BidOpenPage() {
   const navigate = useNavigate()
+  const { go: goBack, label: backLabel } = useAppBack('/chinabidding', '← Project List')
   const [tab, setTab] = useState('opening')
 
   return (
@@ -687,8 +689,8 @@ export default function BidOpenPage() {
               <p className="text-[1rem] font-medium text-slate-700">Bid opening records · Subscriptions</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => navigate('/chinabidding')} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-                ← Project List
+              <button onClick={goBack} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+                {backLabel}
               </button>
               <button onClick={() => navigate('/')} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
                 Dashboard

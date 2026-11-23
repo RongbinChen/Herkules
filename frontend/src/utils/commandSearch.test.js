@@ -9,10 +9,10 @@ test('slash /project results deep-link to the tracking board with q=threadKey', 
   )
   assert.equal(
     resultHref('project', { threadKey: 'TK-1', href: '/chinabidding/tracking?q=TK-1' }),
-    '/chinabidding/tracking?q=TK-1',
+    '/chinabidding/tracking?q=TK-1&from=search',
   )
   // Even without a server href, the client still builds the tracking query.
-  assert.equal(resultHref('project', { threadKey: 'TK-2' }), '/chinabidding/tracking?q=TK-2')
+  assert.equal(resultHref('project', { threadKey: 'TK-2' }), '/chinabidding/tracking?q=TK-2&from=search')
   assert.notEqual(resultHref('project', { threadKey: 'TK-2' }), '/chinabidding/tracking')
 })
 
@@ -33,4 +33,12 @@ test('welcome examples follow Auto / 中文 / EN', () => {
   const auto = examplesForLang('auto')
   assert.ok(auto.some((s) => /[\u4e00-\u9fff]/.test(s)))
   assert.ok(auto.some((s) => !/[\u4e00-\u9fff]/.test(s)))
+})
+
+test('slash-command result hrefs carry from=search so Back can return to Ask AI', () => {
+  assert.equal(resultHref('customer', { id: 12 }), '/customers/12?from=search')
+  assert.equal(resultHref('report', { id: 54 }, { threadId: 8 }), '/visit-reports/54?from=search&thread=8')
+  assert.equal(resultHref('followup', { id: 4 }), '/followups/4?from=search')
+  assert.equal(resultHref('trip', { id: 7 }), '/trips/7?from=search')
+  assert.equal(resultHref('hot', { id: 3 }), '/hotprojects?id=3&from=search')
 })

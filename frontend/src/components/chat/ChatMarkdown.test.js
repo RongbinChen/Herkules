@@ -48,3 +48,19 @@ test('Chinese list labels and 报告链接 render, and the typo 连接 is not re
   assert.match(html, /href="\/visit-reports\/46"/)
   assert.match(html, />点击查看</)
 })
+
+test('Ask AI markdown links are stamped with from=search and the thread id', async () => {
+  const mod = await loadJsxModule(path.join(here, 'ChatMarkdown.jsx'))
+  const Md = mod.default
+  const html = renderToStaticMarkup(createElement(
+    MemoryRouter,
+    {},
+    createElement(Md, {
+      text: 'Report link: [View report](/visit-reports/54#remind-abc)',
+      from: 'search',
+      threadId: 8,
+    }),
+  ))
+  assert.match(html, /href="\/visit-reports\/54\?from=search&amp;thread=8#remind-abc"/)
+  assert.match(html, />View report</)
+})

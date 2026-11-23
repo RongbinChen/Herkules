@@ -1,3 +1,4 @@
+import { withFromSearch } from './appBack.js'
 // Slash commands for the Ask AI page — instant structured search, no LLM.
 export const COMMANDS = [
   { key: 'customer', icon: '🤝', label: '/customer', hint: 'Search customers' },
@@ -25,15 +26,16 @@ export function projectTrackingHref(threadKey) {
   return key ? `/chinabidding/tracking?q=${encodeURIComponent(key)}` : '/chinabidding/tracking'
 }
 
-export function resultHref(type, row) {
-  if (row?.href && String(row.href).startsWith('/')) return row.href
-  if (type === 'customer' && row?.id) return `/customers/${row.id}?from=search`
-  if (type === 'project') return projectTrackingHref(row?.threadKey)
-  if (type === 'report' && row?.id) return `/visit-reports/${row.id}`
-  if (type === 'followup' && row?.id) return `/followups/${row.id}`
-  if (type === 'trip' && row?.id) return `/trips/${row.id}`
-  if (type === 'hot' && row?.id) return `/hotprojects?id=${row.id}`
-  return null
+export function resultHref(type, row, opts) {
+  let href = null
+  if (row?.href && String(row.href).startsWith('/')) href = row.href
+  else if (type === 'customer' && row?.id) href = `/customers/${row.id}`
+  else if (type === 'project') href = projectTrackingHref(row?.threadKey)
+  else if (type === 'report' && row?.id) href = `/visit-reports/${row.id}`
+  else if (type === 'followup' && row?.id) href = `/followups/${row.id}`
+  else if (type === 'trip' && row?.id) href = `/trips/${row.id}`
+  else if (type === 'hot' && row?.id) href = `/hotprojects?id=${row.id}`
+  return href ? withFromSearch(href, opts) : null
 }
 
 export const EXAMPLES = {

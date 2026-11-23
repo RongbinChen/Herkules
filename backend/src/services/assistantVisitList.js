@@ -1,8 +1,8 @@
 /**
  * Canonical "recent visits" list for Ask AI answers.
  * Built from trusted report sources (tool hrefs + stored summary/date), never
- * invented at render time. Replaces a model's markdown table so the answer
- * body stays in the numbered Date / Overview / Report-link shape.
+ * invented at render time. Replaces a model's markdown table OR a dashed /
+ * raw-path list so only one numbered Date / Overview / Report-link list remains.
  */
 
 const REPORT_TABLE_HEAD = /日期|报告|要点|概述|摘要|^date$|^report$|^overview$|^summary$|^title$/i;
@@ -110,56 +110,116 @@ export function isVisitReportTableHeader(line) {
   return hits >= 2 || (hits >= 1 && REPORT_TABLE_HINT.test(joined));
 }
 
-// Replace a "最近拜访" heading plus a pipe table, or a standalone visit-report
-// table, with the canonical list. If no table is found, insert the list before
-// a Next-steps / Other heading, or append it.
+const META_LINE = /^(?:[-*•]\s*)?(?:\*\*)?(?:Date|Overview|Report link|日期|概述|报告链接)(?:\*\*)?\s*[:：]/i;
+const ITEM_START = /^\d+\.\s+\S/;
+const BARE_REPORT_HREF = /\/visit-reports\/\d+/;
+
+export function isVisitListHeading(line) {
+  return SECTION_HEADING.test(String(line || '').trim());
+}
+
+export function isVisitListBodyLine(line) {
+  const raw = String(line || '');
+  const t = raw.trim();
+  if (!t) return false;
+  if (ITEM_START.test(t)) return true;
+  if (META_LINE.test(t)) return true;
+  if (BARE_REPORT_HREF.test(t)) return true;
+  if (isVisitReportTableHeader(t) || isSepLine(t)) return true;
+  if (t.startsWith('|') && t.includes('|')) return true;
+  if (/^(?: {2,}|\t)/.test(raw) && t) return true;
+  return false;
+}
+
+function looksLikeVisitItem(lines, index) {
+  if (!ITEM_START.test(String(lines[index] || '').trim())) return false;
+  for (let i = index + 1; i < Math.min(lines.length, index + 8); i += 1) {
+    const t = String(lines[i] || '').trim();
+    if (!t) continue;
+    if (META_LINE.test(t) || BARE_REPORT_HREF.test(t)) return true;
+    if (ITEM_START.test(t) || isVisitListHeading(t) || INSERT_BEFORE.test(t)) return false;
+  }
+  return false;
+}
+
+function isVisitBlockStart(lines, index) {
+  const t = String(lines[index] || '').trim();
+  if (isVisitListHeading(t)) return true;
+  if (isVisitReportTableHeader(lines[index]) && index + 1 < lines.length && isSepLine(lines[index + 1])) return true;
+  if (looksLikeVisitItem(lines, index)) return true;
+  return false;
+}
+
+function consumeVisitBlock(lines, start) {
+  let i = start;
+  if (isVisitListHeading(lines[i]) || isVisitReportTableHeader(lines[i])) i += 1;
+  while (i < lines.length) {
+    const t = String(lines[i] || '').trim();
+    if (!t) {
+      const peek = lines[i + 1];
+      if (peek == null) break;
+      const pt = peek.trim();
+      if (!pt) { i += 1; continue; }
+      if (INSERT_BEFORE.test(pt)) break;
+      if (isVisitListBodyLine(peek) || isVisitListHeading(pt)) { i += 1; continue; }
+      break;
+    }
+    if (INSERT_BEFORE.test(t)) break;
+    if (isVisitListBodyLine(lines[i]) || isVisitListHeading(t)) { i += 1; continue; }
+    break;
+  }
+  return i;
+}
+
+// Remove every model-written recent-visits table or dashed/raw-path list.
+// Used so packReply can insert exactly one canonical list.
+export function stripVisitListBlocks(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const keep = [];
+  let i = 0;
+  let firstRemovedAt = null;
+  while (i < lines.length) {
+    if (!isVisitBlockStart(lines, i)) {
+      keep.push(lines[i]);
+      i += 1;
+      continue;
+    }
+    let start = i;
+    if (start > 0 && !String(lines[start - 1] || '').trim() && keep.length && !keep[keep.length - 1].trim()) {
+      keep.pop();
+    }
+    if (firstRemovedAt == null) firstRemovedAt = keep.length;
+    i = consumeVisitBlock(lines, start);
+  }
+  return { text: keep.join('\n').replace(/\n{3,}/g, '\n\n').trim(), firstRemovedAt };
+}
+
+// Replace any existing recent-visits table or list with the canonical numbered
+// list (long-form dates, no leading dashes, clickable View report links).
+// If none was found, insert the list before Next-steps / Other, or append it.
 export function ensureVisitReportList(reply, sources = [], lang = 'en') {
   const reports = reportsFromSources(sources);
   const list = formatVisitReportList(reports, lang);
   const text = String(reply || '').replace(/\r\n/g, '\n');
   if (!list) return text;
 
-  const lines = text.split('\n');
-  let start = -1;
-  let end = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    if (!isVisitReportTableHeader(lines[i])) continue;
-    if (i + 1 >= lines.length || !isSepLine(lines[i + 1])) continue;
-    start = i;
-    if (i > 0 && SECTION_HEADING.test(lines[i - 1].trim())) start = i - 1;
-    if (start > 0 && !lines[start - 1].trim()) start -= 1;
-    end = i + 2;
-    while (end < lines.length) {
-      const row = lines[end].trim();
-      if (row.includes('|') && !isSepLine(row) && (row.startsWith('|') || row.includes('|'))) {
-        end += 1;
-        continue;
-      }
-      break;
-    }
-    break;
-  }
+  const stripped = stripVisitListBlocks(text);
+  const body = stripped.text;
 
-  if (start >= 0) {
-    const before = lines.slice(0, start).join('\n').trimEnd();
-    const after = lines.slice(end).join('\n').trimStart();
+  if (stripped.firstRemovedAt != null && body) {
+    const bodyLines = body.split('\n');
+    const at = Math.min(stripped.firstRemovedAt, bodyLines.length);
+    const before = bodyLines.slice(0, at).join('\n').trimEnd();
+    const after = bodyLines.slice(at).join('\n').trimStart();
     return [before, list, after].filter((p) => String(p || '').length).join('\n\n');
   }
 
-  if (text.includes('/visit-reports/') && /报告链接|Report link/.test(text)) {
-    // A previous pass (or the model) already used the canonical labels; if it
-    // still has a table we would have replaced it above. Leave prose+list as is
-    // only when our list would be a duplicate of the same hrefs.
-    const hrefs = reports.map((r) => r.href);
-    if (hrefs.every((h) => text.includes(h))) return text;
-  }
-
-  const match = INSERT_BEFORE.exec(text);
+  const match = INSERT_BEFORE.exec(body);
   if (match && match.index > 0) {
-    const before = text.slice(0, match.index).trimEnd();
-    const after = text.slice(match.index).trimStart();
+    const before = body.slice(0, match.index).trimEnd();
+    const after = body.slice(match.index).trimStart();
     return `${before}\n\n${list}\n\n${after}`;
   }
-  const trimmed = text.trim();
+  const trimmed = body.trim();
   return trimmed ? `${trimmed}\n\n${list}` : list;
 }

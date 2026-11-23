@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import useAppBack from '../hooks/useAppBack'
 import { tripsAPI } from '../api/api'
 import { sortStopsByArrival } from '../utils/trips'
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
@@ -18,6 +19,7 @@ function toLocalInput(value) {
 export default function TripDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { go: goBack, label: backLabel } = useAppBack('/trips', '← Trips')
   const [trip, setTrip] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -149,7 +151,7 @@ export default function TripDetail() {
       <div className="mx-auto max-w-[1100px] p-5">
         <p className="py-16 text-center text-slate-400">Trip not found.</p>
         <div className="text-center">
-          <button onClick={() => navigate('/trips')} className="text-brand-600 hover:underline">← Back to trips</button>
+          <button onClick={goBack} className="text-brand-600 hover:underline">{backLabel}</button>
         </div>
       </div>
     )
@@ -160,10 +162,10 @@ export default function TripDetail() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate('/trips')}
+            onClick={goBack}
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
           >
-            ← Trips
+            {backLabel}
           </button>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">{trip.title}</h1>

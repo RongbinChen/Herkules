@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listProjectThreads, saveBidTracking } from '../api/chinabidding';
+import AskAiBackButton from './AskAiBackButton';
 
 // ── Lifecycle stages (auto, derived from announcements) ──
 const STAGES = [
@@ -309,6 +310,7 @@ export default function BidTrackingBoard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <AskAiBackButton className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm" />
             <button onClick={() => navigate('/')}
               className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm">
               Dashboard

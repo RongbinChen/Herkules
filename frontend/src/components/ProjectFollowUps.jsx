@@ -14,6 +14,7 @@
  */
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import useAppBack from '../hooks/useAppBack'
 import { format } from 'date-fns'
 import { followUpsAPI, usersAPI, customersAPI, contractsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
@@ -1145,7 +1146,7 @@ function LinkedContracts({ f, catalogue, onChanged, onPatch }) {
 }
 
 // ── Detail ───────────────────────────────────────────────────────────────────
-function Detail({ id, catalogue, users, onBack, onChanged }) {
+function Detail({ id, catalogue, users, onBack, backLabel = '← Back to list', onChanged }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { unlock, setTeam, switchTeam } = useContractUnlock(user?.team === 'WRC' ? 'WRC' : 'HRC')
@@ -1241,7 +1242,7 @@ function Detail({ id, catalogue, users, onBack, onChanged }) {
   return (
     <div className="space-y-5">
       <div>
-        <button onClick={onBack} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">← Back to list</button>
+        <button onClick={onBack} className="text-xs font-semibold text-slate-400 transition hover:text-brand-600">{backLabel}</button>
       </div>
 
       {/* Head */}
@@ -1584,6 +1585,7 @@ export function NewModal({ users, catalogue, seed, onClose, onCreated }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function ProjectFollowUps() {
   const navigate = useNavigate()
+  const { go: goBack, label: backLabel } = useAppBack('/followups', '← Back to list')
   const { id } = useParams()
   const { user } = useAuth()
   const [catalogue, setCatalogue] = useState([])
@@ -1649,7 +1651,8 @@ export default function ProjectFollowUps() {
             id={id}
             catalogue={catalogue}
             users={users}
-            onBack={() => navigate('/followups')}
+            onBack={goBack}
+            backLabel={backLabel}
             onChanged={load}
           />
         ) : (

@@ -10,6 +10,7 @@ import { invalidateOpenOrders } from '../utils/openOrdersRefresh'
 import ContractUploadModal from './ContractUploadModal'
 import ContractAsk from './ContractAsk'
 import TranscriptionToggle from './TranscriptionToggle'
+import AskAiBackButton from './AskAiBackButton'
 import ContractSummary from './ContractSummary'
 
 const PAGE = 50
@@ -310,7 +311,10 @@ export default function ContractsPage() {
         <div className="mx-auto max-w-lg">
           <div className="mb-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-900">Contracts</h1>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
+            <div className="flex items-center gap-2">
+              <AskAiBackButton className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" />
+              <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
+            </div>
           </div>
           <Card className="p-6">
             <p className="mb-4 text-sm text-slate-500">
@@ -366,6 +370,7 @@ export default function ContractsPage() {
             Contracts <span className="ml-1 text-sm font-semibold text-brand-600">{unlock.team}</span>
           </h1>
           <div className="flex items-center gap-2">
+            <AskAiBackButton className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" />
             {isOcrOwner && <TranscriptionToggle />}
             <Button size="sm" onClick={() => {
               setUploadCustomer(customerId && customerName ? { id: Number(customerId), name: customerName } : null)

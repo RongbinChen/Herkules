@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { searchAPI, visitReportsAPI, assistantAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import useContractUnlock from '../hooks/useContractUnlock'
@@ -8,11 +8,9 @@ import { useVRLang } from '../i18n/visitReports'
 import { statusMeta, tierMeta } from '../constants/customer'
 import ChatThread from './chat/ChatThread'
 import ChatComposer from './chat/ChatComposer'
-import SourceCards from './chat/SourceCards'
 import {
   COMMANDS, CMD_BY_KEY, parseInput, resultHref, examplesForLang, TOOL_LABEL,
 } from '../utils/commandSearch'
-import { resolveReplyLang } from '../../../shared/assistantLang.js'
 
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
 const OUR_STATUS = {
@@ -35,6 +33,7 @@ function toChatMessage(m) {
 
 export default function CommandSearch() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const [reportLang] = useVRLang()
   const { unlock, team, setTeam, doUnlock, lock, busy, error: pinError, setError: setPinError } = useContractUnlock()
@@ -62,7 +61,9 @@ export default function CommandSearch() {
       const list = data || []
       setThreads(list)
       if (!list.length) return
-      const { data: thread } = await assistantAPI.getThread(list[0].id, unlock?.token, lang === 'auto' ? undefined : lang)
+      const requested = Number(searchParams.get('thread'))
+      const pick = (requested && list.find((item) => item.id === requested)) || list[0]
+      const { data: thread } = await assistantAPI.getThread(pick.id, unlock?.token, lang === 'auto' ? undefined : lang)
       if (ignore) return
       setThreadId(thread.id)
       setChat((thread.messages || []).map(toChatMessage))
@@ -83,6 +84,24 @@ export default function CommandSearch() {
       .catch(() => {})
     return () => { ignore = true }
   }, [unlock?.token, threadId, lang])
+
+
+  useEffect(() => {
+    const cur = searchParams.get('thread')
+    if (!threadId) {
+      if (!cur) return
+      const next = new URLSearchParams(searchParams)
+      next.delete('thread')
+      setSearchParams(next, { replace: true })
+      return
+    }
+    if (String(threadId) === cur) return
+    const next = new URLSearchParams(searchParams)
+    next.set('thread', String(threadId))
+    setSearchParams(next, { replace: true })
+    // Keep the URL in sync with the open thread so Back can restore it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId])
 
   useEffect(() => {
     if (parsed.mode !== 'search' || !parsed.query) { setResults(null); setLoading(false); return }
@@ -191,7 +210,6 @@ export default function CommandSearch() {
 
   const showWelcome = chat.length === 0 && parsed.mode === 'idle' && !raw
   const examples = examplesForLang(lang)
-  const replyLang = resolveReplyLang(lang === 'auto' ? undefined : lang, chat)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -298,6 +316,8 @@ export default function CommandSearch() {
             messages={chat}
             loading={chatLoading}
             loadingLabel="Querying data…"
+            from="search"
+            threadId={threadId}
             className="mb-4"
             renderMeta={(m) => (
               <>
@@ -311,7 +331,6 @@ export default function CommandSearch() {
                     ))}
                   </div>
                 )}
-                <SourceCards sources={m.sources} lang={replyLang} />
                 {m.suggestions?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {m.suggestions.map((s) => (
@@ -341,15 +360,15 @@ export default function CommandSearch() {
                   </p>
                   <div className="space-y-2">
                     {results.type === 'customer' && results.results.map((c) => (
-                      <CustomerCard key={c.id} c={c} onOpen={() => navigate(resultHref('customer', c))} />
+                      <CustomerCard key={c.id} c={c} onOpen={() => navigate(resultHref('customer', c, { threadId }))} />
                     ))}
                     {results.type === 'project' && results.results.map((p) => (
-                      <ProjectCard key={p.threadKey} p={p} onOpen={() => navigate(resultHref('project', p))}
-                        onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)} />
+                      <ProjectCard key={p.threadKey} p={p} onOpen={() => navigate(resultHref('project', p, { threadId }))}
+                        onCustomer={(cid) => navigate(resultHref('customer', { id: cid }, { threadId }))} />
                     ))}
                     {results.type === 'report' && results.results.map((r) => (
-                      <ReportCard key={r.id} r={r} onOpen={() => navigate(resultHref('report', r))}
-                        onCustomer={(cid) => navigate(`/customers/${cid}?from=search`)}
+                      <ReportCard key={r.id} r={r} onOpen={() => navigate(resultHref('report', r, { threadId }))}
+                        onCustomer={(cid) => navigate(resultHref('customer', { id: cid }, { threadId }))}
                         onDownload={() => downloadReport(r)} downloading={downloading === r.id}
                         user={user}
                         lang={reportLang}
@@ -361,15 +380,15 @@ export default function CommandSearch() {
                       />
                     ))}
                     {results.type === 'followup' && results.results.map((f) => (
-                      <SimpleCard key={f.id} title={f.title} href={resultHref('followup', f)}
+                      <SimpleCard key={f.id} title={f.title} href={resultHref('followup', f, { threadId })}
                         meta={[f.customer?.name, f.status, f.orderNo, f.owner?.name].filter(Boolean)} />
                     ))}
                     {results.type === 'trip' && results.results.map((t) => (
-                      <SimpleCard key={t.id} title={t.title} href={resultHref('trip', t)}
+                      <SimpleCard key={t.id} title={t.title} href={resultHref('trip', t, { threadId })}
                         meta={[fmtDate(t.startTime), (t.assignees || []).map((a) => a.name).join(', ')].filter(Boolean)} />
                     ))}
                     {results.type === 'hot' && results.results.map((h) => (
-                      <SimpleCard key={h.id} title={h.customer || `Hot project ${h.id}`} href={resultHref('hot', h)}
+                      <SimpleCard key={h.id} title={h.customer || `Hot project ${h.id}`} href={resultHref('hot', h, { threadId })}
                         meta={[h.category, h.machineType, h.processor, h.priority].filter(Boolean)} />
                     ))}
                   </div>
