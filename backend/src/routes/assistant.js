@@ -6,6 +6,7 @@ import express from 'express';
 import { prisma } from '../index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { runAssistant } from '../services/assistant.js';
+import { resolveReplyLang } from '../../../shared/assistantLang.js';
 import { readContractUnlock } from '../services/contractUnlock.js';
 import {
   threadTitleFrom,
@@ -106,7 +107,8 @@ router.post('/chat', async (req, res) => {
     if (!history.length || !String(history[history.length - 1]?.content || '').trim()) {
       return res.status(400).json({ error: 'messages is empty' });
     }
-    const lang = ['zh', 'en'].includes(req.body?.lang) ? req.body.lang : undefined;
+    const requested = ['zh', 'en', 'auto'].includes(req.body?.lang) ? req.body.lang : undefined;
+    const lang = resolveReplyLang(requested, history);
     const unlockTeam = readContractUnlock(req);
 
     let thread = null;

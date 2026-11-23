@@ -12,6 +12,7 @@ import SourceCards from './chat/SourceCards'
 import {
   COMMANDS, CMD_BY_KEY, parseInput, resultHref, examplesForLang, TOOL_LABEL,
 } from '../utils/commandSearch'
+import { resolveReplyLang } from '../../../shared/assistantLang.js'
 
 const STAGE_LABEL = { TENDER: 'Tender', CHANGE: 'Change', EVALUATION: 'Evaluation', AWARD: 'Award' }
 const OUR_STATUS = {
@@ -190,6 +191,7 @@ export default function CommandSearch() {
 
   const showWelcome = chat.length === 0 && parsed.mode === 'idle' && !raw
   const examples = examplesForLang(lang)
+  const replyLang = resolveReplyLang(lang === 'auto' ? undefined : lang, chat)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -309,7 +311,7 @@ export default function CommandSearch() {
                     ))}
                   </div>
                 )}
-                <SourceCards sources={m.sources} lang={lang} />
+                <SourceCards sources={m.sources} lang={replyLang} />
                 {m.suggestions?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {m.suggestions.map((s) => (

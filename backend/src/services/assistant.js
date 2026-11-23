@@ -30,6 +30,8 @@ import {
   eventHref,
 } from './assistantLinks.js';
 import { sourcesFromSteps, suggestionsFromSteps, locationFromReportContent } from './assistantSources.js';
+import { resolveReplyLang, languageDirective } from '../../../shared/assistantLang.js';
+import { ensureVisitReportList } from './assistantVisitList.js';
 import { stepsForStore, sourcesForStore, sensitiveTeamFromSteps } from './assistantPersistence.js';
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -845,8 +847,9 @@ const SYSTEM = () => `你是 Herkules 集团 / Waldrich Siegen（轧辊磨床、
 规则：
 - 回答必须基于工具查到的真实数据，不要臆造。查不到就直说没查到；查不到时先换个工具再试——比如人名/行程类问题日历查不到就查 search_trips，客户类再试 search_customers，订单执行查 search_followups，到期提醒用 list_due_reminders，现场服务用 get_field_service。
 - 绝对禁止编造 URL、分享链接、token、编号、金额、日期。这些必须逐字来自本轮工具返回结果。历史对话里没有工具数据——追问涉及具体数据时（哪怕上一轮聊过），必须重新调用工具拿到后再答。站内分享链接域名只会是 https://www.herkulesgroup-china.com/…，其他域名都是错的。不要编造站内路径。
-- 用用户提问的语言回答（中文问中文答，英文问英文答）。
-- 回答先给简短结论，再用短列表或 Markdown 管道表格呈现多条记录（表格列要少而可读），不要机械罗列全部字段。
+- Default reply language is English. Do not answer in Chinese just because the question, customer names, or visit-report text are in Chinese, and do not auto-detect the reply language from the data. Reply in Chinese only when the language directive at the end of this prompt says to, or the user explicitly asks to be answered in Chinese.
+- 回答先给简短结论，再用短列表呈现多条记录，不要机械罗列全部字段。
+- 拜访报告（最近拜访 / recent visits）禁止使用 Markdown 管道表格（表格在本页会左右裁切并出现滚动条）。必须使用编号列表，每条为：标题；日期行；概述行（只用工具返回的已有 summary，不要编造、不要改写 originalBody）；报告链接行，链接必须是工具给出的站内 href。若界面或系统已附上该列表，不要再复制一份表格，也不要再写一遍完整清单。英文标签用 Date / Overview / Report link；中文标签用 日期 / 概述 / 报告链接（不要写成“报告连接”）。
 - 涉及客户时尽量串联：跟踪状态、最近拜访、跟进节点、现场服务、客户笔记。
 - 合同与跟进金额：未解锁时工具会返回 locked 或 contractValueLocked，只陈述状态/日期并请用户解锁团队 PIN，绝不猜测金额。已解锁时金额保持原样。
 - create_event 只在用户明确要求安排/创建时使用，创建后立即写入，并在回复中复述标题与时间供确认。不要创建 REMINDER 类别。
@@ -859,10 +862,11 @@ async function valueViewer(user) {
 }
 
 function packReply(reply, steps, lang, unlockTeam) {
+  const resolved = lang === 'zh' ? 'zh' : 'en';
   const sources = sourcesForStore(sourcesFromSteps(steps));
-  const suggestions = suggestionsFromSteps(steps, lang === 'zh' ? 'zh' : 'en', { unlocked: Boolean(unlockTeam) });
+  const suggestions = suggestionsFromSteps(steps, resolved, { unlocked: Boolean(unlockTeam) });
   return {
-    reply,
+    reply: ensureVisitReportList(reply, sources, resolved),
     steps: stepsForStore(steps),
     sources,
     suggestions,
@@ -887,7 +891,9 @@ function contractHistoryFrom(history) {
  * Run the assistant loop.
  * `history` — [{role:'user'|'assistant', content}] prior turns (capped by caller).
  * `user` — { userId, isAdmin } of the asker; tools apply per-user visibility.
- * `lang` — 'zh' | 'en' | undefined: force the reply language (undefined = follow the question).
+ * `lang` — 'zh' | 'en' | 'auto' | undefined: Auto/default is English unless the
+ * user explicitly asks for Chinese. The 中文 / EN toggle still forces a language
+ * unless the latest message explicitly requests the other one.
  * `unlockTeam` — 'HRC' | 'WRC' | null from a verified contract-unlock token.
  * Returns { reply, steps, sources, suggestions, sensitiveTeam }.
  */
@@ -900,13 +906,9 @@ export async function runAssistant(history, user, lang, unlockTeam = null) {
     viewer,
     contractHistory: contractHistoryFrom(history),
   };
-  const langDirective = lang === 'zh'
-    ? '\n- 强制：无论用户用什么语言提问，都用中文回答。'
-    : lang === 'en'
-      ? '\n- MANDATORY: Always reply in English, regardless of the language of the question.'
-      : '';
+  const resolvedLang = resolveReplyLang(lang, history);
   const messages = [
-    { role: 'system', content: SYSTEM() + langDirective },
+    { role: 'system', content: SYSTEM() + languageDirective(resolvedLang) },
     ...history.slice(-10).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 4000) })),
   ];
   const steps = [];
@@ -915,7 +917,8 @@ export async function runAssistant(history, user, lang, unlockTeam = null) {
     const msg = await completion(messages);
     const calls = msg.tool_calls || [];
     if (!calls.length) {
-      return packReply((msg.content || '').trim() || '（无回复）', steps, lang, ctx.unlockTeam);
+      const fallback = resolvedLang === 'zh' ? '（无回复）' : 'No reply.';
+      return packReply((msg.content || '').trim() || fallback, steps, resolvedLang, ctx.unlockTeam);
     }
     messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls) {
@@ -937,5 +940,6 @@ export async function runAssistant(history, user, lang, unlockTeam = null) {
       });
     }
   }
-  return packReply('查询步骤过多，已中止。请把问题拆小一点再试。', steps, lang, ctx.unlockTeam);
+  const abort = resolvedLang === 'zh' ? '查询步骤过多，已中止。请把问题拆小一点再试。' : 'Too many lookup steps; stopped. Please ask a smaller question.';
+  return packReply(abort, steps, resolvedLang, ctx.unlockTeam);
 }
