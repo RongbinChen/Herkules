@@ -533,7 +533,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6">
-      <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-[24px]">
+      <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-[24px]">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Activity Record</p>
@@ -547,8 +547,14 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
         </div>
 
         <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-          <div className="grid gap-4 md:grid-cols-[1.4fr,0.85fr]">
-            <div className="space-y-4">
+          {/*
+            The schedule column needs a floor width so Category and
+            Timed / Half-day / All-day stay fully readable. minmax(0, ...) on
+            the main column lets long customer names truncate instead of
+            crushing the schedule column.
+          */}
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr),minmax(18rem,1fr)]">
+            <div className="min-w-0 space-y-4">
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Activity title</span>
                 <input
@@ -754,14 +760,15 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
               )}
             </div>
 
-            <div className="space-y-4 rounded-[16px] bg-slate-50 p-3.5 sm:p-4">
+            <div className="min-w-0 space-y-4 rounded-[16px] bg-slate-50 p-3.5 sm:p-4" data-activity-form-schedule="true">
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Category</span>
                 <select
                   value={form.category}
                   onChange={(event) => updateField('category', event.target.value)}
                   disabled={readOnly}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
+                  aria-label="Category"
+                  className="min-w-0 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
                 >
                   {CATEGORY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -770,7 +777,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
               </label>
 
               <div className="rounded-xl border border-slate-200 bg-white p-1">
-                <div className="grid grid-cols-3 gap-1">
+                <div className="flex flex-wrap gap-1" role="group" aria-label="Duration">
                   {DURATION_MODE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
@@ -778,7 +785,7 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                       onClick={() => selectDurationMode(option.value)}
                       disabled={readOnly}
                       className={classNames(
-                        'whitespace-nowrap rounded-lg px-1.5 py-1.5 text-[13px] font-medium transition disabled:cursor-default',
+                        'flex-1 basis-[4.75rem] whitespace-nowrap rounded-lg px-2 py-1.5 text-center text-[13px] font-medium transition disabled:cursor-default',
                         durationMode === option.value
                           ? 'bg-slate-900 text-white'
                           : 'text-slate-600 hover:bg-slate-100 disabled:hover:bg-transparent',

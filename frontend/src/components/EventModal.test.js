@@ -74,3 +74,26 @@ test('the create-activity agent field uses the same searchable select as custome
   // Two searchable fields: customer and agent.
   assert.equal((html.match(/data-searchable-select-trigger="true"/g) || []).length, 2)
 })
+
+test('the activity form schedule column keeps category and duration labels intact', async () => {
+  const html = await render()
+  assert.match(html, /data-activity-form-schedule="true"/)
+  // Full labels must be in the markup; the layout classes below are what keep
+  // them from being clipped in the two-column form.
+  assert.match(html, />Customer Visit</)
+  assert.match(html, />Internal Coordination</)
+  assert.match(html, />Reminder \/ Target</)
+  assert.match(html, />Timed</)
+  assert.match(html, />Half-day</)
+  assert.match(html, />All-day</)
+  assert.match(html, /max-w-4xl/)
+  assert.match(html, /minmax\(0,1\.2fr\),minmax\(18rem,1fr\)/)
+  assert.match(html, /flex flex-wrap gap-1/)
+  assert.match(html, /flex-1 basis-\[4\.75rem\]/)
+  assert.match(html, /aria-label="Duration"/)
+  // Start / End stay in the same column, and the searchable pickers are unchanged.
+  assert.match(html, />Start</)
+  assert.match(html, />End</)
+  assert.match(html, /Color auto-assigned from the selected employee\./)
+  assert.equal((html.match(/data-searchable-select-trigger="true"/g) || []).length, 2)
+})
