@@ -309,7 +309,7 @@ export default function CommandSearch() {
                     ))}
                   </div>
                 )}
-                <SourceCards sources={m.sources} />
+                <SourceCards sources={m.sources} lang={lang} />
                 {m.suggestions?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {m.suggestions.map((s) => (

@@ -29,7 +29,7 @@ import {
   contractsHref,
   eventHref,
 } from './assistantLinks.js';
-import { sourcesFromSteps, suggestionsFromSteps } from './assistantSources.js';
+import { sourcesFromSteps, suggestionsFromSteps, locationFromReportContent } from './assistantSources.js';
 import { stepsForStore, sourcesForStore, sensitiveTeamFromSteps } from './assistantPersistence.js';
 
 const API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -284,11 +284,15 @@ const impl = {
         projectLinks: true,
         visitReports: {
           orderBy: { visitDate: 'desc' }, take: 10,
-          select: { id: true, title: true, visitDate: true, summary: true },
+          select: { id: true, title: true, visitDate: true, summary: true, content: true },
         },
         events: {
           orderBy: { start: 'desc' }, take: 8,
-          select: { id: true, title: true, start: true, category: true, visitReportId: true, user: { select: { name: true } } },
+          select: {
+            id: true, title: true, start: true, category: true, visitReportId: true,
+            user: { select: { name: true } },
+            visitReport: { select: { id: true, title: true } },
+          },
         },
         noteEntries: {
           orderBy: { createdAt: 'desc' }, take: 8,
@@ -339,8 +343,28 @@ const impl = {
           href: projectTrackingHref(k),
         };
       }),
-      visitReports: (c.visitReports || []).map((r) => ({ ...r, href: reportHref(r.id) })),
-      recentEvents: (c.events || []).map((e) => ({ ...e, href: eventHref(e) })),
+      visitReports: (c.visitReports || []).map((r) => {
+        const { content, ...rest } = r;
+        return {
+          ...rest,
+          type: 'report',
+          summary: r.summary || null,
+          location: locationFromReportContent(content),
+          customer: c.name,
+          customerId: c.id,
+          href: reportHref(r.id),
+        };
+      }),
+      recentEvents: (c.events || []).map((e) => ({
+        id: e.id,
+        type: e.category === 'REMINDER' ? 'reminder' : 'event',
+        title: e.title,
+        start: e.start,
+        category: e.category,
+        visitReportId: e.visitReportId || null,
+        reportTitle: e.visitReport?.title || null,
+        href: eventHref(e),
+      })),
       followUps: (c.followUps || []).map((f) => presentFollowUpForAssistant(f, ctx.viewer, ctx.unlockTeam)),
       // Sensitive: hot projects filtered by the asking user's visibility.
       hotProjects: (await prisma.hotProject.findMany({
@@ -399,12 +423,20 @@ const impl = {
       },
       orderBy: { visitDate: 'desc' }, take: 10,
       select: {
-        id: true, title: true, visitDate: true, summary: true, status: true,
+        id: true, title: true, visitDate: true, summary: true, status: true, content: true,
         customer: { select: { id: true, name: true } },
         author: { select: { name: true } },
       },
     });
-    return rows.map((r) => ({ ...r, href: reportHref(r.id) }));
+    return rows.map((r) => {
+      const { content, ...rest } = r;
+      return {
+        ...rest,
+        type: 'report',
+        location: locationFromReportContent(content),
+        href: reportHref(r.id),
+      };
+    });
   },
 
   async get_report({ id }) {
@@ -414,8 +446,9 @@ const impl = {
     });
     if (!r) return { error: 'report not found' };
     return {
-      id: r.id, title: r.title, visitDate: r.visitDate, status: r.status,
+      id: r.id, type: 'report', title: r.title, visitDate: r.visitDate, status: r.status,
       customer: r.customer?.name, author: r.author?.name, summary: r.summary,
+      location: locationFromReportContent(r.content),
       content: r.content,
       href: reportHref(r.id),
       customerHref: r.customer ? customerHref(r.customer.id) : null,
@@ -482,10 +515,13 @@ const impl = {
         visitReportId: true,
         user: { select: { name: true } },
         customer: { select: { id: true, name: true } },
+        visitReport: { select: { id: true, title: true } },
       },
     });
     return rows.map((e) => ({
       ...e,
+      type: e.category === 'REMINDER' ? 'reminder' : 'event',
+      reportTitle: e.visitReport?.title || null,
       href: eventHref(e),
       customerHref: e.customer ? customerHref(e.customer.id) : null,
     }));
@@ -657,14 +693,19 @@ const impl = {
         start: { lte: soon },
       },
       orderBy: { start: 'asc' },
-      include: { customer: { select: { id: true, name: true } } },
+      include: {
+        customer: { select: { id: true, name: true } },
+        visitReport: { select: { id: true, title: true } },
+      },
     });
     return rows.map((e) => ({
       id: e.id,
+      type: 'reminder',
       title: e.title,
       start: e.start,
       status: e.status,
       visitReportId: e.visitReportId,
+      reportTitle: e.visitReport?.title || null,
       customer: e.customer ? { id: e.customer.id, name: e.customer.name, href: customerHref(e.customer.id) } : null,
       href: eventHref(e),
     }));

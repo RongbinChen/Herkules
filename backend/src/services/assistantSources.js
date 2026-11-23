@@ -23,6 +23,56 @@ const TOOL_TYPE = {
   ask_contracts: 'contracts',
 };
 
+const KNOWN_TYPES = new Set([
+  'customer', 'project', 'report', 'hot', 'event', 'bidopen', 'trip',
+  'followup', 'reminder', 'field-service', 'contracts', 'record',
+]);
+
+export function locationFromReportContent(content) {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return null;
+  const direct = content.meta && typeof content.meta.location === 'string'
+    ? content.meta.location.trim()
+    : '';
+  return direct || null;
+}
+
+export function inferSourceType(row, fallback = 'record') {
+  if (row && typeof row.type === 'string' && KNOWN_TYPES.has(row.type)) return row.type;
+  const href = toAppPath(row?.href) || (typeof row?.href === 'string' ? row.href : '');
+  if (/[#?].*remind|[#?]remind|#remind-/.test(href) || /remindDate=/.test(href) || /#remind-/.test(href)) {
+    return 'reminder';
+  }
+  if (href.startsWith('/visit-reports/')) return 'report';
+  if (href.startsWith('/customers/')) return 'customer';
+  if (href.startsWith('/followups/')) return 'followup';
+  if (href.startsWith('/hotprojects')) return 'hot';
+  if (href.startsWith('/trips/')) return 'trip';
+  if (href.startsWith('/calendar')) return 'event';
+  if (href.startsWith('/chinabidding/bidopen') || href.startsWith('/bidopen/share')) return 'bidopen';
+  if (href.startsWith('/chinabidding')) return 'project';
+  if (href.startsWith('/contracts')) return 'contracts';
+  if (row?.category === 'REMINDER') return 'reminder';
+  return KNOWN_TYPES.has(fallback) ? fallback : 'record';
+}
+
+function customerName(row) {
+  if (!row) return null;
+  if (row.customer && typeof row.customer === 'object' && row.customer.name) {
+    return String(row.customer.name).trim() || null;
+  }
+  if (typeof row.customer === 'string' && row.customer.trim()) return row.customer.trim();
+  return null;
+}
+
+function authorName(row) {
+  if (!row) return null;
+  if (row.author && typeof row.author === 'object' && row.author.name) {
+    return String(row.author.name).trim() || null;
+  }
+  if (typeof row.author === 'string' && row.author.trim()) return row.author.trim();
+  return null;
+}
+
 function asArray(result) {
   if (Array.isArray(result)) return result;
   if (!result || typeof result !== 'object') return [];
@@ -37,7 +87,7 @@ function asArray(result) {
   return nested;
 }
 
-function cardFromRow(row, type) {
+function cardFromRow(row, fallbackType) {
   if (!row || typeof row !== 'object') return null;
   const href = toAppPath(row.href) || (row.shareUrl && String(row.shareUrl).startsWith('https://www.herkulesgroup-china.com/') ? row.shareUrl : null);
   if (!href) return null;
@@ -50,15 +100,37 @@ function cardFromRow(row, type) {
     || '',
   ).trim();
   if (!title) return null;
-  const card = {
-    type: row.type || type,
-    title,
-    href,
-  };
-  if (row.subtitle) card.subtitle = String(row.subtitle);
-  else if (row.customer?.name) card.subtitle = String(row.customer.name);
-  else if (typeof row.customer === 'string' && row.customer) card.subtitle = row.customer;
-  else if (row.purchaser) card.subtitle = String(row.purchaser);
+  const type = inferSourceType({ ...row, href }, fallbackType);
+  const card = { type, title, href };
+
+  if (type === 'report') {
+    if (row.visitDate) card.visitDate = row.visitDate;
+    const location = row.location || locationFromReportContent(row.content);
+    if (location) card.location = String(location);
+    if (row.summary) card.summary = String(row.summary);
+    const customer = customerName(row);
+    if (customer) card.customer = customer;
+    const author = authorName(row);
+    if (author) card.author = author;
+  } else if (type === 'reminder' || type === 'event') {
+    if (row.start) card.start = row.start;
+    if (row.location) card.location = String(row.location);
+    const visitReportId = row.visitReportId || null;
+    if (visitReportId) card.visitReportId = visitReportId;
+    const reportTitle = row.reportTitle || row.visitReport?.title;
+    if (reportTitle) card.reportTitle = String(reportTitle);
+    const customer = customerName(row);
+    if (customer) card.customer = customer;
+  } else if (row.subtitle) {
+    card.subtitle = String(row.subtitle);
+  } else if (row.customer?.name) {
+    card.subtitle = String(row.customer.name);
+  } else if (typeof row.customer === 'string' && row.customer) {
+    card.subtitle = row.customer;
+  } else if (row.purchaser) {
+    card.subtitle = String(row.purchaser);
+  }
+
   if (row.locked) card.locked = true;
   if (row.sensitive) card.sensitive = true;
   return card;
@@ -68,9 +140,9 @@ export function sourcesFromSteps(steps = []) {
   const seen = new Set();
   const cards = [];
   for (const step of steps) {
-    const type = TOOL_TYPE[step?.tool] || 'record';
+    const fallbackType = TOOL_TYPE[step?.tool] || 'record';
     for (const row of asArray(step?.result)) {
-      const card = cardFromRow(row, type);
+      const card = cardFromRow(row, fallbackType);
       if (!card) continue;
       const key = `${card.type}:${card.href}`;
       if (seen.has(key)) continue;

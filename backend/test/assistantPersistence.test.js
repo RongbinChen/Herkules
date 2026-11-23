@@ -73,3 +73,37 @@ test('thread titles are trimmed and never contain a raw leftover prompt dump', (
   assert.ok(threadTitleFrom('x'.repeat(200)).endsWith('…'));
   assert.equal(threadTitleFrom(''), 'New conversation');
 });
+
+test('visitDate, location and summary are kept on stored report source cards, not content or amounts', () => {
+  const stored = sourcesForStore([{
+    type: 'report',
+    title: 'Plant visit',
+    href: '/visit-reports/57',
+    visitDate: '2026-10-28',
+    location: 'Shanghai yard',
+    summary: 'Discussed delivery time.',
+    customer: 'COSCO',
+    author: 'Anna',
+    content: 'Do not persist the body',
+    snippet: AMOUNT,
+  }, {
+    type: 'reminder',
+    title: 'Keep contact (WRC)',
+    href: '/visit-reports/57?remindDate=2026-11-30#remind-abc',
+    start: '2026-11-30T01:00:00.000Z',
+    visitReportId: 57,
+    reportTitle: 'Plant visit',
+  }]);
+  assert.equal(stored[0].visitDate, '2026-10-28');
+  assert.equal(stored[0].location, 'Shanghai yard');
+  assert.equal(stored[0].summary, 'Discussed delivery time.');
+  assert.equal(stored[0].customer, 'COSCO');
+  assert.equal(stored[0].author, 'Anna');
+  assert.equal(stored[0].content, undefined);
+  assert.equal(stored[0].snippet, undefined);
+  assert.equal(JSON.stringify(stored).includes(AMOUNT), false);
+  assert.equal(JSON.stringify(stored).includes('Do not persist the body'), false);
+  assert.equal(stored[1].visitReportId, 57);
+  assert.equal(stored[1].reportTitle, 'Plant visit');
+  assert.equal(stored[1].start, '2026-11-30T01:00:00.000Z');
+});

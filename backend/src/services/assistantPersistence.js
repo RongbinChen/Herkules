@@ -63,6 +63,14 @@ export function sourcesForStore(sources = []) {
       href: s.href,
     };
     if (s.subtitle) card.subtitle = s.subtitle;
+    if (s.visitDate) card.visitDate = s.visitDate;
+    if (s.location) card.location = String(s.location);
+    if (s.summary) card.summary = String(s.summary);
+    if (s.customer) card.customer = String(s.customer);
+    if (s.author) card.author = String(s.author);
+    if (s.start) card.start = s.start;
+    if (s.visitReportId) card.visitReportId = s.visitReportId;
+    if (s.reportTitle) card.reportTitle = String(s.reportTitle);
     if (s.locked) card.locked = true;
     if (s.sensitive) card.sensitive = true;
     return card;
