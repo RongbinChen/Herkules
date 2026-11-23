@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sourcesFromSteps, suggestionsFromSteps } from '../src/services/assistantSources.js';
+import { sourcesFromSteps, suggestionsFromSteps, locationFromReportContent, inferSourceType } from '../src/services/assistantSources.js';
 
 test('source cards are built from tool hrefs and ignore invented URLs', () => {
   const cards = sourcesFromSteps([
@@ -53,4 +53,64 @@ test('get_customer nested records with hrefs also become source cards', () => {
     },
   }]);
   assert.deepEqual(cards.map((c) => c.href), ['/customers/12', '/visit-reports/57', '/followups/8']);
+});
+
+test('nested get_customer visit reports and reminders get the right type and overview fields', () => {
+  const cards = sourcesFromSteps([{
+    tool: 'get_customer',
+    result: {
+      id: 12, name: 'COSCO Shipping Heavy Industry (Shanghai)', title: 'COSCO Shipping Heavy Industry (Shanghai)', href: '/customers/12',
+      visitReports: [{
+        id: 57,
+        title: 'Shanghai Hongguang Boiler Reference Visit for COSCO machining',
+        href: '/visit-reports/57',
+        visitDate: '2026-10-30T00:00:00.000Z',
+        location: 'Shanghai Hongguang',
+        summary: 'Reference visit to compare machining capacity.',
+        customer: 'COSCO Shipping Heavy Industry (Shanghai)',
+      }],
+      recentEvents: [{
+        id: 504,
+        title: '⏰ Keep contact (WRC)',
+        category: 'REMINDER',
+        visitReportId: 57,
+        reportTitle: 'Shanghai Hongguang Boiler Reference Visit for COSCO machining',
+        start: '2026-11-30T01:00:00.000Z',
+        href: '/visit-reports/57?remindDate=2026-11-30#remind-abc',
+      }],
+    },
+  }]);
+  assert.deepEqual(cards.map((c) => c.type), ['customer', 'report', 'reminder']);
+  const report = cards[1];
+  assert.equal(report.location, 'Shanghai Hongguang');
+  assert.equal(report.summary, 'Reference visit to compare machining capacity.');
+  assert.equal(report.visitDate, '2026-10-30T00:00:00.000Z');
+  assert.equal(report.customer, 'COSCO Shipping Heavy Industry (Shanghai)');
+  const reminder = cards[2];
+  assert.equal(reminder.type, 'reminder');
+  assert.equal(reminder.visitReportId, 57);
+  assert.equal(reminder.reportTitle, 'Shanghai Hongguang Boiler Reference Visit for COSCO machining');
+  assert.equal(reminder.href, '/visit-reports/57?remindDate=2026-11-30#remind-abc');
+});
+
+test('href inference relabels nested reports even when the tool type is customer', () => {
+  const cards = sourcesFromSteps([{
+    tool: 'get_customer',
+    result: {
+      id: 12, name: 'Demo Co', href: '/customers/12',
+      visitReports: [{ id: 57, title: 'Plant visit', href: '/visit-reports/57', visitDate: '2026-10-28', summary: 'Talked about delivery.' }],
+    },
+  }]);
+  assert.equal(cards[0].type, 'customer');
+  assert.equal(cards[1].type, 'report');
+  assert.equal(cards[1].summary, 'Talked about delivery.');
+  assert.equal(inferSourceType({ href: '/visit-reports/57' }, 'customer'), 'report');
+  assert.equal(inferSourceType({ href: '/visit-reports/57?remindDate=2026-11-30#remind-abc' }, 'customer'), 'reminder');
+});
+
+test('location is read from stored report content.meta and not invented', () => {
+  assert.equal(locationFromReportContent({ meta: { location: 'Baoji' } }), 'Baoji');
+  assert.equal(locationFromReportContent({ meta: { location: '  ' } }), null);
+  assert.equal(locationFromReportContent({ originalBody: 'Location: somewhere' }), null);
+  assert.equal(locationFromReportContent(null), null);
 });

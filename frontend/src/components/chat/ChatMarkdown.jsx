@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 // ── Minimal markdown rendering for assistant replies ─────────────────────────
 // Handles: **bold**, [text](url) + bare URLs (break-all so long share links
-// can't overflow the bubble), headings, lists, hr, and pipe tables (rendered
-// as real tables inside a horizontal-scroll container).
+// can't overflow the bubble), headings, bullet lists, numbered lists (with
+// indented sub-lines such as Date / Overview / Report link), hr, and pipe
+// tables (rendered as real tables inside a horizontal-scroll container).
 //
 // Lifted verbatim out of CommandSearch so the trip-planning chat renders
 // replies identically. Deliberately not a markdown library: assistant replies
@@ -31,17 +32,26 @@ export function inline(s) {
 
 const TABLE_SEP_RE = /^\|?[\s:|-]+\|?$/
 const parseRow = (ln) => ln.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+const OL_RE = /^(\d+)\.\s+(.*)$/
 
 export function Md({ text }) {
   const lines = String(text || '').split('\n')
   const out = []
   let list = []
+  let listKind = 'ul'
   const flush = (k) => {
-    if (list.length) { out.push(<ul key={`l${k}`} className="ml-4 list-disc space-y-0.5">{list}</ul>); list = [] }
+    if (list.length) {
+      const Tag = listKind === 'ol' ? 'ol' : 'ul'
+      const cls = listKind === 'ol' ? 'ml-5 list-decimal space-y-2' : 'ml-4 list-disc space-y-0.5'
+      out.push(<Tag key={`l${k}`} className={cls}>{list}</Tag>)
+      list = []
+      listKind = 'ul'
+    }
   }
   let i = 0
   while (i < lines.length) {
-    const t = lines[i].trim()
+    const raw = lines[i]
+    const t = raw.trim()
     // Pipe table: header row + separator row (+ data rows) → real scrollable table.
     if (t.startsWith('|') && (lines[i + 1] || '').trim().startsWith('|') && TABLE_SEP_RE.test((lines[i + 1] || '').trim())) {
       flush(i)
@@ -70,7 +80,41 @@ export function Md({ text }) {
       i = j
       continue
     }
-    if (/^[-*•] /.test(t)) { list.push(<li key={i}>{inline(t.slice(2))}</li>); i++; continue }
+    const ol = OL_RE.exec(t)
+    if (ol) {
+      if (listKind !== 'ol') flush(i)
+      listKind = 'ol'
+      const parts = [ol[2]]
+      i += 1
+      while (i < lines.length) {
+        const nxtRaw = lines[i]
+        const nxt = nxtRaw.trim()
+        if (!nxt) {
+          const peek = (lines[i + 1] || '')
+          if (/^(?: {2,}|\t)/.test(peek) || OL_RE.test(peek.trim())) { i += 1; continue }
+          break
+        }
+        if (OL_RE.test(nxt) && !/^\s/.test(nxtRaw)) break
+        if (/^(?: {2,}|\t)/.test(nxtRaw)) { parts.push(nxt); i += 1; continue }
+        break
+      }
+      list.push(
+        <li key={`o${i}`} className="pl-0.5">
+          <div className="font-semibold leading-snug text-slate-800">{inline(parts[0])}</div>
+          {parts.slice(1).map((line, li) => (
+            <div key={li} className="mt-0.5 text-sm font-normal leading-relaxed text-slate-600">{inline(line)}</div>
+          ))}
+        </li>
+      )
+      continue
+    }
+    if (/^[-*•] /.test(t)) {
+      if (listKind !== 'ul') flush(i)
+      listKind = 'ul'
+      list.push(<li key={i}>{inline(t.slice(2))}</li>)
+      i += 1
+      continue
+    }
     flush(i)
     if (t) {
       if (/^-{3,}$/.test(t)) { out.push(<hr key={i} className="my-2 border-slate-100" />) }
@@ -80,7 +124,7 @@ export function Md({ text }) {
         else out.push(<p key={i}>{inline(t)}</p>)
       }
     }
-    i++
+    i += 1
   }
   flush('end')
   return <div className="min-w-0 space-y-1.5 break-words text-sm leading-relaxed text-slate-700">{out}</div>
