@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { addMonths, endOfMonth, endOfWeek, eachDayOfInterval, format, isSameDay, isSameMonth, startOfMonth, startOfWeek, subMonths } from 'date-fns'
 import { customersAPI, agentsAPI } from '../api/api'
 import { HALF_DAY_WINDOWS, beijingWallToIso, detectHalfDay, toBeijingWall, toHalfDayRange } from '../utils/halfDay'
+import SearchableSelect from './SearchableSelect'
 
 const CATEGORY_OPTIONS = [
   { value: 'WORK_SESSION', label: 'Internal Coordination' },
@@ -393,6 +394,11 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
     setHalfDay('')
   }, [event, currentUser])
 
+  const customerOptions = useMemo(
+    () => customers.map((customer) => ({ value: String(customer.id), label: customer.name })),
+    [customers],
+  )
+
   if (!isOpen) return null
 
   function updateField(key, value) {
@@ -607,17 +613,17 @@ export default function EventModal({ isOpen, onClose, onSave, onDelete, event, u
                     )}
                   </div>
 
-                  <select
+                  <SearchableSelect
+                    options={customerOptions}
                     value={form.customerId}
-                    onChange={(event) => updateField('customerId', event.target.value)}
+                    onChange={(next) => updateField('customerId', next)}
                     disabled={readOnly}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-slate-900 outline-none transition focus:border-brand-500 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-600"
-                  >
-                    <option value="">Customer Selection</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>{customer.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Customer Selection"
+                    searchPlaceholder="Search customers…"
+                    emptyMessage="No matching customers"
+                    aria-label="Customer"
+                    id="activity-customer"
+                  />
 
                   {selectedCustomer && (selectedCustomer.contactName || selectedCustomer.contactPhone || selectedCustomer.address) && (
                     <div className="mt-2 space-y-0.5 text-xs text-slate-500">
