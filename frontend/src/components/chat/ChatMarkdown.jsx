@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { ASK_AI_FROM, linkStateForSearch, withFromSearch } from '../../utils/appBack'
 // ── Minimal markdown rendering for assistant replies ─────────────────────────
 // Handles: **bold**, [text](url) + bare URLs (break-all so long share links
 // can't overflow the bubble), headings, bullet lists, numbered lists (with
@@ -15,13 +16,17 @@ export function bold(s, key) {
 
 const APP_PATH = /^\/(customers|visit-reports|chinabidding|hotprojects|followups|trips|contracts|calendar|search|trip\/share|bidopen\/share)(\/|\?|#|$)/
 
-export function inline(s) {
+export function inline(s, opts = {}) {
+  const from = opts.from
+  const threadId = opts.threadId
   const parts = String(s).split(/(\[[^\]]+\]\((?:https?:\/\/[^)]+|\/[^)]+)\)|https?:\/\/[^\s)]+)/g)
   return parts.map((p, i) => {
     if (!p) return null
     const mdApp = p.match(/^\[([^\]]+)\]\((\/[^)]+)\)$/)
     if (mdApp && APP_PATH.test(mdApp[2])) {
-      return <Link key={i} to={mdApp[2]} className="break-all font-semibold text-brand-600 underline">{mdApp[1]}</Link>
+      const href = from === ASK_AI_FROM ? withFromSearch(mdApp[2], { threadId }) : mdApp[2]
+      const state = from === ASK_AI_FROM ? linkStateForSearch(threadId) : undefined
+      return <Link key={i} to={href} state={state} className="break-all font-semibold text-brand-600 underline">{mdApp[1]}</Link>
     }
     const md = p.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/)
     if (md) return <a key={i} href={md[2]} target="_blank" rel="noreferrer" className="break-all font-semibold text-brand-600 underline">{md[1]}</a>
@@ -34,7 +39,7 @@ const TABLE_SEP_RE = /^\|?[\s:|-]+\|?$/
 const parseRow = (ln) => ln.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
 const OL_RE = /^(\d+)\.\s+(.*)$/
 
-export function Md({ text }) {
+export function Md({ text, from, threadId }) {
   const lines = String(text || '').split('\n')
   const out = []
   let list = []
@@ -70,7 +75,7 @@ export function Md({ text }) {
             <tbody>
               {rows.map((r, ri) => (
                 <tr key={ri} className="even:bg-slate-50/50">
-                  {header.map((_, ci) => <td key={ci} className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700">{inline(r[ci] ?? '')}</td>)}
+                  {header.map((_, ci) => <td key={ci} className="whitespace-nowrap border-b border-slate-100 px-2 py-1.5 text-slate-700">{inline(r[ci] ?? '', { from, threadId })}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -100,9 +105,9 @@ export function Md({ text }) {
       }
       list.push(
         <li key={`o${i}`} className="pl-0.5">
-          <div className="font-semibold leading-snug text-slate-800">{inline(parts[0])}</div>
+          <div className="font-semibold leading-snug text-slate-800">{inline(parts[0], { from, threadId })}</div>
           {parts.slice(1).map((line, li) => (
-            <div key={li} className="mt-0.5 text-sm font-normal leading-relaxed text-slate-600">{inline(line)}</div>
+            <div key={li} className="mt-0.5 text-sm font-normal leading-relaxed text-slate-600">{inline(line, { from, threadId })}</div>
           ))}
         </li>
       )
@@ -111,7 +116,7 @@ export function Md({ text }) {
     if (/^[-*•] /.test(t)) {
       if (listKind !== 'ul') flush(i)
       listKind = 'ul'
-      list.push(<li key={i}>{inline(t.slice(2))}</li>)
+      list.push(<li key={i}>{inline(t.slice(2), { from, threadId })}</li>)
       i += 1
       continue
     }
@@ -120,8 +125,8 @@ export function Md({ text }) {
       if (/^-{3,}$/.test(t)) { out.push(<hr key={i} className="my-2 border-slate-100" />) }
       else {
         const h = t.match(/^#{1,4}\s+(.*)/)
-        if (h) out.push(<p key={i} className="mt-1.5 font-bold text-slate-800">{inline(h[1])}</p>)
-        else out.push(<p key={i}>{inline(t)}</p>)
+        if (h) out.push(<p key={i} className="mt-1.5 font-bold text-slate-800">{inline(h[1], { from, threadId })}</p>)
+        else out.push(<p key={i}>{inline(t, { from, threadId })}</p>)
       }
     }
     i += 1

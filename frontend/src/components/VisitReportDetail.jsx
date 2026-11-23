@@ -14,6 +14,7 @@ import { hasPreservedLetterhead } from '../../../shared/originalBodyBlocks.js'
 import { displayTitle } from '../../../shared/markdownEmphasis.js'
 import DeleteReportButton from './visit-report/DeleteReportButton'
 import { remindAnchors } from '../utils/remindAnchor'
+import useAppBack from '../hooks/useAppBack'
 
 // Full-page article view for one visit report — the modal stays for create/edit,
 // but reading happens here with room to breathe (esp. on desktop).
@@ -27,6 +28,7 @@ export default function VisitReportDetail() {
   const t = STRINGS[lang]
   const SECTIONS = SECTIONS_I18N.map((s) => ({ key: s.key, label: s[lang] }))
   const META_FIELDS = META_FIELDS_I18N.map((m) => ({ key: m.key, label: m[lang] }))
+  const { go: goBack, label: backLabel } = useAppBack('/visit-reports', t.backToList, lang)
 
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -118,8 +120,8 @@ export default function VisitReportDetail() {
     return (
       <div className="mx-auto max-w-3xl p-8 text-center">
         <p className="text-slate-500">{t.notFound}</p>
-        <button onClick={() => navigate('/visit-reports')} className="mt-4 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-          {t.backToList}
+        <button onClick={goBack} className="mt-4 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+          {backLabel}
         </button>
       </div>
     )
@@ -152,9 +154,9 @@ export default function VisitReportDetail() {
       <div className="mx-auto max-w-3xl px-4 py-6">
         {/* Toolbar */}
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-          <button onClick={() => navigate('/visit-reports')}
+          <button onClick={goBack}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-            {t.backToList}
+            {backLabel}
           </button>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-semibold shadow-sm">

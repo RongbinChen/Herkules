@@ -1,4 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { recordNavigation } from './utils/appBack'
 import { useAuth } from './context/AuthContext'
 import Login from './components/Login'
 import Calendar from './components/Calendar'
@@ -24,11 +26,21 @@ import CommandSearch from './components/CommandSearch'
 import HotProjects from './components/HotProjects'
 import ProjectFollowUps from './components/ProjectFollowUps'
 
+function NavigationTracker() {
+  const location = useLocation()
+  useEffect(() => {
+    recordNavigation(location.pathname, location.search)
+  }, [location.pathname, location.search])
+  return null
+}
+
 function App() {
   const { token } = useAuth()
 
   return (
-    <Routes>
+    <>
+      <NavigationTracker />
+      <Routes>
       <Route path="/preview/lamp-login" element={<LampLoginPreview />} />
       <Route path="/login" element={!token ? <Login /> : <Navigate to="/" />} />
       <Route path="/" element={token ? <Dashboard /> : <Navigate to="/login" />} />
@@ -55,7 +67,8 @@ function App() {
       <Route path="/trip/share/:token" element={<TripShare />} />
       <Route path="/customers/share/:token" element={<CustomerShare />} />
       <Route path="/bidopen/share/:token" element={<BidOpeningShare />} />
-    </Routes>
+      </Routes>
+    </>
   )
 }
 

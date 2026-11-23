@@ -12,6 +12,8 @@ import { agentsAPI, customersAPI, eventsAPI, holidaysAPI, usersAPI } from '../ap
 import { BEIJING_TIME_ZONE, beijingDayKey, beijingWallToIso, formatBeijingDayHeading, formatBeijingDisplay, formatBeijingMonthDay } from '../utils/halfDay'
 import { exclusiveAllDayEnd, holidayRange, isValidInstant } from '../utils/calendarEvents'
 import { parseIdParam } from '../utils/deepLink'
+import AskAiBackButton from './AskAiBackButton'
+import useAppBack from '../hooks/useAppBack'
 import EventModal from './EventModal'
 import CalendarErrorBoundary from './CalendarErrorBoundary'
 import ProfileModal from './ProfileModal'
@@ -524,6 +526,7 @@ export default function Calendar() {
   const SPLIT_VIEW_BREAKPOINT = 1220
   const { logout, user, updateUser } = useAuth()
   const navigate = useNavigate()
+  const askAiBack = useAppBack(null, '')
   const [searchParams] = useSearchParams()
   const openedEventRef = useRef(null)
   const calendarRef = useRef(null)
@@ -1258,6 +1261,7 @@ export default function Calendar() {
                   </svg>
                 </button>
               )}
+              <AskAiBackButton className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300" />
               <button
                 type="button"
                 onClick={() => navigate('/')}
@@ -1671,6 +1675,7 @@ export default function Calendar() {
         onClose={() => {
           setModalOpen(false)
           setSelectedEvent(null)
+          if (askAiBack.source === 'search') askAiBack.go()
         }}
         onSave={handleSaveActivity}
         onDelete={handleDeleteActivity}

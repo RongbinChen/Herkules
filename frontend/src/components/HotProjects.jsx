@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { Button, Input, Textarea, Badge } from './ui'
 import HotMiniCalendar from './HotMiniCalendar'
 import { parseIdParam } from '../utils/deepLink'
+import AskAiBackButton from './AskAiBackButton'
 
 // Internal sales open/potential projects list (from the WAV Excel template).
 // Sensitive module: per-record visibility (TEAM | PRIVATE = owner+admin only).
@@ -575,6 +576,7 @@ export default function HotProjects() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AskAiBackButton />
             <button onClick={() => navigate('/')}
               className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
               Dashboard
