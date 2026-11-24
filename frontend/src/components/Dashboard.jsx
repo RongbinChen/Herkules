@@ -7,6 +7,7 @@ import { Button, Card } from './ui'
 import UserManagementModal from './UserManagementModal'
 import { visitReportRemindLocation } from '../utils/remindAnchor'
 import { FollowUpStatusSection } from './DashboardFollowUps'
+import AskAiUpgradeBanner from './AskAiUpgradeBanner'
 
 // Lifecycle stage → compact badge for the Watching panel.
 const WATCH_STAGES = {
@@ -422,6 +423,8 @@ export default function Dashboard() {
           </h1>
           <p className="mt-1 text-sm text-slate-500">Select a module to get started.</p>
         </div>
+
+        <AskAiUpgradeBanner />
 
         {/* Due reminders — owner decides: done / postpone / delete */}
         {reminders.length > 0 && (
