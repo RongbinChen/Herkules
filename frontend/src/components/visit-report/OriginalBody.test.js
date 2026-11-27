@@ -343,6 +343,94 @@ test('letterhead chrome is hidden and participants become aligned attendee chips
   assert.doesNotMatch(html, /Parti cipants/)
 })
 
+test('pandoc media image marks are captions, not raw paths, and an unmarked photo is noted', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const { default: VisitReportModal } = await loadJsxModule(path.join(here, '../VisitReportModal.jsx'))
+  const markdown = [
+    'Feedback on WALDRICH COBURG TAURUS:',
+    '',
+    'He generally handles machine-related issues by himself/3^rd^ party.',
+    '',
+    '![](media/image1.png){width="6.495833333333334in" height="3.934722222222222in"}',
+    '',
+    '*Taurus machine installed in a temperature control room*',
+    '',
+    'The installation container is still on the customer\'s premises, as shown in the photo below.',
+    '',
+    '![](media/image2.jpg){width="3.8in" height="2.848886701662292in"}',
+    '',
+    '*WALDRICH COBURG installation container remaining on site.*',
+    '',
+    '![](media/image3.png){width="4.25in" height="2.5in"}',
+    '',
+    'Production continued on the next shift.',
+  ].join('\n')
+  const photos = [
+    { storedName: 'a.png', kind: 'image', name: 'image1.png', caption: 'The Taurus machine is installed in a temperature-controlled room.' },
+    { storedName: 'b.jpg', kind: 'image', name: 'image2.jpg', caption: 'The WALDRICH COBURG installation container remains on site.' },
+    { storedName: 'c.png', kind: 'image', name: 'image3.png', caption: 'A spindle housing waiting for inspection.' },
+  ]
+  const html = renderToStaticMarkup(createElement(OriginalBody, { markdown, photos, lang: 'en' }))
+
+  assert.doesNotMatch(html, /!\[\]\(media\//)
+  assert.doesNotMatch(html, /\{width=/)
+  assert.doesNotMatch(html, /media\/image/)
+  assert.doesNotMatch(html, /6\.495833333333334in/)
+  assert.doesNotMatch(html, /2\.848886701662292in/)
+  assert.doesNotMatch(html, /data-inline-photo/)
+  assert.equal((html.match(/Taurus machine installed in a temperature control room/g) || []).length, 1)
+  assert.equal((html.match(/WALDRICH COBURG installation container remaining on site/g) || []).length, 1)
+  assert.match(html, /<em>Taurus machine installed in a temperature control room<\/em>/)
+  assert.match(html, /<em>WALDRICH COBURG installation container remaining on site\.<\/em>/)
+  const taurusAt = html.indexOf('<em>Taurus machine')
+  assert.ok(html.lastIndexOf('<p', taurusAt) > html.lastIndexOf('<h3', taurusAt))
+  assert.doesNotMatch(html, /See the photo below: The Taurus machine/)
+  assert.doesNotMatch(html, /See the photo below: The WALDRICH COBURG/)
+  assert.match(html, /data-photo-note/)
+  assert.match(html, /See the photo below: A spindle housing waiting for inspection\./)
+  assert.equal((html.match(/data-photo-note/g) || []).length, 1)
+  assert.match(html, /himself\/3/)
+  assert.match(html, /<sup>rd<\/sup>/)
+  assert.doesNotMatch(html, /\^/)
+  assert.ok(html.indexOf('See the photo below: A spindle housing waiting for inspection.') < html.indexOf('Production continued on the next shift.'))
+  assert.match(html, /as shown in the photo below/)
+
+  const report = {
+    id: 54,
+    title: 'Wuxi TAURUS visit',
+    status: 'FINAL',
+    visitDate: '2026-11-12T00:00:00.000Z',
+    canEdit: true,
+    author: { id: 7, name: 'Ada North' },
+    customer: { id: 3, name: 'COSCO' },
+    content: { bodySource: 'original', originalBody: markdown },
+    attachments: photos,
+  }
+  const read = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.doesNotMatch(read, /!\[\]\(media\/|\{width=|media\/image|6\.495833333333334in/)
+  assert.match(read, /Report photos/)
+  assert.equal((read.match(/Taurus machine installed in a temperature control room/g) || []).length, 1)
+  const galleryAt = read.indexOf('Report photos')
+  assert.ok(read.indexOf('Taurus machine installed in a temperature control room') < galleryAt)
+  assert.ok(read.indexOf('The Taurus machine is installed in a temperature-controlled room.') > galleryAt)
+  assert.ok(read.indexOf('The WALDRICH COBURG installation container remains on site.') > galleryAt)
+  assert.ok(read.indexOf('A spindle housing waiting for inspection.') < galleryAt)
+  assert.ok(read.indexOf('A spindle housing waiting for inspection.') > 0)
+  const galleryCaptionAt = read.indexOf('A spindle housing waiting for inspection.', galleryAt)
+  assert.ok(galleryCaptionAt > galleryAt)
+
+  const editing = renderToStaticMarkup(createElement(VisitReportModal, {
+    report, startEditing: true, lang: 'en', currentUserId: 7, onClose: () => {}, onSaved: () => {},
+  }))
+  assert.match(editing, /!\[\]\(media\/image1\.png\)/)
+  assert.match(editing, /6\.495833333333334in/)
+  assert.match(editing, /!\[\]\(media\/image2\.jpg\)/)
+  assert.match(editing, /2\.848886701662292in/)
+  assert.equal(report.content.originalBody, markdown)
+})
+
 test('pandoc emphasis is shown as typography, not raw asterisks or underline spans', async () => {
   const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
   const html = renderToStaticMarkup(createElement(OriginalBody, {

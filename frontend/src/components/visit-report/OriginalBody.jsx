@@ -5,6 +5,9 @@
 //
 // Leftover `[]` marks from the Word import are replaced with the matching
 // photos (document order). A line of `[] []` stays a photo row.
+// Pandoc `![](media/imageN.ext){width=…}` marks stay out of the body: a
+// following italic caption is kept, and any other mark becomes a note that
+// points at the photo in the gallery below.
 // Letterhead / participants tables become the report meta card and attendee
 // chips already used on structured reports.
 
@@ -20,6 +23,7 @@ import useReportPhotoSrcs from './useReportPhotoSrcs'
 
 function styledSegment(segment, key) {
   let node = segment.text
+  if (segment.sup) node = <sup>{node}</sup>
   if (segment.strike) node = <s className="line-through">{node}</s>
   if (segment.mark) node = <mark className="rounded-sm bg-amber-100 px-0.5 text-inherit">{node}</mark>
   if (segment.underline) node = <u className="underline">{node}</u>
@@ -31,7 +35,7 @@ function styledSegment(segment, key) {
 function EmphasisText({ text }) {
   const segments = parseEmphasis(text)
   if (!segments.length) return null
-  if (segments.length === 1 && !segments[0].bold && !segments[0].italic && !segments[0].underline && !segments[0].mark && !segments[0].strike) {
+  if (segments.length === 1 && !segments[0].bold && !segments[0].italic && !segments[0].underline && !segments[0].mark && !segments[0].strike && !segments[0].sup) {
     return segments[0].text
   }
   return segments.map((segment, index) => styledSegment(segment, index))
@@ -220,6 +224,13 @@ export default function OriginalBody({ markdown, photos, reportId = null, draft 
         }
         if (block.parts) {
           return <MixedText key={index} parts={block.parts} {...photoProps} />
+        }
+        if (block.photoNote) {
+          return (
+            <p key={index} data-photo-note className="whitespace-pre-wrap break-words italic leading-relaxed text-slate-600">
+              <EmphasisText text={block.text} />
+            </p>
+          )
         }
         if (block.aside) {
           return <p key={index} className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-500"><EmphasisText text={block.text} /></p>
