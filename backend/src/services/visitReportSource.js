@@ -3,7 +3,7 @@
 import { unzipSync } from './visitReportPhotos.js';
 import { SUMMARY_MODEL } from './visitReport.js';
 import { stripEmphasis } from '../../../shared/markdownEmphasis.js';
-import { letterheadMetaFields, mergeLetterheadHeaderMeta } from '../../../shared/originalBodyBlocks.js';
+import { isChromeParagraph, isUsableSourceTitle, letterheadMetaFields, mergeLetterheadHeaderMeta } from '../../../shared/originalBodyBlocks.js';
 
 export const BODY_SOURCE = 'original';
 export const MAX_ORIGINAL_CHARS = 1_500_000;
@@ -321,17 +321,25 @@ export function preservedDraft({
   };
 }
 
-// First heading, else the first substantial line. Not a model title.
+// First real heading, else the first title-like line. Template leftovers such
+// as "Please select type of report" or a bare "Visit Report" are skipped, and
+// a following body paragraph is not used as the title (the generate path
+// asks the model for one instead). Not itself a model title.
 export function titleFromSource(markdown) {
   const lines = String(markdown || '').split(/\n/);
   const visible = (value) => normalizeSpace(stripEmphasis(value));
   for (const line of lines) {
     const heading = line.match(/^#{1,4}\s+(.+)$/);
-    if (heading && visible(heading[1])) return visible(heading[1]).slice(0, 180);
+    if (!heading) continue;
+    const plain = visible(heading[1]);
+    if (plain && !isChromeParagraph(plain)) return plain.slice(0, 180);
   }
   for (const line of lines) {
-    const plain = visible(line.replace(/^[-*]\s+/, '').replace(/^\d+[.)]\s+/, ''));
-    if (plain.length >= 8 && !plain.startsWith('|')) return plain.slice(0, 180);
+    const raw = line.replace(/^#{1,4}\s+/, '').replace(/^[-*]\s+/, '').replace(/^\d+[.)]\s+/, '');
+    const plain = visible(raw);
+    if (!plain || plain.startsWith('|') || isChromeParagraph(plain)) continue;
+    if (isUsableSourceTitle(raw)) return plain.slice(0, 180);
+    if (plain.length >= 8) return null;
   }
   return null;
 }

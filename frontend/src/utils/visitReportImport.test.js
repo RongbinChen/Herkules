@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { chooseImportedCustomer, chooseImportedDate, missingSaveFields, saveValidationMessage, shouldWarnMissingImportedDate, warningMessages } from './visitReportImport.js'
+import { chooseImportedCustomer, chooseImportedDate, chooseImportedTitle, isUnsetImportedTitle, missingSaveFields, saveValidationMessage, shouldWarnMissingImportedDate, warningMessages } from './visitReportImport.js'
 import { HEADER_META_KEYS } from '../../../shared/originalBodyBlocks.js'
 
 test('a Word date fills only a new untouched form, and never invents today', () => {
@@ -133,6 +133,35 @@ test('a preserved import with no letterhead date warns only when the form date i
   assert.equal(shouldWarnMissingImportedDate({
     preserved: false, current: '2026-11-18', suggested: null,
   }), false)
+})
+
+
+test('a template leftover title is treated as unset so Generate can fill it', () => {
+  assert.equal(isUnsetImportedTitle(''), true)
+  assert.equal(isUnsetImportedTitle('   '), true)
+  assert.equal(isUnsetImportedTitle('Please select type of report'), true)
+  assert.equal(isUnsetImportedTitle('Visit Report'), true)
+  assert.equal(isUnsetImportedTitle('拜访报告'), true)
+  assert.equal(isUnsetImportedTitle('Northline grinders reference visit'), false)
+  const suggested = 'Northline grinders reference visit (November 26, 2026)'
+  assert.equal(chooseImportedTitle({ current: '', suggested }), suggested)
+  assert.equal(chooseImportedTitle({ current: 'Please select type of report', suggested }), suggested)
+  assert.equal(chooseImportedTitle({ current: 'Visit Report', suggested }), suggested)
+  assert.equal(chooseImportedTitle({ current: 'Shop walk-through notes', suggested }), 'Shop walk-through notes')
+  assert.equal(chooseImportedTitle({
+    touched: true, current: 'Shop walk-through notes', suggested,
+  }), 'Shop walk-through notes')
+  assert.equal(chooseImportedTitle({ current: 'Please select type of report', suggested: null }), '')
+  assert.deepEqual(missingSaveFields({ title: 'Please select type of report', visitDate: '2026-11-26' }), {
+    missingTitle: true,
+    missingDate: false,
+  })
+})
+
+test('AI Generate Report applies a preserved title through chooseImportedTitle and keeps a user title', () => {
+  const modal = readFileSync(new URL('../components/VisitReportModal.jsx', import.meta.url), 'utf8')
+  assert.match(modal, /chooseImportedTitle\(\{ current: f\.title, suggested: data\.title \}\)/)
+  assert.doesNotMatch(modal, /title: data\.preserved \? \(f\.title \|\| data\.title/)
 })
 
 test('AI Generate Report applies a preserved Word Date of Visit through chooseImportedDate', () => {

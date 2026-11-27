@@ -234,11 +234,25 @@ export function collapseProseSpaces(text) {
   return String(text ?? '').replace(/[ \t]+/g, ' ').trim()
 }
 
-// Leftover Word-template prompt. Hidden on display/export; never turned
-// into a fabricated "report type".
+// Leftover Word-template prompt or bare cover title. Hidden on display/export
+// and treated as "no title" so Generate can fill a real one. Do not match
+// genuine headings such as "Telephone Call Report".
 export function isChromeParagraph(text) {
-  return /^please select type of report\.?$/i.test(collapseProseSpaces(text))
+  const t = collapseProseSpaces(text)
+  if (!t) return false
+  if (/^please select type of report\.?$/i.test(t)) return true
+  if (/^(new\s+)?visit report\.?$/i.test(t)) return true
+  if (/^(新)?拜访报告。?$/.test(t)) return true
+  return false
 }
+
+// A short stand-alone line that can be used as an imported title.
+export function isUsableSourceTitle(text) {
+  const t = collapseProseSpaces(stripEmphasis(text))
+  if (!t || isChromeParagraph(t)) return false
+  return isSectionTitle(text)
+}
+
 
 // Rejoin a mid-word wrap in a short form label ("Parti cipants") without
 // gluing ordinary label words ("Purpose of visit", "Date of Visit").
@@ -337,7 +351,7 @@ function isSectionTitle(text) {
   if (t.length < 8 || t.length > 140) return false
   if (isChromeParagraph(t) || isParentheticalAside(t) || isPlaceholderOnlyLine(t)) return false
   const core = t.replace(/[:：]\s*$/, '')
-  if (/[.!?;]$/.test(t) || /[.!?:;]/.test(core)) return false
+  if (/[.!?;。！？；]$/.test(t) || /[.!?:;。！？；]/.test(core)) return false
   // A trailing colon is only a section label when the source was marked
   // (bold/underline). Plain sentences such as "They ordered ... as follows:"
   // stay body paragraphs.

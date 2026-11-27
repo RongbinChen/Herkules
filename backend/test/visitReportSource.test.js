@@ -552,6 +552,17 @@ test('titleFromSource strips pandoc emphasis from the first substantial line', (
   assert.equal(titleFromSource('Northline visit\n\nShop floor notes'), 'Northline visit');
 });
 
+test('titleFromSource skips Word-template leftovers and does not use a body paragraph as the title', () => {
+  assert.equal(titleFromSource('Please select type of report\n\nThe plant is adding two grinders and wants a single supplier.'), null);
+  assert.equal(titleFromSource('# Please select type of report\n\nThe plant is adding two grinders.'), null);
+  assert.equal(titleFromSource('Visit Report\n\nShop floor notes from the walk-through.'), null);
+  assert.equal(titleFromSource('拜访报告\n\n客户计划增加两台磨床。'), null);
+  assert.equal(
+    titleFromSource('Please select type of report\n\n# Northline grinders reference visit\n\nThe plant is adding two grinders.'),
+    'Northline grinders reference visit',
+  );
+});
+
 test('export keeps body emphasis marks and writes a clean title heading', () => {
   const body = [
     '**[Project briefing:]{.underline}**',

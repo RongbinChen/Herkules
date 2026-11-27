@@ -1,3 +1,5 @@
+import { isChromeParagraph } from '../../../shared/originalBodyBlocks.js'
+
 // A suggested date or customer from the Word file fills an empty new form.
 // An existing report, or a field the user has already changed, is left alone.
 // A missing suggestion does not invent today's date.
@@ -12,6 +14,21 @@ export function chooseImportedCustomer({ touched = false, currentId = '', matche
   if (touched) return currentId || ''
   return currentId || matchedId || ''
 }
+
+export function isUnsetImportedTitle(value) {
+  const title = String(value || '').trim()
+  return !title || isChromeParagraph(title)
+}
+
+// A suggested title from the Word file or the model fills an empty or
+// template-placeholder field. A title the user already typed, or a genuine
+// imported heading, is left alone.
+export function chooseImportedTitle({ touched = false, current = '', suggested = null } = {}) {
+  if (touched) return current || ''
+  if (!isUnsetImportedTitle(current)) return current
+  return suggested || ''
+}
+
 
 export function warningMessages(warnings, t, { hasOriginalFile = false } = {}) {
   const lines = []
@@ -40,7 +57,7 @@ const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/
 
 export function missingSaveFields({ title, visitDate } = {}) {
   return {
-    missingTitle: !String(title || '').trim(),
+    missingTitle: isUnsetImportedTitle(title),
     missingDate: !DATE_ISO.test(String(visitDate || '').trim()),
   }
 }

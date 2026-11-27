@@ -12,6 +12,7 @@ import {
   extractVisitTargets,
   structureVisitReport,
   summarizeVisitReport,
+  titleVisitReport,
 } from '../services/visitReport.js';
 import { missingCreateFieldsError } from '../services/visitReportRequired.js';
 import { captionVisitPhoto, ocrImage, isGeminiConfigured } from '../services/gemini.js';
@@ -393,6 +394,20 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
   }
 
   const meta = sourceMeta(packed.originalBody);
+  let title = titleFromSource(packed.originalBody);
+  // Template leftovers are treated as unset. Ask the model for a title
+  // only when the Word file itself has no usable heading or title line.
+  if (!title) {
+    try {
+      title = await titleVisitReport(packed.originalBody, {
+        customerName: meta.customerName,
+        visitDate: meta.visitDate || visitDate,
+      });
+    } catch (err) {
+      console.error('[visit-report] title left empty:', err.message);
+      title = null;
+    }
+  }
   const draft = preservedDraft({
     originalBody: packed.originalBody,
     warnings,
@@ -400,7 +415,7 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
     summaryError,
     targets,
     targetsError,
-    title: titleFromSource(packed.originalBody),
+    title,
     visitDate: meta.visitDate,
     customerName: meta.customerName,
   });
