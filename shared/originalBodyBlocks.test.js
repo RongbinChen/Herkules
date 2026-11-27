@@ -12,6 +12,7 @@ import {
   letterheadAuthorName,
   letterheadHeaderMeta,
   mergeLetterheadHeaderMeta,
+  isRecoveredAppendixHeading,
   parseOriginalBody,
   rejoinLabelWraps,
   withLetterheadHeaderMeta,
@@ -283,6 +284,50 @@ test('a recovered header appendix can fill empty Report Header keys', () => {
   assert.doesNotMatch(JSON.stringify(meta), /August 19, 2022|C\. Example/)
   assert.equal(letterheadAuthorName(body), 'C. Example')
   assert.equal(mergeLetterheadHeaderMeta({}, body).author, 'C. Example')
+})
+
+test('recovered appendix sections are hidden from the parsed body, and letterhead keys are still read', () => {
+  const body = [
+    'The mill walk-through covered the new grinders.',
+    '',
+    'Text recovered from the document body',
+    '',
+    'Workpiece material: alloy steel.',
+    '',
+    'The customer budget is still under review.',
+    '',
+    'Text recovered from text boxes',
+    '',
+    'A note from a text box.',
+    '',
+    'Text recovered from the header',
+    '',
+    'To',
+    '',
+    'A. Example',
+  ].join('\n')
+  const blocks = parseOriginalBody(body)
+  const text = blocks.map((block) => block.text || '').join('\n')
+  assert.match(text, /The mill walk-through covered the new grinders/)
+  assert.equal(isRecoveredAppendixHeading('Text recovered from the document body'), true)
+  assert.equal(isRecoveredAppendixHeading('# Text recovered from the footer'), true)
+  assert.equal(isRecoveredAppendixHeading('从文档正文中恢复的文字'), true)
+  assert.equal(isRecoveredAppendixHeading('The mill walk-through covered the new grinders.'), false)
+  assert.doesNotMatch(text, /Text recovered from the document body/)
+  assert.doesNotMatch(text, /Workpiece material/)
+  assert.doesNotMatch(text, /customer budget/)
+  assert.doesNotMatch(text, /A note from a text box/)
+  assert.doesNotMatch(text, /Text recovered from the header/)
+  assert.doesNotMatch(text, /A\. Example/)
+  assert.equal(letterheadHeaderMeta(body).recipients, 'A. Example')
+  const md = blocksToMarkdown(blocks)
+  assert.doesNotMatch(md, /Text recovered from/)
+  assert.doesNotMatch(md, /Workpiece material/)
+  const zh = '会谈记录。\n\n从文档正文中恢复的文字\n\n这段不应显示。'
+  const zhText = parseOriginalBody(zh).map((block) => block.text || '').join('\n')
+  assert.match(zhText, /会谈记录/)
+  assert.doesNotMatch(zhText, /不应显示/)
+  assert.doesNotMatch(zhText, /从文档正文中恢复的文字/)
 })
 
 test('a value already saved in meta wins over a letterhead prefill', () => {

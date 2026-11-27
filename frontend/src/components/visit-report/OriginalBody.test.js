@@ -374,3 +374,23 @@ test('pandoc emphasis is shown as typography, not raw asterisks or underline spa
   assert.doesNotMatch(html, /\[Project briefing:/)
   assert.match(html, /font-semibold text-slate-800/)
 })
+
+test('the recovered document-body appendix is not rendered', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const html = renderToStaticMarkup(createElement(OriginalBody, {
+    markdown: [
+      'The mill walk-through covered the new grinders.',
+      '',
+      'Text recovered from the document body',
+      '',
+      'Workpiece material: alloy steel.',
+      '',
+      'The customer budget is still under review.',
+    ].join('\n'),
+  }))
+  assert.match(html, /The mill walk-through covered the new grinders/)
+  assert.doesNotMatch(html, /Text recovered from the document body/)
+  assert.doesNotMatch(html, /Workpiece material/)
+  assert.doesNotMatch(html, /customer budget/)
+})
+
