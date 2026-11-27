@@ -605,7 +605,16 @@ export function hasPreservedLetterhead(markdown) {
 
 // Known letterhead fields, including Date of Visit from a table that did not
 // have enough other fields to be classified as a full letterhead.
-const RECOVERED_HEADING = /^(?:Text recovered from the (?:header|footer|document body)|Text recovered from text boxes)\s*$/i
+const RECOVERED_HEADING = /^(?:Text recovered from the (?:header|footer|document body)|Text recovered from text boxes|从(?:页眉|页脚|文档正文|正文)(?:中)?恢复的(?:文字|文本)|从文本框(?:中)?恢复的(?:文字|文本))\s*$/i
+
+// Importer appendices at the end of originalBody. Kept in storage so
+// letterhead fields can still be read; hidden from the parsed body used
+// for display and export.
+export function isRecoveredAppendixHeading(text) {
+  const t = collapseProseSpaces(stripEmphasis(String(text || '').replace(/^#{1,6}\s+/, '')))
+  return RECOVERED_HEADING.test(t)
+}
+
 
 function nextFilledLine(lines, start) {
   for (let i = start; i < lines.length; i += 1) {
@@ -770,6 +779,14 @@ export function parseOriginalBody(markdown) {
     const line = lines[i]
     if (blank(line)) {
       i += 1
+      continue
+    }
+
+    // Pandoc-missed appendices are stored under these headings. Skip the
+    // heading and its body so the page and the Word export do not show them.
+    if (isRecoveredAppendixHeading(line)) {
+      i += 1
+      while (i < lines.length && !isRecoveredAppendixHeading(lines[i])) i += 1
       continue
     }
 
