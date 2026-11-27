@@ -403,3 +403,81 @@ test('a fax number, Telefax, Phone, CC, or To is not used as the author', () => 
   assert.equal(Object.hasOwn(mergeLetterheadHeaderMeta({}, faxNumber), 'author'), false)
   assert.equal(letterheadAuthorName('To: A. Example\nCC: B. Example\nPhone: 555-0100\n'), '')
 })
+
+const TODO_SIMPLE_TABLE = [
+  '  ---------------------------------------------------- --------------------------- --------------------',
+  '  [To do:]{.underline}                                 [Responsible]{.underline}   [Date]{.underline}',
+  '',
+  '  Update the quotation by replacing the milling head   F. Example/WAV               Dec.. 9',
+  '',
+  '  to do                                                responsible                 date',
+  '  ---------------------------------------------------- --------------------------- --------------------',
+  '',
+  '  -----------------------------------------------------------------------',
+  '  [Mill Status / Plant Status]{.underline}',
+  '',
+  '  mill status / plant status',
+  '  -----------------------------------------------------------------------',
+].join('\n')
+
+test('a leftover To-do header row is hidden and the real item is kept', () => {
+  const blocks = parseOriginalBody(TODO_SIMPLE_TABLE)
+  const table = blocks.find((block) => block.type === 'table')
+  assert.ok(table)
+  assert.equal(table.header.length, 3)
+  assert.match(table.header[0], /To do:/)
+  assert.match(table.header[1], /Responsible/)
+  assert.match(table.header[2], /\[Date\]/)
+  assert.equal(table.rows.length, 1)
+  assert.match(table.rows[0][0], /Update the quotation by replacing the milling head/)
+  assert.equal(table.rows[0][1], 'F. Example/WAV')
+  assert.equal(table.rows[0][2], 'Dec.. 9')
+  const flat = [table.header, ...table.rows].flat().join('\n')
+  assert.doesNotMatch(flat, /^to do$/m)
+  assert.doesNotMatch(flat, /^responsible$/m)
+  assert.doesNotMatch(flat, /^date$/m)
+  const md = blocksToMarkdown(blocks)
+  assert.match(md, /Update the quotation by replacing the milling head/)
+  assert.doesNotMatch(md, /\| to do \|/i)
+  const text = blocks.map((block) => block.text || '').join('\n')
+  assert.match(text, /Mill Status \/ Plant Status/)
+  assert.doesNotMatch(text, /mill status \/ plant status/)
+})
+
+test('a leftover header row is also dropped from pipe and grid tables, but a real item is kept', () => {
+  const pipe = [
+    '| [To do:]{.underline} | [Responsible]{.underline} | [Date]{.underline} |',
+    '| --- | --- | --- |',
+    '| Update the quotation by replacing the milling head | F. Example/WAV | Dec.. 9 |',
+    '| to do | responsible | date |',
+  ].join('\n')
+  const pipeTable = parseOriginalBody(pipe).find((block) => block.type === 'table')
+  assert.equal(pipeTable.rows.length, 1)
+  assert.match(pipeTable.rows[0][0], /Update the quotation/)
+  assert.equal(pipeTable.rows[0][1], 'F. Example/WAV')
+
+  const kept = parseOriginalBody([
+    '| [To do:]{.underline} | [Responsible]{.underline} | [Date]{.underline} |',
+    '| --- | --- | --- |',
+    '| to do | F. Example/WAV | Dec. 9 |',
+  ].join('\n')).find((block) => block.type === 'table')
+  assert.equal(kept.rows.length, 1)
+  assert.equal(kept.rows[0][0], 'to do')
+  assert.equal(kept.rows[0][1], 'F. Example/WAV')
+
+  const grid = [
+    '+--------------------------+----------------------------+----------------------+',
+    '| [To do:]{.underline}     | [Responsible]{.underline}  | [Date]{.underline}   |',
+    '+--------------------------+----------------------------+----------------------+',
+    '| Update the quotation     | F. Example/WAV             | Dec.. 9              |',
+    '+--------------------------+----------------------------+----------------------+',
+    '| to do                    | responsible                | date                 |',
+    '+--------------------------+----------------------------+----------------------+',
+  ].join('\n')
+  const gridTable = parseOriginalBody(grid).find((block) => block.type === 'table')
+  assert.equal(gridTable.header, null)
+  assert.equal(gridTable.rows.length, 2)
+  assert.match(gridTable.rows[0][0], /To do:/)
+  assert.match(gridTable.rows[1][0], /Update the quotation/)
+  assert.equal(gridTable.rows.some((row) => row.map((cell) => String(cell).trim().toLowerCase()).join('|') === 'to do|responsible|date'), false)
+})

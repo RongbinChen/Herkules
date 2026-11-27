@@ -215,6 +215,68 @@ function parseSimpleTable(lines, start, columns) {
   return { block: { type: 'table', header, rows }, end: i }
 }
 
+
+// A body row that only repeats the table's column labels (often a Word
+// template placeholder such as "to do | responsible | date" under a
+// formatted "To do: | Responsible | Date" header). Hidden at parse time
+// so the page and Word export show the header once; stored originalBody
+// is not rewritten.
+function normalizeTableLabel(text) {
+  return stripEmphasis(String(text ?? ''))
+    .replace(/[:：.;。；]/g, ' ')
+    .replace(/[-–—_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function isLeftoverHeaderRow(row, labels) {
+  if (!Array.isArray(row) || !Array.isArray(labels)) return false
+  const width = Math.max(row.length, labels.length)
+  if (!width) return false
+  let compared = 0
+  for (let i = 0; i < width; i += 1) {
+    const label = normalizeTableLabel(labels[i])
+    const cell = normalizeTableLabel(row[i])
+    if (!label && !cell) continue
+    if (!label || !cell) return false
+    if (label !== cell) return false
+    compared += 1
+  }
+  return compared > 0
+}
+
+function withoutLeftoverHeaderRows(block) {
+  if (!block || block.type !== 'table' || !Array.isArray(block.rows)) return block
+  const header = Array.isArray(block.header) && block.header.length ? block.header : null
+  if (header) {
+    return { ...block, rows: block.rows.filter((row) => !isLeftoverHeaderRow(row, header)) }
+  }
+  if (block.rows.length < 2) return block
+  const labels = block.rows[0]
+  return {
+    ...block,
+    rows: [block.rows[0], ...block.rows.slice(1).filter((row) => !isLeftoverHeaderRow(row, labels))],
+  }
+}
+
+// Same leftover pattern outside a multi-column table, e.g. an underlined
+// "Mill Status / Plant Status" heading followed by the unformatted
+// placeholder "mill status / plant status".
+function dropLeftoverLabelBlocks(blocks) {
+  const out = []
+  for (const block of blocks || []) {
+    const prev = out[out.length - 1]
+    const prevText = prev && (prev.type === 'heading' || prev.type === 'paragraph') ? prev.text : null
+    const currText = block && (block.type === 'heading' || block.type === 'paragraph') ? block.text : null
+    const prevLabel = prevText ? normalizeTableLabel(prevText) : ''
+    const currLabel = currText ? normalizeTableLabel(currText) : ''
+    if (prevLabel && currLabel && prevLabel === currLabel) continue
+    out.push(block)
+  }
+  return out
+}
+
 const LIST_START = /^\s*([-*]|\d+[.)])\s+/
 const HEADING_START = /^(#{1,4})\s+(.*)$/
 
@@ -799,7 +861,7 @@ export function parseOriginalBody(markdown) {
         rows.push(pipeCells(lines[i]))
         i += 1
       }
-      blocks.push({ type: 'table', header: columns, rows })
+      blocks.push(withoutLeftoverHeaderRows({ type: 'table', header: columns, rows }))
       continue
     }
 
@@ -808,7 +870,7 @@ export function parseOriginalBody(markdown) {
     if (widths) {
       const parsed = parseGridTable(lines, i, widths)
       if (parsed) {
-        blocks.push(parsed.block)
+        blocks.push(withoutLeftoverHeaderRows(parsed.block))
         i = parsed.end
         continue
       }
@@ -822,7 +884,7 @@ export function parseOriginalBody(markdown) {
     if (simple) {
       const parsed = parseSimpleTable(lines, i, simple)
       if (parsed) {
-        blocks.push(parsed.block)
+        blocks.push(withoutLeftoverHeaderRows(parsed.block))
         i = parsed.end
         continue
       }
@@ -877,7 +939,7 @@ export function parseOriginalBody(markdown) {
     if (paragraph.length) blocks.push({ type: 'paragraph', text: collapseProseSpaces(paragraph.join(' ')) })
   }
 
-  return structurePreservedBlocks(blocks)
+  return structurePreservedBlocks(dropLeftoverLabelBlocks(blocks))
 }
 
 const escapeCell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ')
