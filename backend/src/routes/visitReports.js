@@ -394,6 +394,12 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
   }
 
   const meta = sourceMeta(packed.originalBody);
+  // The form always posts its Visit Date, and a new report defaults that
+  // field to today. That value is not a date from the document. The title
+  // and the suggested Visit Date use only what sourceMeta recognized
+  // (letterhead Date of Visit, or one visit date in the prose). Today and
+  // the filename are not substitutes.
+  const recognizedVisitDate = meta.visitDate || '';
   let title = titleFromSource(packed.originalBody);
   // Template leftovers are treated as unset. Ask the model for a title
   // only when the Word file itself has no usable heading or title line.
@@ -401,7 +407,7 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
     try {
       title = await titleVisitReport(packed.originalBody, {
         customerName: meta.customerName,
-        visitDate: meta.visitDate || visitDate,
+        visitDate: recognizedVisitDate,
       });
     } catch (err) {
       console.error('[visit-report] title left empty:', err.message);
@@ -416,7 +422,7 @@ async function respondPreservedImport(req, res, { doc, files, customerId, visitD
     targets,
     targetsError,
     title,
-    visitDate: meta.visitDate,
+    visitDate: recognizedVisitDate || null,
     customerName: meta.customerName,
   });
   let customerMatch = null;
