@@ -394,3 +394,30 @@ test('the recovered document-body appendix is not rendered', async () => {
   assert.doesNotMatch(html, /customer budget/)
 })
 
+test('a leftover To-do header row is not rendered as a data row', async () => {
+  const { default: OriginalBody } = await loadJsxModule(path.join(here, 'OriginalBody.jsx'))
+  const html = renderToStaticMarkup(createElement(OriginalBody, {
+    markdown: [
+      '  ---------------------------------------------------- --------------------------- --------------------',
+      '  [To do:]{.underline}                                 [Responsible]{.underline}   [Date]{.underline}',
+      '',
+      '  Update the quotation by replacing the milling head   F. Example/WAV               Dec.. 9',
+      '',
+      '  to do                                                responsible                 date',
+      '  ---------------------------------------------------- --------------------------- --------------------',
+    ].join('\n'),
+  }))
+  assert.match(html, /<table/)
+  assert.match(html, /<thead/)
+  assert.match(html, /To do:/)
+  assert.match(html, /Responsible/)
+  assert.match(html, /Update the quotation by replacing the milling head/)
+  assert.match(html, /F\. Example\/WAV/)
+  assert.match(html, /Dec\.\. 9/)
+  assert.doesNotMatch(html, /<td[^>]*>to do<\/td>/)
+  assert.doesNotMatch(html, /<td[^>]*>responsible<\/td>/)
+  assert.doesNotMatch(html, /<td[^>]*>date<\/td>/)
+  // The header is shown once; the lowercase placeholder cells must not appear.
+  const lowerTodo = (html.match(/>to do</g) || []).length
+  assert.equal(lowerTodo, 0)
+})
