@@ -252,7 +252,9 @@ export async function summarizeVisitReport(text, { visitors } = {}) {
 
 const TITLE_SYSTEM = `你是 Herkules 中国销售团队的拜访报告助手。根据给定的拜访报告原文写一个简洁的标题。
 - 英文报告用英文，中文报告用中文；不要翻译原文主题
-- 形式为客户或地点 + 主题（日期），简洁一行
+- 形式为客户或地点 + 主题，简洁一行
+- 只有用户消息里明确给出了拜访日期（YYYY-MM-DD）时，才可以在标题末尾用括号写上这个日期，且必须原样使用，不要改成其他日期
+- 没有给出拜访日期时，标题里不要写任何日期：不要写今天，不要从文件名里的数字（如 20260716）猜测，也不要自己编一个日期
 - 不要用模板套话（Visit Report、Please select type of report、拜访报告）
 - 不要引号，不要 markdown，只输出一行标题`;
 
@@ -270,25 +272,82 @@ export function sanitizeGeneratedTitle(raw) {
   return t.slice(0, 180);
 }
 
+const TITLE_MONTH = [
+  'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December',
+  'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Aug', 'Sept', 'Sep', 'Oct', 'Nov', 'Dec',
+].sort((a, b) => b.length - a.length).join('|');
+
+// Dates a model might write into a title. Slash dates and compact filename
+// tokens (20260716) are included so they can be removed; they are not a
+// source of the visit date itself.
+const TITLE_DATE = new RegExp([
+  `\\b(?:${TITLE_MONTH})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}\\b`,
+  `\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${TITLE_MONTH})\\.?,?\\s+\\d{4}\\b`,
+  '\\b\\d{4}-\\d{1,2}-\\d{1,2}\\b',
+  '\\d{4}年\\d{1,2}月\\d{1,2}日',
+  '\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b',
+  '\\b20\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\b',
+].join('|'), 'gi');
+
+function tidyGeneratedTitle(text) {
+  return String(text || '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\(\s*\)/g, '')
+    .replace(/（\s*）/g, '')
+    .replace(/\s+([)）,，])/g, '$1')
+    .replace(/[(（]\s+/g, (mark) => mark.trim())
+    .replace(/\s*[,，]\s*$/g, '')
+    .replace(/\s*[–—-]\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// A generated title may include a date only when the document itself yielded
+// one. That date replaces whatever the model wrote (including today). When
+// no visit date was recognized, every date is removed — today is not kept.
+export function alignGeneratedTitleDate(raw, visitDate = '') {
+  const title = String(raw || '').trim();
+  if (!title) return null;
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(String(visitDate || '')) ? String(visitDate) : '';
+  let next = tidyGeneratedTitle(title.replace(TITLE_DATE, iso));
+  if (iso) {
+    const repeated = new RegExp(`\\(${iso}\\)\\s*\\(${iso}\\)`, 'g');
+    next = tidyGeneratedTitle(next.replace(repeated, `(${iso})`));
+  }
+  if (!next || isChromeParagraph(next)) return null;
+  return next.slice(0, 180);
+}
+
 // Title only for a preserved Word import when the document has no real
 // heading. Same model as the summary; does not rewrite the body.
+// `visitDate` must be a date read from the document. Do not pass the form's
+// default of today, a filename token, or a date the model invented.
 export async function titleVisitReport(text, { customerName = '', visitDate = '' } = {}) {
   const clean = String(text || '').trim();
   if (!clean) return null;
   const lang = sourceLanguage(clean);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(visitDate || '')) ? String(visitDate) : '';
   const directive = lang === 'zh'
     ? '请用中文输出标题。\n\n'
     : 'Write the title in English (the report body is in English).\n\n';
+  const dateRule = day
+    ? (lang === 'zh'
+      ? `标题如果带日期，只能用 ${day}，写在括号里。不要写其他日期。\n\n`
+      : `If the title includes a date, use exactly ${day} in parentheses. Do not use any other date.\n\n`)
+    : (lang === 'zh'
+      ? '标题中不要写日期。不要写今天，不要从文件名猜测日期。\n\n'
+      : 'Do not put a date in the title. Do not use today, and do not take a date from a filename.\n\n');
   const ctx = [
     customerName && (lang === 'zh' ? `客户：${customerName}` : `Customer: ${customerName}`),
-    visitDate && (lang === 'zh' ? `拜访日期：${visitDate}` : `Visit date: ${visitDate}`),
+    day && (lang === 'zh' ? `拜访日期：${day}` : `Visit date: ${day}`),
   ].filter(Boolean).join(lang === 'zh' ? '；' : '; ');
-  const user = `${directive}${ctx ? ctx + '\n\n' : ''}拜访报告原文：\n${clean.slice(0, 8000)}`;
+  const user = `${directive}${dateRule}${ctx ? ctx + '\n\n' : ''}拜访报告原文：\n${clean.slice(0, 8000)}`;
   const reply = await callDeepSeek(
     [{ role: 'system', content: TITLE_SYSTEM }, { role: 'user', content: user }],
     80,
   );
-  return sanitizeGeneratedTitle(reply);
+  return alignGeneratedTitleDate(sanitizeGeneratedTitle(reply), day);
 }
 
 const TARGET_SYSTEM = `你只从拜访报告原文中提取“带明确时间节点的行动/承诺/截止”。不要改写正文，不要翻译，不要总结，不要软化或加强原文的判断（is with problem 必须保持为有问题，不要改成 suspected）。

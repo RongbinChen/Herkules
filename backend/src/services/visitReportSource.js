@@ -3,7 +3,7 @@
 import { unzipSync } from './visitReportPhotos.js';
 import { SUMMARY_MODEL } from './visitReport.js';
 import { stripEmphasis } from '../../../shared/markdownEmphasis.js';
-import { isChromeParagraph, isUsableSourceTitle, letterheadMetaFields, mergeLetterheadHeaderMeta } from '../../../shared/originalBodyBlocks.js';
+import { isChromeParagraph, isUsableSourceTitle, letterheadMetaFields, mergeLetterheadHeaderMeta, parseOriginalBody } from '../../../shared/originalBodyBlocks.js';
 
 export const BODY_SOURCE = 'original';
 export const MAX_ORIGINAL_CHARS = 1_500_000;
@@ -206,8 +206,8 @@ function isoDate(year, month, day) {
 // rather than guessed, and nothing here invents "today". Ordinals
 // (14th, 2nd) and English month abbreviations (Nov., Sept.) are accepted
 // so a Date of Visit like "Nov. 14th, 2026" can fill the form. A bare
-// letterhead Date / DATE is still not used as the visit date; sourceMeta
-// only parses the Date of Visit field.
+// letterhead Date / DATE is still not used as the visit date. A compact
+// filename token such as 20260716 is not a date.
 export function parseSourceDate(raw) {
   const text = normalizeSpace(raw)
     .replace(/[,.]/g, '')
@@ -225,6 +225,140 @@ export function parseSourceDate(raw) {
     return isoDate(Number(match[3]), monthNumber(match[1]), Number(match[2]));
   }
   return null;
+}
+
+const NARRATIVE_MONTH = [
+  'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+  'September', 'October', 'November', 'December',
+  'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Aug', 'Sept', 'Sep', 'Oct', 'Nov', 'Dec',
+].sort((a, b) => b.length - a.length).join('|');
+
+// "on July 16th, 2026" / "on 16th July 2026" / "on 2026-07-16". Slash dates
+// are intentionally absent.
+const ON_VISIT_DATE = new RegExp(
+  `\\bon\\s+((?:${NARRATIVE_MONTH})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${NARRATIVE_MONTH})\\.?,?\\s+\\d{4}|\\d{4}-\\d{1,2}-\\d{1,2})\\b`,
+  'gi',
+);
+
+// The visit itself is dated by this clause, not a later "on <date>" that
+// merely shares a paragraph with the word "visit".
+const VISIT_ACTION = new RegExp([
+  String.raw`\bconducted\s+(?:a\s+|an\s+|the\s+)?(?:[\w-]+\s+){0,4}visit\b`,
+  String.raw`\b(?:paid|made|had)\s+(?:a\s+|an\s+)?(?:[\w-]+\s+){0,3}visit\b`,
+  String.raw`\bvisited\b`,
+  String.raw`\bvisiting\b`,
+  String.raw`\bvisit\s+(?:was|took\s+place|happened|occurred)\b`,
+  String.raw`\bheld\s+a\s+meeting\b`,
+  String.raw`\bhad\s+a\s+meeting\b`,
+  String.raw`\bmeeting\s+(?:was\s+held|took\s+place|occurred)\b`,
+  String.raw`\bmet\s+with\b`,
+  '拜访了?',
+  '走访了?',
+  '到访了?',
+  '会见了?',
+  '会面',
+  '来访',
+].join('|'), 'i');
+
+// A different event in the same sentence ("the order was placed on …")
+// is not the visit, even if the sentence also says someone visited.
+const OTHER_EVENT = /\b(?:placed|issued|ordered|signed|delivered|submitted|scheduled|invoiced|shipped|dated)\b/i;
+
+const ZH_VISIT_CUE = /拜访了?|走访了?|到访了?|会见了?|会面|来访/;
+const ZH_FULL_DATE = /(\d{4})年(\d{1,2})月(\d{1,2})日/g;
+
+function isAbbreviationPeriod(text, dotIndex) {
+  const before = text.slice(Math.max(0, dotIndex - 16), dotIndex);
+  return /(?:^|[^A-Za-z])(?:Inc|Ltd|Co|Corp|LLC|Mr|Mrs|Ms|Dr|Prof|No|St|Jr|Sr|vs|etc|Fig|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)$/i.test(before)
+    || /(?:i\.e|e\.g|U\.S|U\.K)$/i.test(before)
+    || /(?:^|[^A-Za-z])[A-Z]$/.test(before);
+}
+
+function sentenceStart(text, index) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const ch = text[i];
+    if (ch === '\n' || ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?') return i + 1;
+    if (ch === '.' && !isAbbreviationPeriod(text, i)) return i + 1;
+  }
+  return 0;
+}
+
+function sentenceEnd(text, index) {
+  for (let i = index; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '\n' || ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?') return i;
+    if (ch === '.' && !isAbbreviationPeriod(text, i)) return i;
+  }
+  return text.length;
+}
+
+function datesTheVisit(span) {
+  const match = String(span || '').match(VISIT_ACTION);
+  if (!match) return false;
+  const after = span.slice(match.index + match[0].length);
+  return !OTHER_EVENT.test(after);
+}
+
+function narrativeProse(text) {
+  const parts = [];
+  const plain = (value) => stripEmphasis(String(value || ''));
+  for (const block of parseOriginalBody(text)) {
+    if (block.type === 'paragraph' || block.type === 'heading') {
+      const line = plain(block.text);
+      if (line) parts.push(line);
+    } else if (block.type === 'list') {
+      for (const item of block.items || []) {
+        const line = plain(typeof item === 'string' ? item : item?.text);
+        if (line) parts.push(line);
+      }
+    }
+  }
+  return parts;
+}
+
+function englishNarrativeDates(text) {
+  const found = [];
+  const source = String(text || '');
+  for (const match of source.matchAll(ON_VISIT_DATE)) {
+    const iso = parseSourceDate(match[1]);
+    if (!iso) continue;
+    const start = sentenceStart(source, match.index);
+    const prefix = source.slice(start, match.index).slice(-240);
+    const suffix = source.slice(match.index + match[0].length, sentenceEnd(source, match.index + match[0].length)).slice(0, 240);
+    // The visit action usually comes before "on <date>". It may also follow
+    // ("On July 16th, 2026, … conducted a visit") when the words before
+    // "on" are not some other event.
+    const before = datesTheVisit(prefix);
+    const after = !OTHER_EVENT.test(prefix) && datesTheVisit(suffix);
+    if (before || after) found.push(iso);
+  }
+  return found;
+}
+
+function chineseNarrativeDates(text) {
+  const found = [];
+  for (const sentence of String(text || '').split(/[。！？!?\n]+/)) {
+    const dates = [...sentence.matchAll(ZH_FULL_DATE)]
+      .map((match) => isoDate(Number(match[1]), Number(match[2]), Number(match[3])))
+      .filter(Boolean);
+    const unique = [...new Set(dates)];
+    if (unique.length === 1 && ZH_VISIT_CUE.test(sentence)) found.push(unique[0]);
+  }
+  return found;
+}
+
+// A visit date written in the body, such as "conducted a … visit … on
+// July 16th, 2026". Letterhead tables are not prose, so a writing-date
+// Date/DATE cell is not read here. One distinct date is kept; two
+// disagreeing dates are left unset rather than guessed.
+function narrativeVisitDate(text) {
+  const found = [];
+  for (const part of narrativeProse(text)) {
+    found.push(...englishNarrativeDates(part));
+    found.push(...chineseNarrativeDates(part));
+  }
+  const unique = [...new Set(found)];
+  return unique.length === 1 ? unique[0] : null;
 }
 
 const VISIT_DATE_LABEL = /^(?:date of visit|visit date|日期|拜访日期)$/i;
@@ -278,14 +412,18 @@ function metaFromLetterhead(text) {
   };
 }
 
-// Header lines and letterhead tables. The body text is not rewritten to
-// match them. Prefer Date of Visit (or visit date / 拜访日期 / 日期) over
-// a bare letterhead Date, which is the writing date on these templates.
+// Header lines and letterhead tables, then a visit dated in the prose.
+// The body text is not rewritten. Prefer Date of Visit (or visit date /
+// 拜访日期 / 日期) over a bare letterhead Date, which is the writing date
+// on these templates. A narrative date is used only when that field is
+// missing or not a real calendar day. Today and filename tokens are not
+// consulted.
 export function sourceMeta(text) {
   const fromLines = metaFromHeaderLines(text);
   const fromLetterhead = metaFromLetterhead(text);
-  const visitDate = parseSourceDate(fromLines.visitDateRaw)
+  const labeled = parseSourceDate(fromLines.visitDateRaw)
     || parseSourceDate(fromLetterhead.visitDateRaw);
+  const visitDate = labeled || narrativeVisitDate(text);
   const customerName = fromLines.customerName || fromLetterhead.customerName;
   return { visitDate, customerName };
 }

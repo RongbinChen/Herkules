@@ -25,6 +25,25 @@ test('a Word date fills only a new untouched form, and never invents today', () 
   }), '2026-11-13')
 })
 
+test('July 16th from the body fills Visit Date, and an unrecognized date does not keep today', () => {
+  const today = '2026-11-27'
+  assert.equal(chooseImportedDate({
+    suggested: '2026-07-16', current: today,
+  }), '2026-07-16')
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, suggested: '2026-07-16', current: today,
+  }), false)
+  assert.equal(chooseImportedDate({
+    suggested: null, current: today,
+  }), '')
+  assert.equal(shouldWarnMissingImportedDate({
+    preserved: true, suggested: null, current: today,
+  }), true)
+  assert.equal(chooseImportedDate({
+    touched: true, suggested: '2026-07-16', current: '2026-08-01',
+  }), '2026-08-01')
+})
+
 test('after AI Generate Report, a recognized Date of Visit fills an empty or default-today field', () => {
   // The create form still starts on today; generate must replace that
   // default when the Word Date of Visit is recognized.

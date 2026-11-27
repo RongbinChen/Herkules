@@ -7,7 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { deflateRawSync } from 'node:zlib';
 import { reportToMarkdown } from '../src/services/visitReportExport.js';
-import { targetsFromReply } from '../src/services/visitReport.js';
+import { alignGeneratedTitleDate, targetsFromReply } from '../src/services/visitReport.js';
 import { sanitizeAttachment } from '../src/services/visitReportPhotos.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -319,6 +319,119 @@ test('ordinal and abbreviated Date of Visit values parse, slash dates still do n
   assert.equal(parseSourceDate('07/14/2026'), null);
 });
 
+// The reported import: letterhead Date of Visit is blank, the writing-date
+// cell and the filename token are not the visit, and the prose says the
+// visit happened on July 16th, 2026. 2026-11-27 is the day the form would
+// otherwise stamp into the title.
+const XI_HUA_BODY = [
+  'Please select type of report',
+  '',
+  '| To | Boldoo Bao |  | Fax |  |',
+  '| --- | --- | --- | --- | --- |',
+  '| Company | Jiangsu Xihua New Energy Inc. |  | Date | November 27, 2026 |',
+  '| Date of Visit |  |  | Quotation No. |  |',
+  '',
+  'Boldoo Bao conducted a general visit and exchange with Jiangsu Xihua New Energy Inc. in Wuxi on July 16th, 2026 following the customer\'s plan to enter diesel engine manufacturing and their contact via an agent.',
+  '',
+  'The preliminary milling machine enquiry references the Hudson machine. Submit the updated proposal by August 30th, 2026.',
+  '',
+  'VR 20260716 Jiangsu Xihua',
+].join('\n');
+
+const TODAY = '2026-11-27';
+
+test('a body date of July 16th, 2026 fills the visit date when Date of Visit is unrecognized', () => {
+  const meta = sourceMeta(XI_HUA_BODY);
+  assert.equal(meta.visitDate, '2026-07-16');
+  assert.equal(meta.customerName, 'Jiangsu Xihua New Energy Inc.');
+  assert.notEqual(meta.visitDate, TODAY);
+  const modelTitle = 'Jiangsu Xihua new milling machine enquiry exchange (2026-11-27)';
+  const title = alignGeneratedTitleDate(modelTitle, meta.visitDate);
+  assert.equal(title, 'Jiangsu Xihua new milling machine enquiry exchange (2026-07-16)');
+  assert.doesNotMatch(title, /2026-11-27/);
+  assert.doesNotMatch(title, /November 27/);
+  assert.doesNotMatch(title, /20260716/);
+  assert.match(XI_HUA_BODY, /July 16th, 2026/);
+});
+
+test('a generated title drops today when the body has no recognizable visit date', () => {
+  const body = [
+    'Please select type of report',
+    '',
+    '| Company | Jiangsu Xihua New Energy Inc. |  | Date | November 27, 2026 |',
+    '| --- | --- | --- | --- | --- |',
+    '| Date of Visit |  |  | Quotation No. |  |',
+    '',
+    'The discussion covered a new milling machine enquiry. No calendar day was written down.',
+    '',
+    'VR 20260716 Jiangsu Xihua',
+  ].join('\n');
+  // Writing-date cell, blank Date of Visit, and a filename token. None of
+  // those is a visit date, and the prose does not date the visit either.
+  assert.equal(sourceMeta(body).visitDate, null);
+  assert.equal(sourceMeta('VR 20260716 Jiangsu Xihua\n\nNo date was written.').visitDate, null);
+  assert.equal(sourceMeta('Boldoo Bao conducted a general visit on 07/16/2026.').visitDate, null);
+  const title = alignGeneratedTitleDate(
+    'Jiangsu Xihua new milling machine enquiry exchange (2026-11-27)',
+    '',
+  );
+  assert.equal(title, 'Jiangsu Xihua new milling machine enquiry exchange');
+  assert.doesNotMatch(title, /2026-11-27|November 27|20260716/);
+  assert.equal(
+    alignGeneratedTitleDate('Jiangsu Xihua exchange (November 27, 2026)', ''),
+    'Jiangsu Xihua exchange',
+  );
+  assert.equal(
+    alignGeneratedTitleDate('Jiangsu Xihua exchange (20260716)', ''),
+    'Jiangsu Xihua exchange',
+  );
+});
+
+test('a narrative visit date ignores the writing date, a later deadline, and a second conflicting visit', () => {
+  assert.equal(
+    sourceMeta('The quotation was issued on June 2nd, 2026.\n\nNo visit was dated.').visitDate,
+    null,
+  );
+  assert.equal(
+    sourceMeta('During the visit, the customer said the order was placed on March 3rd, 2024.').visitDate,
+    null,
+  );
+  assert.equal(
+    sourceMeta('We visited the plant and the order was placed on March 3rd, 2024.').visitDate,
+    null,
+  );
+  assert.equal(
+    sourceMeta('On July 16th, 2026, Boldoo Bao conducted a general visit with Jiangsu Xihua in Wuxi.').visitDate,
+    '2026-07-16',
+  );
+  assert.equal(
+    sourceMeta('We visited the Wuxi plant on July 16th, 2026.\n\nWe visited the Nanjing workshop on August 2nd, 2026.').visitDate,
+    null,
+  );
+  const labeled = [
+    'Date of Visit: August 18, 2022',
+    '',
+    'Boldoo Bao conducted a general visit on July 16th, 2026.',
+  ].join('\n');
+  assert.equal(sourceMeta(labeled).visitDate, '2022-08-18');
+  assert.equal(
+    sourceMeta('Boldoo Bao 于2026年7月16日拜访了江苏锡华新能源。').visitDate,
+    '2026-07-16',
+  );
+  assert.equal(
+    sourceMeta('Boldoo Bao conducted a general visit on **July 16th, 2026**.').visitDate,
+    '2026-07-16',
+  );
+  assert.equal(
+    sourceMeta('Boldoo Bao conducted a general visit with Jiangsu Xihua New Energy Inc.\nin Wuxi on July\n16th, 2026 following the enquiry.').visitDate,
+    '2026-07-16',
+  );
+  const grid = LETTERHEAD_GRID.replace('August 18, 2022', '               ');
+  const gridBody = `${grid}\n\nBoldoo Bao conducted a general visit and exchange with Jiangsu Xihua New Energy Inc. in Wuxi on July 16th, 2026 following the customer's plan.`;
+  assert.equal(sourceMeta(gridBody).visitDate, '2026-07-16');
+  assert.notEqual(sourceMeta(gridBody).visitDate, '2022-08-19');
+});
+
 test('an ordinal Date of Visit fills the visit date and a bare ordinal Date does not', () => {
   const withVisit = [
     '+----------------+------------------+---+------+------------------+',
@@ -507,6 +620,9 @@ test('another report cannot claim this report\'s original Word file', async () =
   const importer = route.slice(route.indexOf('async function respondPreservedImport'), route.indexOf('router.post(\'/generate\''));
   assert.doesNotMatch(importer, /status\(503\)/);
   assert.match(importer, /enrichPreservedPhotos/);
+  assert.match(importer, /sourceMeta\(packed\.originalBody\)/);
+  assert.match(importer, /visitDate: recognizedVisitDate/);
+  assert.doesNotMatch(importer, /meta\.visitDate\s*\|\|\s*visitDate/);
 });
 
 test('a stored Word file stays a document, not a photo', () => {
