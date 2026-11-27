@@ -7,6 +7,7 @@ import {
   blocksToMarkdown,
   collapseProseSpaces,
   hasPreservedLetterhead,
+  isChromeParagraph,
   HEADER_META_KEYS,
   letterheadAuthorName,
   letterheadHeaderMeta,
@@ -151,6 +152,13 @@ test('leftover Word chrome is dropped on parse and export', () => {
   assert.equal(blocks.length, 1)
   assert.equal(blocks[0].text, 'The shop reported a drive problem.')
   assert.doesNotMatch(blocksToMarkdown(blocks), /Please select type of report/i)
+  assert.equal(isChromeParagraph('Please select type of report'), true)
+  assert.equal(isChromeParagraph('Visit Report'), true)
+  assert.equal(isChromeParagraph('拜访报告'), true)
+  assert.equal(isChromeParagraph('Telephone Call Report'), false)
+  const bare = parseOriginalBody('Visit Report\n\nThe shop reported a drive problem.')
+  assert.equal(bare[0].text, 'The shop reported a drive problem.')
+  assert.doesNotMatch(blocksToMarkdown(bare), /^Visit Report$/m)
 })
 
 test('bold underlined labels stay section titles and export keeps the source markers', () => {

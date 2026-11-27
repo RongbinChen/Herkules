@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCaptionChange } from '../utils/visitReportCaptions'
-import { chooseImportedCustomer, chooseImportedDate, missingSaveFields, saveValidationMessage, shouldWarnMissingImportedDate, warningMessages } from '../utils/visitReportImport'
+import { chooseImportedCustomer, chooseImportedDate, chooseImportedTitle, missingSaveFields, saveValidationMessage, shouldWarnMissingImportedDate, warningMessages } from '../utils/visitReportImport'
 import SectionBody from './visit-report/SectionBody'
 import OriginalBody from './visit-report/OriginalBody'
 import ReportPhotos from './visit-report/ReportPhotos'
@@ -188,8 +188,11 @@ export default function VisitReportModal({ report, createMode, startEditing = fa
       setForm((f) => ({
         ...f,
         // A Word import must not replace a date or title the user already set.
+        // Template leftovers such as "Please select type of report" count as unset.
         // Notes-only generate still prefers the date read out of the notes.
-        title: data.preserved ? (f.title || data.title || '') : (data.title || f.title),
+        title: data.preserved
+          ? chooseImportedTitle({ current: f.title, suggested: data.title })
+          : (data.title || f.title),
         visitDate: data.preserved
           ? chooseImportedDate({ existingReport: Boolean(report), touched: dateTouched, current: f.visitDate, suggested: data.visitDate })
           : (data.visitDate || f.visitDate),

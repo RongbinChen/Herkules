@@ -1,6 +1,7 @@
 // AI structuring for visit reports: turn a salesperson's raw on-site notes
 // (typed jottings + text OCR'd from photos) into a structured visit report.
 import { callDeepSeek, extractJson } from './deepseek.js';
+import { isChromeParagraph } from '../../../shared/originalBodyBlocks.js';
 
 const MODEL_LABEL = 'deepseek-v4-flash';
 
@@ -137,6 +138,48 @@ export async function summarizeVisitReport(text) {
     500,
   );
   return String(reply || '').trim();
+}
+
+
+const TITLE_SYSTEM = `你是 Herkules 中国销售团队的拜访报告助手。根据给定的拜访报告原文写一个简洁的标题。
+- 英文报告用英文，中文报告用中文；不要翻译原文主题
+- 形式为客户或地点 + 主题（日期），简洁一行
+- 不要用模板套话（Visit Report、Please select type of report、拜访报告）
+- 不要引号，不要 markdown，只输出一行标题`;
+
+// Strip quotes / markdown a model might wrap around a one-line title, and
+// reject leftover template phrases so they are not stored as the title.
+export function sanitizeGeneratedTitle(raw) {
+  let t = String(raw || '').trim();
+  if (!t) return null;
+  t = t.replace(/^```[a-z]*\s*/i, '').replace(/```$/, '').trim();
+  t = t.split(/\n/)[0].trim();
+  t = t.replace(/^["'“”「」『』]+/, '').replace(/["'“”「」『』]+$/, '').trim();
+  t = t.replace(/^#+\s+/, '').trim();
+  if (!t) return null;
+  if (isChromeParagraph(t)) return null;
+  return t.slice(0, 180);
+}
+
+// Title only for a preserved Word import when the document has no real
+// heading. Same model as the summary; does not rewrite the body.
+export async function titleVisitReport(text, { customerName = '', visitDate = '' } = {}) {
+  const clean = String(text || '').trim();
+  if (!clean) return null;
+  const lang = sourceLanguage(clean);
+  const directive = lang === 'zh'
+    ? '请用中文输出标题。\n\n'
+    : 'Write the title in English (the report body is in English).\n\n';
+  const ctx = [
+    customerName && (lang === 'zh' ? `客户：${customerName}` : `Customer: ${customerName}`),
+    visitDate && (lang === 'zh' ? `拜访日期：${visitDate}` : `Visit date: ${visitDate}`),
+  ].filter(Boolean).join(lang === 'zh' ? '；' : '; ');
+  const user = `${directive}${ctx ? ctx + '\n\n' : ''}拜访报告原文：\n${clean.slice(0, 8000)}`;
+  const reply = await callDeepSeek(
+    [{ role: 'system', content: TITLE_SYSTEM }, { role: 'user', content: user }],
+    80,
+  );
+  return sanitizeGeneratedTitle(reply);
 }
 
 const TARGET_SYSTEM = `你只从拜访报告原文中提取“带明确时间节点的行动/承诺/截止”。不要改写正文，不要翻译，不要总结，不要软化或加强原文的判断（is with problem 必须保持为有问题，不要改成 suspected）。
