@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { displayTitle, parseEmphasis, stripEmphasis } from './markdownEmphasis.js'
 
 function plain(text) {
-  return [{ text, bold: false, italic: false, underline: false, mark: false, strike: false }]
+  return [{ text, bold: false, italic: false, underline: false, mark: false, strike: false, sup: false }]
 }
 
 test('strips wrapping bold from a report title', () => {
@@ -22,6 +22,7 @@ test('renders bold plus underline headings, including a curly apostrophe', () =>
     underline: true,
     mark: false,
     strike: false,
+    sup: false,
   }])
 
   const profile = '**[Customer’s profile:]{.underline}**'
@@ -42,9 +43,9 @@ test('renders triple-asterisk bold italic in mixed prose', () => {
   )
   const parts = parseEmphasis(prose)
   assert.deepEqual(parts, [
-    { text: 'The parent company is ', bold: false, italic: false, underline: false, mark: false, strike: false },
-    { text: 'Example Power Research Institute Co., Ltd.', bold: true, italic: true, underline: false, mark: false, strike: false },
-    { text: ', a research unit.', bold: false, italic: false, underline: false, mark: false, strike: false },
+    { text: 'The parent company is ', bold: false, italic: false, underline: false, mark: false, strike: false, sup: false },
+    { text: 'Example Power Research Institute Co., Ltd.', bold: true, italic: true, underline: false, mark: false, strike: false, sup: false },
+    { text: ', a research unit.', bold: false, italic: false, underline: false, mark: false, strike: false, sup: false },
   ])
 })
 
@@ -65,6 +66,7 @@ test('simple class spans such as mark are interpreted, and unknown classes only 
     underline: false,
     mark: true,
     strike: false,
+    sup: false,
   }])
   assert.equal(stripEmphasis('[aside]{.smallcaps}'), 'aside')
   assert.equal(stripEmphasis('[keep]{width=14cm}'), '[keep]{width=14cm}')
@@ -83,4 +85,19 @@ test('displayTitle leaves plain titles alone and does not invent a value', () =>
   assert.equal(displayTitle('Northline visit'), 'Northline visit')
   assert.equal(displayTitle(''), '')
   assert.equal(displayTitle(null), '')
+})
+
+test('pandoc superscript carets become raised text and unmatched carets stay literal', () => {
+  const line = 'He generally handles machine-related issues by himself/3^rd^ party.'
+  assert.equal(stripEmphasis(line), 'He generally handles machine-related issues by himself/3rd party.')
+  assert.deepEqual(parseEmphasis(line), [
+    { text: 'He generally handles machine-related issues by himself/3', bold: false, italic: false, underline: false, mark: false, strike: false, sup: false },
+    { text: 'rd', bold: false, italic: false, underline: false, mark: false, strike: false, sup: true },
+    { text: ' party.', bold: false, italic: false, underline: false, mark: false, strike: false, sup: false },
+  ])
+  assert.equal(stripEmphasis('E=mc^2^'), 'E=mc2')
+  assert.equal(stripEmphasis('x^2 + y^2'), 'x^2 + y^2')
+  assert.equal(stripEmphasis('a^b'), 'a^b')
+  assert.equal(stripEmphasis('\\^rd^'), '^rd^')
+  assert.equal(displayTitle('3^rd^ party'), '3rd party')
 })

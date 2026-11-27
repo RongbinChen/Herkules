@@ -6,6 +6,7 @@
 // Recognised, well-formed constructs only:
 //   **bold**, __bold__, *italic*, _italic_, ***bold italic***, ___bold italic___
 //   [text]{.underline} and similar simple class spans such as {.mark}
+//   ^superscript^ with no spaces inside (pandoc), such as 3^rd^
 // Nested combinations such as **[Project briefing:]{.underline}** are kept.
 // Photo placeholders (`[]`, `[] []`), links, headings, and raw HTML are left
 // as literal text.
@@ -25,7 +26,7 @@ function flagsFromClasses(classes) {
 }
 
 function emptyFlags() {
-  return { bold: false, italic: false, underline: false, mark: false, strike: false }
+  return { bold: false, italic: false, underline: false, mark: false, strike: false, sup: false }
 }
 
 function withFlags(segment, flags) {
@@ -36,6 +37,7 @@ function withFlags(segment, flags) {
     underline: !!(segment.underline || flags.underline),
     mark: !!(segment.mark || flags.mark),
     strike: !!(segment.strike || flags.strike),
+    sup: !!(segment.sup || flags.sup),
   }
 }
 
@@ -113,6 +115,32 @@ function delimiterRunLength(source, index, char) {
   return count
 }
 
+// Pandoc superscript: 3^rd^ → rd raised. Spaces stay literal so an unmatched
+// caret in prose is not swallowed.
+function trySuperscript(source, index) {
+  if (source[index] !== '^') return null
+  const next = source[index + 1]
+  if (!next || next === '^' || /\s/.test(next)) return null
+  let cursor = index + 1
+  while (cursor < source.length) {
+    const ch = source[cursor]
+    if (ch === '\n' || /\s/.test(ch)) return null
+    if (ch === '\\' && cursor + 1 < source.length) {
+      cursor += 2
+      continue
+    }
+    if (ch === '^') break
+    cursor += 1
+  }
+  if (source[cursor] !== '^' || cursor === index + 1) return null
+  const inner = source.slice(index + 1, cursor)
+  if (!inner || inner.length > 40) return null
+  return {
+    segments: parseEmphasis(inner).map((segment) => ({ ...segment, sup: true })),
+    end: cursor + 1,
+  }
+}
+
 function tryEmphasis(source, index) {
   for (const marker of MARKERS) {
     // A run of ** must not be opened as a single *; otherwise
@@ -149,7 +177,7 @@ export function parseEmphasis(text) {
   }
   let index = 0
   while (index < source.length) {
-    if (source[index] === '\\' && index + 1 < source.length && '[]{}*_\\'.includes(source[index + 1])) {
+    if (source[index] === '\\' && index + 1 < source.length && '[]{}*_\\^'.includes(source[index + 1])) {
       literal += source[index + 1]
       index += 2
       continue
@@ -159,6 +187,13 @@ export function parseEmphasis(text) {
       flush()
       segments.push(...span.segments)
       index = span.end
+      continue
+    }
+    const superscript = trySuperscript(source, index)
+    if (superscript) {
+      flush()
+      segments.push(...superscript.segments)
+      index = superscript.end
       continue
     }
     const emphasis = tryEmphasis(source, index)
